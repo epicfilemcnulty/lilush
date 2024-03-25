@@ -1,0 +1,22 @@
+name: release
+
+on: 
+  push:
+    tags:
+      - '*'
+
+jobs:
+  release:
+    runs-on: ubuntu
+    steps:
+      - name: checkout repo
+        run: git clone --depth 1 --branch ${{ github.ref_name }} git@git.deviant.guru:${{ github.repository }}
+ 
+      - name: build container
+        run:  cd lilush && docker build -t git.deviant.guru/lilush/lilush .
+ 
+      - name: publish image
+        run: cd lilush/.gitea/scripts && ./publish.bash
+
+      - name: publish binary
+        run: cd lilush/.gitea/scripts && ./release.lua

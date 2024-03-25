@@ -1,0 +1,135 @@
+# _deviant_ module
+
+  A set of functions to extend Lua's standard library with the bare essentials 
+  for common system tasks.
+
+## File operations
+
+: file_exists(`filepath`{.str}) ➜ `status`{.bool}
+
+    Returns `true`{.bool} if the file at `filepath`{.str} exists and is a regular file.
+
+: read_file(`filepath`{.str}) ➜ `content`{.str}
+
+    Reads the file at `filepath`{.str} and returns its content.
+
+: write_file(`filepath`{.str}, `content`{.str}) ➜ `status`{.bool}
+
+    Writes the `content`{.str} into the file at `filepath`{.str}.\ 
+    Returns `true`{.bool} in case of success. 
+
+: list_files(`path`{.str}, `pattern`{.opt .str} `^.*`{.str .def}) ➜ `file_list`{.tbl}
+
+    Returns a table with the names of all regular files that match the `pattern`{.str} in the directory at `path`{.str}.
+    The `pattern`{.str} is a Lua string [pattern](http://www.lua.org/manual/5.2/manual.html#6.4.1). 
+    If not provided, the default pattern `^.*`{.str .def} will match all file names. 
+
+: list_dir(`path`{.str}) ➜ `dir_items`{.tbl}
+    
+    Returns a table with the names of all directory items in the directory at `path`.
+
+: stat(`path`{.str}) ➜ `mode`{.str}
+
+    Returns information about the file at `path` in a single character.
+    
+    | character |     meaning      |
+    | :-------: | ---------------- |
+    |    *f*    | regular file     |
+    |    *d*    | directory        |
+    |    *l*    | symbolic link    |
+    |    *b*    | block device     |
+    |    *c*    | character device |
+    |    *u*    | unknown          |
+    
+## Linux processes
+
+: sleep(`seconds`{.num})
+
+    Sleeps the number of `seconds`.
+
+: fork() ➜ `pid`{.num}
+
+    A wrapper to the `fork` system call.\
+    Returns `0`{.num} to the child, child's `pid` to the parent.\
+    Returns `-1`{.num} on failure.
+
+: getpid() ➜ `pid`{.num}
+
+    Returns the id of the calling process.
+
+: kill(`pid`{.num}, `signal`{.num})
+
+    Sends the `signal` to the process with the id specified by `pid`.
+
+: waitpid(`pid`{.num}) ➜ `pid`{.num}
+
+    A wrapper to the `waitpid(pid, NULL, WNOHANG)` system call.
+
+: exec(`filepath`{.str}, `...`{.opt})
+
+    A wrapper to the `execv` system call.
+
+## Tables
+
+: render_table(`table`{.tbl})
+
+    Returns a formatted string representation of a table. Nested tables are supported.
+
+: merge_tables(`first`{.tbl}, `second`{.tbl}) ➜ `first`{.tbl .ret}
+
+    Merges `second` table into the `first` one and returns the `first`{.ret} one.
+
+    The `first` table is going to be modified in the process of merge, and to make 
+    this implicit change explicit, it is recommended to always invoke this function
+    like this: `first = merge_tables(first, second)` 
+
+: sort_keys(`table`{.tbl}) ➜ `table_keys`{.tbl .ret}
+
+    Returns a table with all the keys of the `table` sorted in alphanumeric order.
+
+: alphanumsort(`table`{.tbl}) ➜ `table`{.tbl .ret}
+
+    Sorts the `table` alphanumerically and returns it.
+
+## Template rendering
+
+: envsubst(`filepath`{.str}) ➜ `output`{.str .ret}
+ 
+    Reads the file at `filepath`, replaces all occurrences of the
+    `{{VAR_NAME}}` pattern in the file contents with the value of the environment variable `VAR_NAME`,
+    and returns the resulting string.
+
+: template(`tmpl`{.str}, `vars`{.tbl}) ➜ `output`{.str .ret}
+
+    Replaces all occurences of the pattern `{{([%w_%d]+)}}`{.def} in the `tmpl` string with the values
+    from the `vars` table and returns the resulting string. E.g.:
+
+    ```lua
+    local std = require("deviant")
+    local tmpl = [[ 
+        listen = {{port}}
+        gateway_address = {{gateway_address}}
+    ]]
+    print(std.template(tmpl, { port = 8080, gateway_address = "192.168.0.1" }))
+
+    -- OUTPUT:
+    --  listen = 80
+    --  gateway_address = 192.168.0.1
+    ```
+
+## UUID and salt
+
+: uuid() ➜ `uuid`{.str .ret}
+
+    Generates a [uuid](https://en.wikipedia.org/wiki/Universally_unique_identifier). 
+
+: salt(`length`{.opt .num} `16`{.def}) ➜ `salt`{.str .ret}
+
+    Generates a random salt of `length`{.num} bytes.
+
+## Miscellaneous
+
+: module_available(`name`{.str}) ➜ `result`{.bool .ret}
+
+    Returns `true`{.ret} if Lua module `name` is available in the system.
+

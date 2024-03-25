@@ -1,0 +1,33 @@
+# Upstreams
+
+  _Lilush_ incorporates a bunch of upstream modules.
+
+  Note that, as _Lilush_ is, by design, developed only for the *Linux* platform, and for the *x86_64*
+  architecture particularly, code supporting all other platforms and architectures might be removed
+  from upstream modules before their incorporation into Lilush[^code-removal].
+
+## LuaSocket
+
+    This is the most patched upstream module in Lilush.
+
+    [LuaSocket](https://w3.impa.br/~diego/software/luasocket/) sources were merged with [luasec](https://github.com/brunoos/luasec), and *luasec* sources were modified in order to work with [WolfSSL](https://www.wolfssl.com/) instead of OpenSSL.
+
+## lua-cjson
+  
+  Version [2.1.0](https://github.com/mpx/lua-cjson/tree/2.1.0), but *forward slash escaping* has been *disabled*. No other changes.
+
+  Refer to the [module's](https://kyne.com.au/~mark/software/lua-cjson-manual.html) upstream documentation.
+
+
+## djot
+
+    Support of [djot](https://djot.net/) markup language, version [0.2.1](https://github.com/jgm/djot.lua/commit/a0583ef8270d025b3e86ef521b35f7397cf7215b). Internal json implementation
+ was removed, since we already have cjson integrated.
+
+
+## LuaResolver
+
+    Builtin `dns.dig` module is built upon [LuaResolver](https://github.com/zeitgeist87/LuaResolver). No changes to the upstream code.
+
+
+[^code-removal]: Well, when it's easy enough to remove it.

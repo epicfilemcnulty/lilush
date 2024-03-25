@@ -1,0 +1,106 @@
+# Foreword and Legend
+
+Throughout the documentation pages, types of arguments in function definitions and function
+return values are visually coded for the ease of grokking. Here is the legend:
+
+{#legend}
+| Type                     |  Required             | Optional              | Default shown as                 |
+| ------------------------ | --------------------- | ----------------------|----------------------------------|
+| `string`                 | `msg`{.str .req}      | `msg`{.str}           | `hi`{.str .def}                  |
+| `number`                 | `port`{.num .req}     | `port`{.num}          | `8080`{.num .def}                |
+| `table`                  | `options`{.tbl .req}  | `options`{.tbl}       | `{ one = 1, two = 2}`{.tbl .def} |
+| `boolean`                | `success`{.bool .req} | `success`{.bool}      | `true`{.bool .def}               |
+| `function`               | `sort`{.req .fn}      | `sort`{.fn}           | `return 1`{.def .fn}             |
+| `variable number of args`| `...`{.req}           | `...`                 | `...`{.def}                      |
+
+
+In case of an error all functions return `nil` and an error message.
+If there are any deviations from this rule, they are documented in the section of a corresponding function.
+
+## Internal modules
+
+_Lilush_ comes with a bundle of modules for various tasks:
+
+: [std](modules/std.dj){.lcl}
+
+  This module is meant to be an essential extension of Lua's standard library. It provides
+  functions for
+
+    * working with file system
+    * table and text manipulation (UTF-8 support)
+    * working with Linux processes and pipes
+
+  When running Lua scripts with Lilush, this module is already preloaded, no need to require it,
+  you can use it straight away:
+
+    ```Lua
+    std.print({ a = 1, b = 2 })
+    ```
+
+: [argparser](modules/argparser.dj){.lcl}
+
+  Inspired by the Python's `argparse` module, the module
+  to parse command line arguments and flags.
+
+  ```Lua
+  local argparser = require("argparser")
+  local help = [[
+  : script_name
+
+  Script description
+  ]]
+
+  local parser = argparser.new({
+       length = { kind = "num", default = 0, note = "Some length" },
+       type = { kind = "str", default = "hello", note = "Some type"},
+       force = { kind = "bool", note = "Flag to force some option" },
+       dir = { kind = "dir", idx = 1, note = "Path to some existing dir" },
+    }, help)
+
+  local args, err, help = parser:parse(arg)
+  if err then
+     print(err)
+     -- if the script was called with `-?` or `--help` argument,
+     -- `parser:parse` will return `true` as the third value.
+     if help then
+         return 0
+     end
+     return 127
+  end
+  -- Now you can access parsed arguments:
+  if args.length > 0 then
+     print(args.length)
+  end
+  ```
+
+  Running this script with `-?` or `--help` argument will produce the
+  following output:
+
+  {.output}
+  ```script_output
+  : script_name
+
+  Script description
+
+  ## Arguments table
+
+  |       name       |       default       | flag/pos |            note           |
+  |:-----------------|:-------------------:|:--------:|:--------------------------|
+  | `dir`{.req .dir} |                     |    *1*   | Path to some existing dir |
+  | `force`{.bool}   | `false`{.def .bool} |    *f*   | Flag to force some option |
+  | `length`{.num}   |    `0`{.def .num}   |    *l*   | Some length               |
+  | `type`{.str}     |  `hello`{.def .str} |    *t*   | Some type                 |
+  ```
+
+  The returned output is the `help`{.str} string plus arguments table in *djot* format. You can use `render_djot`{.fn}
+  function from the [text](modules/text.dj) module to pretty print it: `print(text.render_djot(err))`
+
+
+: [web](modules/web.dj){.lcl}
+  
+  This is a high-level wrapper over the incorporated [LuaSocket][] module.
+ 
+  It provides:
+ 
+    * simplified interface for the *HTTP(S)* request method
+    * *HTTP/1.1* server and auxiliary functions

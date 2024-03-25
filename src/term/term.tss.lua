@@ -1,0 +1,165 @@
+-- SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: GPL-3.0-or-later
+local std = require("std")
+local term = require("term")
+
+local calc_el_width = function(self, w, max)
+	if not max then
+		max = self.__window.w
+	end
+	local w = w or 0
+	if w > 0 then
+		if w < 1 then
+			return math.ceil(max * w)
+		end
+		if w < max then
+			return w
+		end
+		return max
+	end
+	return 0
+end
+
+local get = function(self, el, base_props)
+	local props = base_props or { fg = "reset", bg = "reset", s = {}, align = "none", clip = 0, indent = 0, w = 0 }
+
+	local add_style = function(tbl, s)
+		for opt in s:gmatch("([^,]+)") do
+			if opt == "reset" then
+				tbl = {}
+			else
+				local duplicate = false
+				for i, v in ipairs(tbl) do
+					if opt == v then
+						duplicate = true
+						break
+					end
+				end
+				if not duplicate then
+					table.insert(tbl, opt)
+				end
+			end
+		end
+	end
+	-- When base_props were provided, we
+	-- don't want to merge it with the base
+	-- values
+	if base_props == nil then
+		for k, v in pairs(props) do
+			if self.__style[k] then
+				if k == "w" then
+					props.w = self:calc_el_width(self.__style.w, self.__window.w)
+				elseif k == "s" then
+					add_style(props.s, self.__style[k])
+				else
+					props[k] = self.__style[k]
+				end
+			end
+		end
+	end
+
+	local obj = self.__style
+	for e in el:gmatch("([^.]+)%.?") do
+		if obj[e] then
+			for k, v in pairs(props) do
+				if obj[e][k] then
+					if k == "w" then
+						local max = props.w
+						if max == 0 then
+							max = self.__window.w
+						end
+						props.w = self:calc_el_width(obj[e].w, max)
+					elseif k == "s" then
+						add_style(props.s, obj[e][k])
+					else
+						props[k] = obj[e][k]
+					end
+				end
+			end
+			obj = obj[e]
+		end
+	end
+	return props, obj
+end
+
+local apply = function(self, elements, content, position)
+	local position = position or 0
+	local all = {}
+	if type(elements) == "string" then
+		all = { elements }
+	elseif type(elements) == "table" then
+		all = elements
+	end
+	local props, obj
+	for _, el in ipairs(all) do
+		props, obj = self:get(el, props)
+	end
+	local text = tostring(content) or ""
+	if obj.content then
+		text = tostring(obj.content)
+	end
+	if props.indent > 0 then
+		text = string.rep(" ", props.indent) .. text
+	end
+	local ulen = std.utf.len(text)
+	if props.w ~= 0 then
+		if obj.fill then
+			text = string.rep(text, props.w)
+			ulen = std.utf.len(text)
+		end
+		if props.clip == 0 then
+			props.clip = props.w
+		end
+		if ulen <= props.w and ulen <= self.__window.w - position then
+			if props.align == "center" then
+				local indent = math.floor((props.w - ulen) / 2)
+				local postfix = props.w - ulen - indent
+				text = string.rep(" ", indent) .. text .. string.rep(" ", postfix)
+			elseif props.align == "left" then
+				local postfix = props.w - ulen
+				text = text .. string.rep(" ", postfix)
+			elseif props.align == "right" then
+				local indent = props.w - ulen
+				text = string.rep(" ", indent) .. text
+			end
+		elseif props.clip > 0 then
+			text = std.limit(text, props.w, props.clip)
+		end
+	else
+		if ulen > self.__window.w - position and props.clip >= 0 then
+			text = std.limit(text, self.__window.w - position, self.__window.w - position)
+		end
+	end
+	if obj.before then
+		text = obj.before .. text
+	end
+	if obj.after then
+		text = text .. obj.after
+	end
+	if props.fg == props.bg and props.bg == props.s and props.s == {} then
+		return term.style("reset") .. text
+	end
+	if props.s == {} then
+		props.s = { "reset" }
+	end
+	return term.style(unpack(props.s)) .. term.color(props.fg, props.bg) .. text .. term.style("reset")
+end
+
+local new = function(ss)
+	local win_l, win_c = term.window_size()
+	return {
+		__window = { h = win_l, w = win_c },
+		__style = ss or {},
+		calc_el_width = calc_el_width,
+		get = get,
+		apply = apply,
+	}
+end
+
+local merge = function(ss1, ss2)
+	local merged = std.copy_table(ss1)
+	merged = std.merge_tables(merged, ss2)
+	return new(merged)
+end
+
+return { new = new, merge = merge }

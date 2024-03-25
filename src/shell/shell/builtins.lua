@@ -1,0 +1,1252 @@
+-- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: GPL-3.0-or-later
+local std = require("std")
+local term = require("term")
+local widgets = require("term.widgets")
+local web = require("web")
+local utils = require("shell.utils")
+local dig = require("dns.dig")
+local theme = require("shell.theme")
+local text = require("text")
+local argparser = require("argparser")
+local buffer = require("string.buffer")
+local tss_gen = require("term.tss")
+
+local set_term_title = function(title)
+	local term_title_prefix = os.getenv("LILUSH_TERM_TITLE_PREFIX") or ""
+	local static_term_title = os.getenv("LILUSH_TERM_TITLE_STATIC") or ""
+	if static_term_title ~= "" then
+		term.title(static_term_title)
+	else
+		term.title(term_title_prefix .. title)
+	end
+end
+
+--[[ 
+    Throw errors to STDERR
+]]
+local errmsg = function(msg)
+	local out = text.render_djot(tostring(msg), theme.renderer.builtin_error)
+	io.stderr:write(out)
+	io.stderr:flush()
+end
+
+local helpmsg = function(msg)
+	local out = "\n" .. text.render_djot(msg, theme.renderer.kat) .. "\n"
+	io.stderr:write(out)
+	io.stderr:flush()
+end
+--[[ 
+    DIR FUNCTIONS 
+]]
+local render_dir
+render_dir = function(path, pattern, indent, args)
+	local tss = tss_gen.new(theme)
+	local indent = indent or 0
+	local all_files, err = std.list_files(path, pattern, ".", args.long)
+	if not all_files then
+		return nil, err
+	end
+
+	local sys_users = std.system_users()
+	local dirs = {}
+	local files = {}
+	local targets = {}
+	for f, s in pairs(all_files) do
+		if s.mode == "d" then
+			table.insert(dirs, f)
+		else
+			table.insert(files, f)
+			if s.mode == "l" and args.long then
+				targets[f] = s.target
+			end
+		end
+	end
+	dirs = std.alphanumsort(dirs)
+	files = std.alphanumsort(files)
+
+	local longest_name_size = 0
+	for _, f in ipairs(dirs) do
+		if std.utf.len(f) > longest_name_size then
+			longest_name_size = std.utf.len(f)
+		end
+	end
+	for _, f in ipairs(files) do
+		if std.utf.len(f) > longest_name_size then
+			longest_name_size = std.utf.len(f)
+		end
+	end
+	if args.long then
+		local longest_target = 0
+		for f, _ in pairs(all_files) do
+			if targets[f] then
+				if std.utf.len(targets[f]) > longest_target then
+					longest_target = std.utf.len(targets[f])
+				end
+			end
+		end
+		longest_name_size = longest_name_size + longest_target + 4
+	end
+
+	local buf = buffer.new()
+
+	for i, dir in ipairs(dirs) do
+		local mode = all_files[dir].mode
+		local size = all_files[dir].size
+		local perms = all_files[dir].perms
+		local ext_attr = buffer.new()
+		if args.long then
+			local atime = std.ts_tostring(all_files[dir].atime)
+			local user = sys_users[tostring(all_files[dir].uid)].login
+			local group = sys_users[tostring(all_files[dir].gid)].login
+			ext_attr:put(
+				tss:apply("builtins.ls.user", user),
+				":",
+				tss:apply("builtins.ls.group", group),
+				" ",
+				tss:apply("builtins.ls.atime", atime),
+				" "
+			)
+		end
+		local alignment = longest_name_size - std.utf.len(dir)
+
+		local ind = " "
+		if indent > 0 then
+			local spaces = (math.floor(indent / 4) - 1) * 4
+			local arrows = indent - spaces
+			ind = ind
+				.. tss:apply("builtins.ls.offset", string.rep(" ", spaces) .. "" .. string.rep("", arrows - 1))
+		end
+		buf:put(ind, tss:apply("builtins.ls.dir", dir), string.rep(" ", alignment + 2))
+		if not args.tree then
+			buf:put(
+				" ",
+				ext_attr:get(),
+				tss:apply("builtins.ls.perms", perms),
+				" ",
+				tss:apply("builtins.ls.size", std.human_size(size))
+			)
+		end
+		buf:put("\n")
+		if args.tree then
+			local tree = render_dir(path .. "/" .. dir, pattern, indent + 4, args)
+			if tree then
+				buf:put(tree)
+			end
+		end
+	end
+
+	local prefixes = {
+		f = "builtins.ls.file",
+		l = "builtins.ls.link",
+		s = "builtins.ls.socket",
+		b = "builtins.ls.block",
+		p = "builtins.ls.pipe",
+		c = "builtins.ls.char",
+		u = "builtins.ls.unknown",
+	}
+	for i, file in ipairs(files) do
+		local mode = all_files[file].mode
+		local size = all_files[file].size
+		local perms = all_files[file].perms
+		local ext_attr = buffer.new()
+		local link_target = ""
+		local alignment = longest_name_size - std.utf.len(file)
+		if args.long then
+			local atime = std.ts_tostring(all_files[file].atime)
+			local user = sys_users[tostring(all_files[file].uid)].login
+			local group = sys_users[tostring(all_files[file].gid)].login
+			ext_attr:put(
+				tss:apply("builtins.ls.user", user),
+				":",
+				tss:apply("builtins.ls.group", group),
+				" ",
+				tss:apply("builtins.ls.atime", atime),
+				" "
+			)
+			if targets[file] then
+				link_target = " -> "
+				link_target = link_target .. tss:apply("builtins.ls.target", targets[file])
+				alignment = alignment - std.utf.len(targets[file]) - 4
+			end
+		end
+		local ind = " "
+		if indent > 0 then
+			local spaces = (math.floor(indent / 4) - 1) * 4
+			local arrows = indent - spaces
+			ind = ind
+				.. tss:apply("builtins.ls.offset", string.rep(" ", spaces) .. "⦁" .. string.rep("", arrows - 1))
+		end
+		local prefix_and_name = tss:apply(prefixes[mode], file)
+		if mode == "f" and perms:match("[75]") then
+			prefix_and_name = tss:apply("builtins.ls.exec", file)
+		end
+		buf:put(ind, prefix_and_name, link_target, string.rep(" ", alignment + 2))
+		if not args.tree then
+			buf:put(
+				" ",
+				ext_attr:get(),
+				tss:apply("builtins.ls.perms", perms),
+				" ",
+				tss:apply("builtins.ls.size", std.human_size(size))
+			)
+		end
+		buf:put("\n")
+	end
+	return buf:get()
+end
+
+local list_dir_help = [[
+: ls
+
+  List directory contents.
+]]
+
+local list_dir = function(cmd, args)
+	local parser = argparser.new({
+		long = { kind = "bool", note = "Show owner, date, permissions and link targets" },
+		tree = { kind = "bool", note = "Show directory tree" },
+		all = { kind = "bool", note = "Show hidden files" },
+		pathname = { kind = "str", default = ".", idx = 1 },
+	}, list_dir_help)
+	local args, err, help = parser:parse(args)
+	if err then
+		if help then
+			helpmsg(err)
+			return 0
+		end
+		errmsg(err)
+		return 127
+	end
+	local pattern = "^[^.]" -- no hidden files by default
+	if args.all then
+		pattern = ".*"
+	end
+
+	-- Parse pathname to see if it contains a pattern
+	-- along with the path
+	local path, p = args.pathname:match("^(.-)([^/]+)$")
+	if p then
+		if #path == 0 then
+			if p ~= "." and p ~= ".." then
+				pattern = p
+				args.pathname = "."
+			end
+		else
+			local st = std.stat(args.pathname)
+			if not st or st.mode ~= "d" then
+				args.pathname = path
+				pattern = std.escape_magic_chars(p)
+			end
+		end
+	end
+	local out, err = render_dir(args.pathname, pattern, 0, args)
+	if not out then
+		errmsg(err)
+		return 127
+	end
+	term.write(out)
+	return 0
+end
+
+local change_dir = function(cmd, args)
+	local home = os.getenv("HOME") or ""
+	local pathname = args[1] or home
+	if std.chdir(pathname) then
+		local pwd = std.cwd()
+		std.setenv("PWD", pwd)
+		set_term_title(pwd)
+		return 0
+	end
+	return 255
+end
+
+local mkdir_help = [[
+: mkdir
+
+  Make a directory.
+]]
+local mkdir = function(cmd, args)
+	local parser = argparser.new({
+		recursive = { kind = "bool", note = "Make all absent directories in the provided path" },
+		pathname = { kind = "str", idx = 1 },
+	}, mkdir_help)
+	local args, err, help = parser:parse(args)
+	if err then
+		if help then
+			helpmsg(err)
+			return 0
+		end
+		errmsg(err)
+		return 127
+	end
+
+	local status, err = std.mkdir(args.pathname, nil, args.recursive)
+	if not status then
+		errmsg(err)
+		return 127
+	end
+	return 0
+end
+
+local jump_dir = function(cmd, args)
+	local variants = utils.dir_history_complete(args)
+	if variants and variants[1] then
+		local home = os.getenv("HOME") or ""
+		local dir = variants[1]:gsub("^(%s+)", ""):gsub("^~", home)
+		return change_dir("cd", { dir })
+	end
+	errmsg("no match")
+end
+
+local upper_dir = function(cmd, args)
+	local _, count = cmd:gsub("%.", "%1")
+	local path = string.rep("../", count - 1)
+	if std.chdir(path) then
+		local pwd = std.cwd()
+		std.setenv("PWD", pwd)
+		set_term_title(pwd)
+		return 0
+	end
+	return 255
+end
+
+local sys_dirs = {
+	["/etc"] = true,
+	["/etc/init.d"] = true,
+	["/etc/rc.d"] = true,
+	["/home"] = true,
+	["/bin"] = true,
+	["/boot"] = true,
+	["/sbin"] = true,
+	["/usr/sbin"] = true,
+	["/usr/bin"] = true,
+}
+
+local file_remove_help = [[
+: rm
+
+  Remove files/directories.
+]]
+local file_remove = function(cmd, args)
+	local parser = argparser.new({
+		recursive = { kind = "bool", note = "remove non-empty directories" },
+		force = { kind = "bool", note = "remove directories too" },
+		pathname = { kind = "str", idx = 1, multi = true },
+	}, file_remove_help)
+	local args, err, help = parser:parse(args)
+	if err then
+		if help then
+			helpmsg(err)
+			return 0
+		end
+		errmsg(err)
+		return 127
+	end
+	for i, pathname in ipairs(args.pathname) do
+		local st, err = std.stat(pathname)
+		if not st then
+			errmsg(err)
+			return 127
+		end
+		if st.mode == "d" then
+			if not args.force then
+				errmsg("use `-f`{.flag} flag to remove a dir")
+				return 127
+			end
+			if std.non_empty_dir(pathname) and not args.recursive then
+				errmsg("use `-rf`{.flag} flags to remove a non-empty dir")
+				return 127
+			end
+		end
+		-- Do some sanity checks
+		local path = pathname:gsub("/-$", "") -- remove all trailing slashes
+		local home_dir = os.getenv("HOME") or ""
+		local pwd = std.cwd()
+		if not path:match("^/") then
+			path = pwd .. "/" .. path
+		end
+		if args.force and (sys_dirs[path] or path == home_dir or pathname == "/") then
+			if cmd ~= "rmrf" then
+				errmsg("use `rmrf -rf`{.flag} if you do want to delete `" .. path .. "`")
+				return 33
+			end
+		end
+
+		local status, err = std.remove(pathname, args.recursive)
+		if not status then
+			errmsg(err)
+			return 127
+		end
+	end
+	return 0
+end
+
+--[[ 
+    CAT
+]]
+local cat_help = [[
+: kat
+
+  Show file contents. In Kitty terminal *kat*
+  can also show images.
+
+## Rendering modes
+
+| Mode       | Description |
+|------------|-------------|
+| *raw*      | No monkey business, file shown as is. |
+| *simple*   | Indent and line wrapping |
+| *markdown* | Poor man's markdown renderer |
+| *djot*     | Middle class man's djot renderer |
+
+]]
+local cat = function(cmd, args, extra)
+	local extra = extra or {}
+	local parser = argparser.new({
+		markdown = { kind = "bool", note = "Force markdown rendering mode" },
+		raw = { kind = "bool", note = "Force raw rendering mode" },
+		simple = { kind = "bool", note = "Force simple rendering mode" },
+		djot = { kind = "bool", short = "j", note = "Force djot rendering mode" },
+		wrap = { kind = "bool", note = "Whether to wrap image" },
+		dimensions = { kind = "str", default = "80x40", note = "wrapping dimensions for images" },
+		links = { kind = "bool", note = "Show link's url" },
+		pathname = { kind = "file", idx = 1 },
+	}, cat_help)
+	local args, err, help = parser:parse(args)
+	if err then
+		if help then
+			helpmsg(err)
+			return 0
+		end
+		errmsg(err)
+		return 127
+	end
+	local txt, err = std.read_file(args.pathname)
+	if not txt then
+		errmsg(err)
+		return 127
+	end
+	local mime = web.mime_type(args.pathname)
+	if mime:match("^image") then
+		local l, c = term.cursor_position()
+		if args.wrap then
+			local pid = std.launch(
+				"kitten",
+				nil,
+				nil,
+				nil,
+				"icat",
+				"-z",
+				"-1",
+				"--align=left",
+				"--place",
+				args.dimensions .. "@1x" .. tostring(l),
+				args.pathname
+			)
+			std.wait(pid)
+			term.move("down", 10)
+		else
+			local pid = std.launch("kitten", nil, nil, nil, "icat", args.pathname)
+			std.wait(pid)
+		end
+		return 0
+	end
+	if args.raw then
+		term.write(text.render_text(txt))
+		return 0
+	end
+	if args.links then
+		extra.hide_links = false
+	end
+	if args.simple then
+		term.write("\n" .. text.render_text(txt, { global_indent = 2, wrap = 80 }, extra) .. "\n")
+		return 0
+	end
+	if args.djot or mime:match("djot") then
+		term.write("\n" .. text.render_djot(txt, theme.renderer.kat, extra) .. "\n")
+		return 0
+	end
+	if args.markdown or mime:match("markdown") then
+		term.write("\n" .. text.render_markdown(txt, theme.renderer.kat, extra) .. "\n")
+		return 0
+	end
+	term.write("\n" .. text.render_text(txt, { global_indent = 2, wrap = 80 }, extra) .. "\n")
+	return 0
+end
+
+local exec = function(cmd, args)
+	local cmd = table.remove(args, 1)
+	std.exec(cmd, unpack(args))
+end
+
+local notify = function(cmd, args)
+	local args = args or {}
+	local time = args[1] or ""
+	local seconds = 0
+	for duration, unit in time:gmatch("(%d+)(%w?)") do
+		local d = tonumber(duration) or 0
+		if unit:match("[hH]") then
+			seconds = seconds + d * 3600
+		elseif unit:match("[Mm]") then
+			seconds = seconds + d * 60
+		else
+			seconds = seconds + d
+		end
+	end
+	table.remove(args, 1)
+	local title = table.remove(args, 1) or "reminder!"
+	local msg = table.concat(args, " ")
+	local pid = std.fork()
+	if pid and pid == 0 then
+		std.sleep(seconds)
+		term.kitty_notify(title, msg)
+		os.exit(0)
+	end
+	return 0
+end
+--[[ 
+    ENV
+]]
+local list_env = function(cmd, args)
+	local arg = args[1] or ".*" -- for now let's just hardcode the first arg
+	local env = std.environ()
+	local tss = tss_gen.new(theme)
+	local matched = std.include_keys(std.sort_keys(env), arg)
+	tss.__style.builtins.envlist.var.w = std.longest(matched)
+
+	local out = ""
+	for _, entry in ipairs(matched) do
+		out = out .. tss:apply("builtins.envlist.var", entry)
+		out = out .. tss:apply("builtins.envlist.value", " " .. env[entry]) .. "\n"
+	end
+	term.write(out)
+	return 0
+end
+
+local setenv = function(cmd, args)
+	local args = args or {}
+	local name
+	for i, v in ipairs(args) do
+		local value
+		if not name then
+			if v:match("^.+=") then
+				name, value = v:match("^(.+)=(.*)")
+			else
+				name = v
+			end
+		else
+			value = v
+		end
+		if name and value then
+			std.setenv(name, value)
+			name = nil
+		end
+	end
+	return 0
+end
+
+local unsetenv = function(cmd, args)
+	local args = args or {}
+	for _, arg in ipairs(args) do
+		std.unsetenv(arg)
+	end
+	return 0
+end
+
+--[[ 
+    DIG
+]]
+local render_dns_record = function(records)
+	local tss = tss_gen.new(theme)
+	local out = ""
+	for i, rec in ipairs(records) do
+		local content = rec[2]
+		if type(rec[2]) == "table" then
+			content = ""
+			for _, v in pairs(rec[2]) do
+				content = content .. v .. " "
+			end
+		end
+		out = out
+			.. tss:apply("builtins.dig.name", rec[1])
+			.. " "
+			.. tss:apply("builtins.dig._in", "IN ")
+			.. tss:apply("builtins.dig._type", rec[4])
+			.. " "
+			.. tss:apply("builtins.dig.content", content)
+			.. " "
+			.. tss:apply("builtins.dig.ttl", rec[3])
+			.. "\n"
+	end
+	return out
+end
+
+local dig_help = [[
+
+: dig
+
+  DNS lookup tool.
+]]
+local dig = function(cmd, args)
+	local tss = tss_gen.new(theme)
+	local parser = argparser.new({
+		cache = { kind = "bool" },
+		tcp = { kind = "bool" },
+		args = { kind = "str", idx = 1, multi = true },
+	}, dig_help)
+	local args, err, help = parser:parse(args)
+	if err then
+		if help then
+			helpmsg(err)
+			return 0
+		end
+		errmsg(err)
+		return 127
+	end
+	local ns
+	local rtype = "A"
+	local domain
+	for _, arg in ipairs(args.args) do
+		if arg:match("^@") then
+			ns = arg:match("^@(.+)")
+		elseif arg:match("^%u") then
+			rtype = arg
+		else
+			domain = arg
+		end
+	end
+	if not domain then
+		errmsg("You must provide a domain name to resolve")
+		return 127
+	end
+	if cmd == "dig" then
+		local records, glue, ns = dig.simple(domain, rtype, ns, args)
+		if records == nil then
+			errmsg(glue)
+			return 255
+		end
+
+		local ns_type = ""
+		if dig.config.system and dig.config.system == ns then
+			ns_type = "system default"
+		elseif dig.config.fallback == ns then
+			ns_type = "fallback"
+		end
+		local out = tss:apply("builtins.dig.ns", "NS: " .. ns)
+			.. tss:apply("builtins.dig.ns_type", " " .. ns_type)
+			.. "\n"
+			.. render_dns_record(records)
+		term.write(out)
+		return 0
+	end
+	if cmd == "digg" then
+		local response, err = dig.fullchain(domain, rtype, args)
+		if response == nil then
+			errmsg(err)
+			return 255
+		end
+		local out = "\n"
+			.. tss:apply("builtins.dig.query", "Asking ")
+			.. tss:apply("builtins.dig.root_ns", response.root_ns_name)
+			.. tss:apply("builtins.dig.answer", " who is in charge of ")
+			.. tss:apply("builtins.dig.tld", response.tld)
+			.. "\n\n"
+			.. tss:apply("builtins.dig.answer", "Got ")
+			.. tss:apply("builtins.dig.tld_ns", #response.tld_ns)
+			.. tss:apply("builtins.dig.answer", " servers, using ")
+			.. tss:apply("builtins.dig.tld_ns", response.tld_ns_name)
+			.. tss:apply("builtins.dig.answer", " to get NS for ")
+			.. tss:apply("builtins.dig.domain", domain)
+			.. "\n"
+			.. tss:apply("builtins.dig.answer", "Got ")
+			.. tss:apply("builtins.dig.domain_ns", #response.domain_ns)
+			.. tss:apply("builtins.dig.answer", " servers, asking ")
+			.. tss:apply("builtins.dig.domain_ns", response.domain_ns_name)
+			.. tss:apply("builtins.dig.answer", " for ")
+			.. tss:apply("builtins.dig.rtype", rtype)
+			.. "\n\n"
+			.. render_dns_record(response.recs)
+		term.write(out)
+		return 0
+	end
+	return 255
+end
+
+--[[ 
+    KTL
+]]
+local ktl = function(cmd, args)
+	local namespace
+	for i, arg in ipairs(args) do
+		if arg == "-n" or arg == "--namespace" then
+			if i + 1 <= #args then
+				namespace = args[i + 1]
+				std.setenv("KTL_NAMESPACE", namespace)
+				break
+			end
+		end
+	end
+
+	if args[1] and args[1] == "profile" then
+		if args[2] then
+			local home = os.getenv("HOME") or ""
+			std.setenv("KUBECONFIG", home .. "/.kube/cfgs/" .. args[2])
+			return 0
+		end
+		errmsg("no profile specified")
+		return 255
+	end
+	if not namespace then
+		namespace = os.getenv("KTL_NAMESPACE") or "kube-system"
+		table.insert(args, 1, namespace)
+		table.insert(args, 1, "--namespace")
+	end
+	local pid = std.launch("kubectl", nil, nil, nil, unpack(args))
+	local ret, status = std.wait(pid)
+	if status ~= 0 then
+		return status
+	end
+	return 0
+end
+
+--[[ 
+    SSH helpers
+]]
+local ssh_profile = function(cmd, args)
+	local home = os.getenv("HOME") or ""
+	local args = args or {}
+	local profile = args[1] or ""
+	local profile_full_path = home .. "/.ssh/profiles/" .. profile
+	local ssh_config = home .. "/.ssh/config"
+
+	if not std.file_exists(profile_full_path) then
+		errmsg("no such profile")
+		return 255
+	end
+	local st = std.stat(ssh_config)
+	if not st then
+		local ret, err = std.symlink(profile_full_path, ssh_config)
+		if ret then
+			return 0
+		end
+		errmsg(err)
+		return 255
+	end
+	if st.mode == "l" then
+		local ret, err = std.remove(ssh_config)
+		if not ret then
+			errmsg(err)
+			return 255
+		end
+		local ret, err = std.symlink(profile_full_path, ssh_config)
+		if not ret then
+			errmsg(err)
+			return 255
+		end
+	end
+	return 0
+end
+
+--[[ 
+    AWS tools
+]]
+
+local aws_profile = function(cmd, args)
+	local aws_config = std.read_file(os.getenv("HOME") .. "/.aws/config")
+	if aws_config then
+		local content = { title = "Choose   profile", options = {} }
+		for p in aws_config:gmatch("%[profile ([^%]]+)%]") do
+			table.insert(content.options, p)
+		end
+		local l, c = term.cursor_position()
+		term.switch_screen("alt")
+		term.set_raw_mode()
+		term.hide_cursor()
+		local profile = widgets.switcher(content, theme.widgets.switcher.aws)
+		term.show_cursor()
+		term.switch_screen("main")
+		term.set_sane_mode()
+		term.go(l, c)
+		term.move("column")
+		if profile ~= "" then
+			std.setenv("AWS_PROFILE", profile)
+		end
+	end
+	return 0
+end
+
+local aws_region = function(cmd, args)
+	local content = { title = "Choose   region", options = {} }
+	local regions = os.getenv("AWS_REGIONS")
+	if regions and regions ~= "" then
+		for region in regions:gmatch("([%w-]+),?") do
+			table.insert(content.options, region)
+		end
+		local l, c = term.cursor_position()
+		term.switch_screen("alt")
+		term.set_raw_mode()
+		term.hide_cursor()
+		local region = widgets.switcher(content, theme.widgets.switcher.aws)
+		term.show_cursor()
+		term.set_sane_mode()
+		term.switch_screen("main")
+		term.go(l, c)
+		term.move("column")
+		if region ~= "" then
+			std.setenv("AWS_REGION", region)
+		end
+	end
+	return 0
+end
+--[[
+    NETSTAT
+]]
+local routes = function()
+	local routes_raw, err = std.read_file("/proc/net/route")
+	if not routes_raw then
+		return nil, err
+	end
+	local lines = {}
+	for line in routes_raw:gmatch("(.-)\n") do
+		table.insert(lines, line)
+	end
+	table.remove(lines, 1)
+	local routes = {}
+	for _, line in ipairs(lines) do
+		local iface, dst, gw, mask = line:match("^(%S+)%s+(%S+)%s+(%S+)%s+%S+%s+%S+%s+%S+%s+%S+%s+(%S+)")
+		table.insert(routes, {
+			iface = iface,
+			dst = std.parse_hex_ipv4(dst),
+			gw = std.parse_hex_ipv4(gw),
+			mask = std.parse_hex_ipv4(mask),
+		})
+	end
+	return routes
+end
+
+local connection_state = {
+	["01"] = "ESTABLISHED",
+	["02"] = "SYN_SENT",
+	["03"] = "SYN_RECV",
+	["04"] = "FIN_WAIT1",
+	["05"] = "FIN_WAIT2",
+	["06"] = "TIME_WAIT",
+	["07"] = "CLOSE",
+	["08"] = "CLOSE_WAIT",
+	["09"] = "LAST_ACK",
+	["0A"] = "LISTEN",
+	["0B"] = "CLOSING",
+}
+
+local netstat = function()
+	local tcp_raw, err = std.read_file("/proc/net/tcp")
+	if not tcp_raw then
+		return nil, err
+	end
+	local lines = {}
+	for line in tcp_raw:gmatch("(.-)\n") do
+		table.insert(lines, line)
+	end
+	table.remove(lines, 1)
+
+	local users = std.system_users()
+	local parsed = {}
+	for i, line in ipairs(lines) do
+		local fields = {}
+		for field in line:gmatch("(%S+)") do
+			table.insert(fields, field)
+		end
+		local state = connection_state[fields[4]]
+		if not parsed[state] then
+			parsed[state] = {}
+		end
+		local src_ip, src_port = std.parse_hex_ipv4(fields[2])
+		local dst_ip, dst_port = std.parse_hex_ipv4(fields[3])
+		local uid = fields[8]
+		local user = users[uid]
+		local inode = fields[10]
+		local proc_name = std.find_process_by_inode(inode)
+		table.insert(
+			parsed[state],
+			{ src = src_ip .. ":" .. src_port, dst = dst_ip .. ":" .. dst_port, user = user.login, process = proc_name }
+		)
+	end
+	return parsed
+end
+
+local netstat_help = [[
+: netstat
+
+  Tool to lookup network connections information.
+]]
+local render_netstat = function(cmd, args)
+	local tss = tss_gen.new(theme)
+	local parser = argparser.new({
+		listen = { kind = "bool" },
+		source = { kind = "str", default = ".*", idx = 1 },
+		destination = { kind = "str", default = ".*", idx = 2 },
+	}, netstat_help)
+	local args, err, help = parser:parse(args)
+	if err then
+		if help then
+			helpmsg(err)
+			return 0
+		end
+		errmsg(err)
+		return 127
+	end
+
+	local conns, err = netstat()
+	if not conns then
+		errmsg(err)
+		return 127
+	end
+	local s = "."
+	if args.listen then
+		s = "LISTEN"
+	end
+	local src = args.source
+	local dst = args.destination
+
+	local matched = {}
+	local longest = { src = 0, dst = 0, state = 0, user = 0, process = 0 }
+	for state, connection in pairs(conns) do
+		if state:match(s) then
+			for i, conn in ipairs(conns[state]) do
+				if conn.src:match(src) and conn.dst:match(dst) then
+					table.insert(
+						matched,
+						{ state = state, src = conn.src, dst = conn.dst, user = conn.user, process = conn.process }
+					)
+					if #conn.src > longest.src then
+						longest.src = #conn.src
+					end
+					if #conn.process > longest.process then
+						longest.process = #conn.process
+					end
+					if #conn.dst > longest.dst then
+						longest.dst = #conn.dst
+					end
+					if #state > longest.state then
+						longest.state = #state
+					end
+					if #conn.user > longest.user then
+						longest.user = #conn.user
+					end
+				end
+			end
+		end
+	end
+	local listen = {}
+	local other = {}
+	local established = {}
+	for i, conn in ipairs(matched) do
+		if conn.state == "ESTABLISHED" then
+			table.insert(established, { src = conn.src, dst = conn.dst, user = conn.user, process = conn.process })
+		elseif conn.state == "LISTEN" then
+			listen[conn.src] = conn.user
+			if conn.process ~= "" then
+				listen[conn.src] = conn.user .. "," .. conn.process
+			end
+		else
+			table.insert(
+				other,
+				{ src = conn.src, dst = conn.dst, state = conn.state, user = conn.user, process = conn.process }
+			)
+		end
+	end
+	table.sort(established, function(a, b)
+		return a.dst < b.dst
+	end)
+	table.sort(other, function(a, b)
+		return a.dst < b.dst
+	end)
+	for i, conn in ipairs(established) do
+		if not conn.paired and not conn.pair then
+			for j, c in ipairs(established) do
+				if c.dst == conn.src then
+					established[j].paired = i
+					established[i].pair = established[j].process
+				end
+			end
+		end
+	end
+	local out = ""
+	for i, conn in pairs(established) do
+		if not conn.paired then
+			local direction = "--> "
+			local process = conn.process
+			if conn.pair then
+				direction = "<-> "
+				if process ~= "" and conn.pair ~= "" then
+					process = process .. "," .. conn.pair
+				elseif conn.pair ~= "" then
+					process = conn.pair
+				end
+			end
+			out = out
+				.. tss:apply(
+					"builtins.netstat.src",
+					conn.src .. string.rep(" ", 2 + longest.src - #conn.src) .. direction
+				)
+				.. tss:apply("builtins.netstat.dst", conn.dst .. string.rep(" ", 2 + longest.dst - #conn.dst))
+				.. tss:apply("builtins.netstat.state", "ESTABLISHED" .. string.rep(" ", 2 + longest.state - 11))
+				.. tss:apply("builtins.netstat.user", conn.user .. string.rep(" ", 2 + longest.user - #conn.user))
+				.. tss:apply("builtins.netstat.user", process)
+				.. "\n"
+		end
+	end
+	for i, conn in ipairs(other) do
+		local direction = " ⇢  "
+		out = out
+			.. tss:apply("builtins.netstat.src", conn.src .. string.rep(" ", 2 + longest.src - #conn.src) .. direction)
+			.. tss:apply("builtins.netstat.dst", conn.dst .. string.rep(" ", 2 + longest.dst - #conn.dst))
+			.. tss:apply("builtins.netstat.state", conn.state .. string.rep(" ", 2 + longest.state - #conn.state))
+			.. tss:apply("builtins.netstat.user", conn.user .. string.rep(" ", 2 + longest.user - #conn.user))
+			.. tss:apply("builtins.netstat.user", conn.process)
+			.. "\n"
+	end
+	for src, conn in pairs(listen) do
+		out = out
+			.. tss:apply("builtins.netstat.src", src .. string.rep(" ", 2 + longest.src - #src + longest.dst + 6))
+			.. tss:apply("builtins.netstat.state", "LISTEN" .. string.rep(" ", 2 + longest.state - 6))
+			.. tss:apply("builtins.netstat.user", conn)
+			.. "\n"
+	end
+	term.write(out)
+	return 0
+end
+
+local history_help = [[
+: history
+
+  See commands history.
+]]
+local history = function(cmd, args, extra)
+	local tss = tss_gen.new(theme)
+	local parser = argparser.new({
+		short = { kind = "bool" },
+		time = { kind = "bool" },
+		lines = { kind = "num", default = 15 },
+	}, history_help)
+	local args, err, help = parser:parse(args)
+	if err then
+		if help then
+			helpmsg(err)
+			return 0
+		end
+		errmsg(err)
+		return 127
+	end
+	local size = #extra
+	local offset = size - args.lines
+	if offset < 0 then
+		offset = 1
+	end
+	local lines = ""
+	for i = offset, #extra do
+		local date = tss:apply("builtins.history.date", os.date("%Y-%m-%d", extra[i].ts))
+		local time = tss:apply("builtins.history.time", os.date("%H:%M:%S", extra[i].ts))
+		local duration = extra[i].d
+		local status = extra[i].exit
+		local cmd = tss:apply("builtins.history.cmd.ok", extra[i].cmd)
+		if status > 0 then
+			cmd = tss:apply("builtins.history.cmd.fail", extra[i].cmd)
+		end
+		if args.short then
+			lines = lines .. cmd .. "\n"
+		elseif args.time then
+			lines = lines .. time .. cmd .. "\n"
+		else
+			lines = lines .. date .. time .. cmd .. "\n"
+		end
+	end
+	local indent = tss.__style.builtins.history.global_indent or 0
+	term.write(std.indent(lines, indent) .. "\n")
+	return 0
+end
+
+local _M
+
+local files_matching_help = [[
+: files_matching
+
+  Execute a given command over each file matching a pattern.
+
+By default the name of each matched file will be inserted as
+the first argument of the provided command.
+
+Sometimes this is not what you want, so you can specify the exact
+placement by using `{}` in place of one of the command's arguments:
+
+```lsh
+files_matching .txt chmod 0640 {}
+```
+]]
+local files_matching = function(cmd, args)
+	local parser = argparser.new({
+		pattern = { kind = "str", idx = 1, note = "literal pattern to match in a filename (not regex)" },
+		command = {
+			kind = "str",
+			idx = 2,
+			default = { "echo" },
+			multi = true,
+			note = "The command to execute, with all required arguments",
+		},
+	}, files_matching_help)
+	local args, err, help = parser:parse(args)
+	if err then
+		if help then
+			helpmsg(err)
+			return 0
+		end
+		errmsg(err)
+		return 127
+	end
+	local path, pattern = args.pattern:match("^(.-)([^/]+)$")
+	if #path == 0 then
+		path = "."
+	end
+	local files = std.list_files(path, pattern) or {}
+	for file, stat in pairs(files) do
+		local cmd = ""
+		local full_path
+		if path == "." then
+			full_path = file
+		else
+			if path:match("/$") then
+				full_path = path .. file
+			else
+				full_path = path .. "/" .. file
+			end
+		end
+		for i, arg in ipairs(args.command) do
+			if arg:match("%s") then
+				cmd = cmd .. '"' .. arg .. '" '
+			else
+				cmd = cmd .. arg .. " "
+			end
+		end
+		local pipeline, err = utils.parse_pipeline(cmd, true)
+		if not pipeline then
+			return 33, err
+		end
+		local replaced = false
+		for i, arg in ipairs(pipeline[1].args) do
+			if arg == "{}" then
+				pipeline[1].args[i] = full_path
+				replaced = true
+				break
+			end
+		end
+		if not replaced then
+			table.insert(pipeline[1].args, 1, full_path)
+		end
+		local status, err = utils.run_pipeline(pipeline, nil, _M, nil)
+		if status ~= 0 then
+			return status, err
+		end
+	end
+	return 0
+end
+
+local storage = require("shell.storage")
+
+local zx_help = [[
+: zx
+
+  Snippet launcher.
+]]
+local zx = function(cmd, args)
+	local parser = argparser.new({
+		pattern = { kind = "str", idx = 1, multi = true },
+	}, zx_help)
+	local args, err, help = parser:parse(args)
+	if err then
+		if help then
+			helpmsg(err)
+			return 0
+		end
+		errmsg(err)
+		return 127
+	end
+	for _, arg in ipairs(args.pattern) do
+		arg = std.escape_magic_chars(arg)
+	end
+	local store = storage.new()
+	local snippets = store:list_hash_keys("snippets") or {}
+	for _, snippet in ipairs(snippets) do
+		if snippet:match(table.concat(args.pattern, ".-")) then
+			local script = store:get_hash_key("snippets", snippet) or {}
+			store:close(true)
+			local txt = "# Running snippet\n\n```" .. snippet .. "\n" .. script .. "\n```\n"
+			term.write("\n" .. text.render_djot(txt, theme.renderer.kat) .. "\n")
+			local script_lines = std.lines(script)
+			for i, line in ipairs(script_lines) do
+				local pipeline, err = utils.parse_pipeline(line, true)
+				if err then
+					errmsg(err)
+					return 33, err
+				end
+				local status, err = utils.run_pipeline(pipeline, nil, _M, nil)
+				if status ~= 0 then
+					errmsg(err)
+					return status, err
+				end
+			end
+			return 0
+		end
+	end
+	store:close(true)
+	return 127
+end
+
+local builtins = {
+	["ls"] = list_dir,
+	["cd"] = change_dir,
+	["mkdir"] = mkdir,
+	["%.%.+"] = upper_dir,
+	["z"] = jump_dir,
+	["zx"] = zx,
+	["rm"] = file_remove,
+	["rmrf"] = file_remove,
+	["kat"] = cat,
+	["envlist"] = list_env,
+	["history"] = history,
+	["files_matching"] = files_matching,
+	["setenv"] = setenv,
+	["export"] = setenv,
+	["unsetenv"] = unsetenv,
+	["exec"] = exec,
+	["netstat"] = render_netstat,
+	["notify"] = notify,
+	["ssh.profile"] = ssh_profile,
+	["aws.region"] = aws_region,
+	["aws.profile"] = aws_profile,
+	["ktl"] = ktl,
+	["dig"] = dig,
+	["digg"] = dig,
+}
+
+local dont_fork = { z = true, cd = true, setenv = true, export = true, unsetenv = true, ktl = true }
+
+local get = function(cmd)
+	for k, f in pairs(builtins) do
+		if cmd:match("^" .. k .. "$") then
+			local fork = true
+			local needy = false
+			if dont_fork[cmd] or cmd:match("^%.%.+") or cmd:match("^aws%.") then
+				fork = false
+			end
+			if cmd == "history" or cmd == "kat" then
+				needy = true
+			end
+			return { name = cmd, func = f, fork = fork, needy = needy }
+		end
+	end
+	return nil
+end
+
+_M = { get = get, errmsg = errmsg }
+return _M
