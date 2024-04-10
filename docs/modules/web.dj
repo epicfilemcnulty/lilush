@@ -70,7 +70,7 @@
         if query == "/" then
             local index = ""
             local files = std.list_files(root)
-            for _, file in pairs(files) do
+            for file, _ in pairs(files) do
                 index = index .. "<a href='/" .. file .. "'>" .. file .. "</a><br>\n"
             end
             return index, 200, { ["content-type"] = "text/html" }
