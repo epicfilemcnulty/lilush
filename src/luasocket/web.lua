@@ -259,7 +259,7 @@ _M.server_config = {
 	requests_per_fork = 512,
 	max_body_size = 1024 * 1024 * 5, -- 5 megabytes is plenty.
 	request_line_limit = 1024 * 8, -- 8Kb for the request line or a single header is HUGE! I'm too generous here.
-	metrics_host = "internal",
+	metrics_host = "reliw.stats",
 	compression = {
 		enabled = true,
 		min_size = 4096, -- Do not compress files smaller than 4Kb
@@ -416,28 +416,21 @@ local function process_request(client, handle, count)
 	end
 
 	if _M.server_config.access_log.enabled and host ~= _M.server_config.metrics_host then
-		local req_headers = ""
-		for _, h in ipairs(_M.server_config.access_log.headers) do
-			if headers[h] then
-				local v = headers[h]
-				if v:match(" ") then
-					v = "'" .. v .. "'"
-				end
-				req_headers = req_headers .. v .. " "
-			else
-				req_headers = req_headers .. "- "
-			end
-		end
 		local elapsed_time = os.clock() - start_time
-		_M.log({
+		local log_msg = {
 			vhost = host,
 			method = method,
 			query = query,
 			status = status,
 			size = #content,
 			time = string.format("%.4f", elapsed_time),
-			req_headers = req_headers,
-		}, "access")
+		}
+		for _, h in ipairs(_M.server_config.access_log.headers) do
+			if headers[h] then
+				log_msg[h] = headers[h]
+			end
+		end
+		_M.log(log_msg, "access")
 	end
 	return response_headers["connection"]
 end
