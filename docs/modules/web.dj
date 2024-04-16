@@ -1,6 +1,6 @@
 # _web_ module
 
-  This is a high-level wrapper over the incorporated [LuaSocket][] module. 
+  This is a high-level wrapper over the incorporated [LuaSocket]() module. 
 
   It provides:
 

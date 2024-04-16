@@ -100,7 +100,7 @@ local load_llm_config = function(store)
 				options = { "chat", "completion" },
 			},
 			backend = {
-				selected = "exl2", -- If backend name starts with the capital letter, it means it uses OpenAI compatible API.
+				selected = "exl2",
 				options = { "exl2", "tf", "mamba", "llamacpp", "Claude", "MistralAI", "OpenAI" },
 			},
 		},
@@ -108,8 +108,8 @@ local load_llm_config = function(store)
 			mode = { selected = "djot", options = { "djot", "markdown", "simple", "raw" } },
 			wrap = 120,
 			codeblock_wrap = true,
-			user_indent = "▌ ",
-			llm_indent = "▌   ",
+			user_indent = 2,
+			llm_indent = 8,
 			hide_links = false,
 		},
 		sys_prompt = {
@@ -121,12 +121,6 @@ local load_llm_config = function(store)
 		},
 		prompt_template = {
 			selected = "null",
-			chatML = {
-				system = { prefix = "<|im_start|>system\n", suffix = "<|im_end|>\n" },
-				prefix = "<|im_start|>user\n",
-				infix = "<|im_end|>\n",
-				suffix = "<|im_start|>assistant\n",
-			},
 			null = {
 				prefix = "",
 				infix = "",
@@ -144,8 +138,8 @@ local load_llm_config = function(store)
 				options = { "mistral-small-latest", "mistral-medium-latest", "mistral-large-latest" },
 			},
 			Claude = {
-				selected = "claude-3-sonnet-20240229",
-				options = { "claude-3-sonnet-20240229", "claude-3-opus-20240229" },
+				selected = "claude-3-haiku-20240307",
+				options = { "claude-3-haiku-20240307", "claude-3-sonnet-20240229", "claude-3-opus-20240229" },
 			},
 			exl2 = {},
 			tf = {},
@@ -493,12 +487,10 @@ local show_conversation = function(self, combo)
 				local sys_prompt = "```System_Prompt\n\n" .. m.content .. "\n```"
 				term.write(text.render_djot(sys_prompt, theme.renderer.llm.sys_prompt) .. "\n")
 			elseif m.role == "user" then
-				local user_indent = tss:apply("modes.llm.user_indent", self.conf.renderer.user_indent)
 				local user_msg = m.content
-				term.write("\r\n" .. self:render(user_msg, user_indent, theme.renderer.llm.user))
+				term.write("\r\n" .. self:render(user_msg, self.conf.renderer.user_indent, theme.renderer.llm.user))
 			elseif m.role == "assistant" then
-				local llm_indent = tss:apply("modes.llm.llm_indent", self.conf.renderer.llm_indent)
-				term.write("\r\n" .. self:render(m.content, llm_indent))
+				term.write("\r\n" .. self:render(m.content, self.conf.renderer.llm_indent))
 			end
 		end
 		term.write("\r\n")

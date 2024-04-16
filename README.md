@@ -37,6 +37,4 @@ and more.
 Currently it’s very much alpha pre-release state, so beware and use at
 your own risk.
 
----
-
 [^1]: Well, not yet. And it really depends. But still.

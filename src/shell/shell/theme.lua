@@ -226,10 +226,7 @@ local modes_default = {
 	shell = {
 		completion = { fg = 247 },
 	},
-	llm = {
-		user_indent = { fg = 106 },
-		llm_indent = { fg = 94 },
-	},
+	llm = {},
 	lua = {
 		sep = { fg = 67, s = "bold", content = "-", fill = true, w = 0.4 },
 	},

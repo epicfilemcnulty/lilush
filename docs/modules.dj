@@ -6,12 +6,12 @@ return values are visually coded for the ease of grokking. Here is the legend:
 {#legend}
 | Type                     |  Required             | Optional              | Default shown as                 |
 | ------------------------ | --------------------- | ----------------------|----------------------------------|
-| `string`                 | `msg`{.str .req}      | `msg`{.str}           | `hi`{.str .def}                  |
-| `number`                 | `port`{.num .req}     | `port`{.num}          | `8080`{.num .def}                |
-| `table`                  | `options`{.tbl .req}  | `options`{.tbl}       | `{ one = 1, two = 2}`{.tbl .def} |
-| `boolean`                | `success`{.bool .req} | `success`{.bool}      | `true`{.bool .def}               |
-| `function`               | `sort`{.req .fn}      | `sort`{.fn}           | `return 1`{.def .fn}             |
-| `variable number of args`| `...`{.req}           | `...`                 | `...`{.def}                      |
+|     string               | `msg`{.str .req}      | `msg`{.str}           | `hi`{.str .def}                  |
+|     number               | `port`{.num .req}     | `port`{.num}          | `8080`{.num .def}                |
+|     table                | `options`{.tbl .req}  | `options`{.tbl}       | `{ one = 1, two = 2}`{.tbl .def} |
+|     boolean              | `success`{.bool .req} | `success`{.bool}      | `true`{.bool .def}               |
+|     function             | `sort`{.req .fn}      | `sort`{.fn}           | `return 1`{.def .fn}             |
+| variable number of args  | `...`{.req}           | `...`                 | `...`{.def}                      |
 
 
 In case of an error all functions return `nil` and an error message.
@@ -21,7 +21,7 @@ If there are any deviations from this rule, they are documented in the section o
 
 _Lilush_ comes with a bundle of modules for various tasks:
 
-: [std](modules/std.dj){.lcl}
+### [std](modules/std.dj){.lcl}
 
   This module is meant to be an essential extension of Lua's standard library. It provides
   functions for
@@ -37,7 +37,7 @@ _Lilush_ comes with a bundle of modules for various tasks:
     std.print({ a = 1, b = 2 })
     ```
 
-: [argparser](modules/argparser.dj){.lcl}
+### [argparser](modules/argparser.dj){.lcl}
 
   Inspired by the Python's `argparse` module, the module
   to parse command line arguments and flags.
@@ -96,7 +96,7 @@ _Lilush_ comes with a bundle of modules for various tasks:
   function from the [text](modules/text.dj) module to pretty print it: `print(text.render_djot(err))`
 
 
-: [web](modules/web.dj){.lcl}
+### [web](modules/web.dj){.lcl}
   
   This is a high-level wrapper over the incorporated [LuaSocket][] module.
  

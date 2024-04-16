@@ -1,30 +1,48 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-FileCopyrightText: © 2023-2024 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 
 --[[ 
 
-    This is an API client for interacting with the general HTTP API of
-    a language model. There are many backends for running inference on local LLaMA LLMs:
-    vanilla HF transformers, CTranslate2, GPTQ, ExLLaMA, llamacpp, etc.
-    
-    The idea is that you build your own wrapper, which should provide the following
-    HTTP API: 
-    
-        /prompt [PUT], expects body in JSON with the following fields:
-            * prompt -- initial prompt, required
-            * prefix -- prefix for the user queries, optional, defaults to 'USER:'
-            * suffix -- suffix for the user queries, optional, defaults to 'ASSISTANT:'
-            * uuid   -- Unique conversation ID, optional, will be generated if not provided.
+    This is a client library for interacting with a simple HTTP API for LLM inference.
 
-            Resonse is JSON object with two fields, `message` and `uuid`.
+    The API service itself generally should be implemented and provisioned by the user,
+    but there is a [reference](add link here) implementation of such a service.
 
-        /chat [POST], expects body in JSON with the following fields:
-            * temperature -- temperature for the query, optional, defaults to 0.7
-            * max_length  -- max length of the response, optional, defaults to 2048
-            * query       -- user's query
-            * uuid        -- UUID of the conversation, required.
+    There are many backends for running inference on LLMs: vanilla HF transformers, CTranslate2, ExLLaMA, llamacpp, etc.
+    The idea is that you build your own wrapper for the backends you need, and this wrapper should
+    conform to the following API:
 
-            Response is JSON object with the following fields:
+    HTTP API:
+
+        /models [GET]
+            Response is a JSON array with the names of currently loaded models.
+
+        /load [POST], expects a JSON object in the response body with the following fields:
+
+            * model_dir
+            * model_type
+            * model_alias
+            * lora_dir
+            * context_length
+
+        /complete [POST], expects body in JSON with the following fields:
+
+            * model                 -- model name to query
+            * temperature           -- temperature for the query
+            * top_k                 -- top_k
+            * top_p                 -- top_p
+            * min_p                 -- min_p
+            * max_new_tokens        -- the maximum number of new tokens to generate
+            * query                 -- user's query
+            * uuid                  -- UUID of the conversation, optional.
+            * add_bos               -- whether to prepend the query with the special BOS token
+            * add_eos               -- whether to append the special EOS token to the query
+            * repetition_penalty    -- duh,
+            * hide_special_tokens   -- whether to remove special tokens from the response
+            * stop_conditions       -- an array of tokens which serve as stop conditions, i.e. we end
+                                       generation when we get one of these tokens
+
+            This endpoint must respond with a JSON object with the following fields:
                 * uuid    -- UUID of the conversation
                 * text    -- model's response
                 * tokens  -- amount of tokens generated
@@ -34,7 +52,6 @@
                 * type    -- model type, i.e. ggml, ct2, exllama
 
 ]]
---
 local json = require("cjson.safe")
 local web = require("web")
 
@@ -106,7 +123,6 @@ local new = function(api_url, timeout)
 	local timeout = timeout or tonumber(os.getenv("LLM_API_TIMEOUT")) or 600
 	local client = {
 		api_url = api_url,
-		set_prompt = set_prompt,
 		timeout = timeout,
 		complete = complete,
 		models = models,
