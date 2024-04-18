@@ -1086,6 +1086,8 @@ local ps_help = [[
   |  `cpu`     |  Total CPU usage (%) over the lifetime |
   |  `mem`     |  Memory usage (%)                      |
   |  `mem_kb`  |  Memory usage (KB)                     |
+  |  `mem_mb`  |  Memory usage (MB)                     |
+  |  `mem_gb`  |  Memory usage (GB)                     |
 
 ]]
 
@@ -1124,7 +1126,7 @@ local kinda_ps = function(cmd, args)
 		args.format = "pid,user,state,cpu,mem,cmd"
 	end
 	if args.extended and args.detailed then
-		args.format = "pid,uid,state,cpu,mem,cmdline"
+		args.format = "pid,uid,state,cpu,mem_mb,cmdline"
 	end
 	-- See https://man7.org/linux/man-pages/man5/proc.5.html (or `man 5 proc`) for
 	-- details on the proc pseudo fs
@@ -1174,6 +1176,8 @@ local kinda_ps = function(cmd, args)
 			cpu = cpu_usage,
 			mem = vm_rss / (mem_total / 100),
 			mem_kb = vm_rss,
+			mem_mb = vm_rss / 1024,
+			mem_gb = vm_rss / 1024 / 1024,
 		})
 	end
 
@@ -1225,7 +1229,7 @@ local kinda_ps = function(cmd, args)
 						for idx, col_name in ipairs(ps_tbl_fields) do
 							local val = proc[col_name] or -1
 							row[idx] = val
-							if col_name == "mem" or col_name == "cpu" then
+							if col_name:match("^mem") or col_name == "cpu" then
 								row[idx] = string.format("%.2f", row[idx])
 							end
 							if col_name == "cmd" or col_name == "cmdline" then
