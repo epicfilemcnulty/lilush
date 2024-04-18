@@ -218,7 +218,7 @@ local run = function(self)
 				and not self.input.completions.source.sources.bin.binaries[cmd]
 				and not tlb[cmd]
 			then
-				if not cmd:match("^%./") then
+				if not cmd:match("^%.?/") then
 					return 255, "uknown command in pipeline: `" .. cmdline.cmd .. "`"
 				end
 			end

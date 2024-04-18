@@ -54,6 +54,12 @@ static int deviant_remove_signal_handler(lua_State *L) {
     return 0;
 }
 
+int deviant_clockticks(lua_State *L) {
+    int clk_tck = sysconf(_SC_CLK_TCK);
+    lua_pushinteger(L, clk_tck);
+    return 1;
+}
+
 int deviant_sleep(lua_State *L) {
 
     int seconds = luaL_checkint(L, 1);
@@ -587,6 +593,7 @@ static int deviant_readlink(lua_State *L) {
 }
 
 static luaL_Reg funcs[] = {
+    {"clockticks",      deviant_clockticks             },
     {"kill",            deviant_kill                   },
     {"fork",            deviant_fork                   },
     {"dup",             deviant_dup                    },

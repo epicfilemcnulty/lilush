@@ -3,6 +3,7 @@
 local std = require("std")
 local term = require("term")
 local widgets = require("term.widgets")
+local json = require("cjson.safe")
 local web = require("web")
 local utils = require("shell.utils")
 local dig = require("dns.dig")
@@ -863,7 +864,7 @@ local netstat = function()
 		end
 		local src_ip, src_port = std.parse_hex_ipv4(fields[2])
 		local dst_ip, dst_port = std.parse_hex_ipv4(fields[3])
-		local uid = fields[8]
+		local uid = tonumber(fields[8]) or 0
 		local user = users[uid]
 		local inode = fields[10]
 		local proc_name = std.find_process_by_inode(inode)
@@ -1067,6 +1068,190 @@ local history = function(cmd, args, extra)
 	return 0
 end
 
+local ps_help = [[
+# _ps_ provides a snapshot of currently running processes
+
+  You can choose the fields of process information to display with the `-f` flag.
+  The available fields are:
+
+  | Field      |  Description                           |
+  |:-----------|:---------------------------------------|
+  |  `pid`     |  pid                                   |
+  |  `ppid`    |  parent's pid                          |
+  |  `uid`     |  uid                                   |
+  |  `user`    |  user                                  |
+  |  `state`   |  state                                 |
+  |  `cmd`     |  executable                            |
+  |  `cmdline` |  command line                          |
+  |  `cpu`     |  Total CPU usage (%) over the lifetime |
+  |  `mem`     |  Memory usage (%)                      |
+  |  `mem_kb`  |  Memory usage (KB)                     |
+
+]]
+
+local kinda_ps = function(cmd, args)
+	local cur_user = os.getenv("USER") or ""
+	local parser = argparser.new({
+		all = { kind = "bool", note = "Show processes of all users" },
+		json = { kind = "bool", note = "JSON output" },
+		kernel = { kind = "bool", note = "Show kernel threads" },
+		format = { kind = "str", default = "pid,cmd", note = "Fields to display" },
+		extended = { kind = "bool", short = "x", note = "Shortcut for `pid,uid,state,cmdline` format" },
+		detailed = { kind = "bool", note = "Shortcut for `pid,user,state,cpu,mem,cmd` format" },
+		parent = { kind = "num", default = 0, note = "Show only children of this process" },
+		sort = { kind = "num", default = 1, note = "Index of the field to sort by" },
+		user = { kind = "str", default = cur_user, note = "Show only processes of this user" },
+		pattern = {
+			kind = "str",
+			idx = 1,
+			default = ".*",
+			note = "Show only those processes whose cmdline mathes the pattern",
+		},
+	}, ps_help)
+	local args, err, help = parser:parse(args)
+	if err then
+		if help then
+			helpmsg(err)
+			return 0
+		end
+		errmsg(err)
+		return 127
+	end
+	if args.extended then
+		args.format = "pid,uid,state,cmdline"
+	end
+	if args.detailed then
+		args.format = "pid,user,state,cpu,mem,cmd"
+	end
+	if args.extended and args.detailed then
+		args.format = "pid,uid,state,cpu,mem,cmdline"
+	end
+	-- See https://man7.org/linux/man-pages/man5/proc.5.html (or `man 5 proc`) for
+	-- details on the proc pseudo fs
+	local pids = std.list_files("/proc", "^%d", "d") or {}
+	local processes = {}
+	local sys_users = std.system_users()
+	local uptime_file = std.read_file("/proc/uptime") or ""
+	local uptime_seconds = tonumber(uptime_file:match("^(%S+)")) or 0
+	local mem_file = std.read_file("/proc/meminfo") or ""
+	local mem_total = tonumber(mem_file:match("MemTotal:%s+(%S+)")) or 0
+
+	for pid_s, _ in pairs(pids) do
+		local pid = tonumber(pid_s) or -1
+		local cmdline = std.read_file("/proc/" .. pid_s .. "/cmdline") or ""
+		cmdline = cmdline:gsub("%z", " ") -- arguments in cmdline are separated with the \0 character
+		cmdline = cmdline:gsub("%s$", "")
+
+		-- CPU Usage calculation
+		-- See https://stackoverflow.com/questions/16726779/how-do-i-get-the-total-cpu-usage-of-an-application-from-proc-pid-stat for
+		-- useful details and links
+		local stat_file = std.read_file("/proc/" .. pid_s .. "/stat") or ""
+		local utime, stime, cutime, cstime, starttime = stat_file:match(
+			"^%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+(%S+)%s+(%S+)%s+(%S+)%s+(%S+)%s+%S+%s+%S+%s+%S+%s+%S+%s+(%S+)"
+		) -- these values are in clock ticks
+		-- might also want to include children stats: tonumber(cutime) + tonumber(cstime)
+		local proc_total_cpu_time = tonumber(utime) + tonumber(stime)
+		local clk_tck = std.clockticks() -- clock ticks per second
+		local proc_cpu_seconds = uptime_seconds - (tonumber(starttime) / clk_tck)
+		local cpu_usage = 100 * ((proc_total_cpu_time / clk_tck) / proc_cpu_seconds)
+
+		local status = std.read_file("/proc/" .. pid_s .. "/status") or ""
+		local uid = tonumber(status:match("Uid:%s+(%S+)")) or -1
+		local name = status:match("Name:%s+(%S+)") or ""
+		local state = status:match("State:%s+(%S+)") or "U"
+		local vm_rss = tonumber(status:match("VmRSS:%s+(%S+)")) or 0
+		local ppid = tonumber(status:match("PPid:%s+(%S+)")) or 0
+		local user = sys_users[uid].login
+
+		table.insert(processes, {
+			cmd = name,
+			cmdline = cmdline,
+			ppid = ppid,
+			pid = pid,
+			user = user,
+			state = state,
+			uid = uid,
+			cpu = cpu_usage,
+			mem = vm_rss / (mem_total / 100),
+			mem_kb = vm_rss,
+		})
+	end
+
+	local ps_tbl_fields = {}
+	for field_name in args.format:gmatch("([%w_]+),?") do
+		table.insert(ps_tbl_fields, field_name)
+	end
+	if #ps_tbl_fields == 0 then
+		ps_tbl_fields = { "pid" }
+	end
+	local ps_tbl = {}
+
+	local sort_field_idx = args.sort
+	if sort_field_idx > #ps_tbl_fields or sort_field_idx < 1 then
+		sort_field_idx = 1
+	end
+
+	if args.json then
+		for _, proc in ipairs(processes) do
+			if proc.user == args.user or args.all then
+				if proc.cmdline:match(args.pattern) then
+					if proc.ppid ~= 2 or args.kernel then
+						if proc.ppid == args.parent or args.parent == 0 then
+							local row = {}
+							for i, col_name in ipairs(ps_tbl_fields) do
+								row[col_name] = proc[col_name]
+							end
+							table.insert(ps_tbl, row)
+						end
+					end
+				end
+			end
+		end
+		local col_name = ps_tbl_fields[sort_field_idx]
+		table.sort(ps_tbl, function(a, b)
+			return a[col_name] < b[col_name]
+		end)
+		local ps_tbl_json = json.encode(ps_tbl) or "[]"
+		term.write(ps_tbl_json .. "\n")
+		return 0
+	end
+
+	for _, proc in ipairs(processes) do
+		if proc.user == args.user or args.all then
+			if proc.cmdline:match(args.pattern) then
+				if proc.ppid ~= 2 or args.kernel then
+					if proc.ppid == args.parent or args.parent == 0 then
+						local row = {}
+						for idx, col_name in ipairs(ps_tbl_fields) do
+							local val = proc[col_name] or -1
+							row[idx] = val
+							if col_name == "mem" or col_name == "cpu" then
+								row[idx] = string.format("%.2f", row[idx])
+							end
+							if col_name == "cmd" or col_name == "cmdline" then
+								if row[idx] ~= "" then
+									row[idx] = "`" .. row[idx] .. "`"
+								end
+							end
+						end
+						table.insert(ps_tbl, row)
+					end
+				end
+			end
+		end
+	end
+	local sort_func = function(a, b)
+		if tonumber(a[sort_field_idx]) then
+			return tonumber(a[sort_field_idx]) < tonumber(b[sort_field_idx])
+		end
+		return a[sort_field_idx] < b[sort_field_idx]
+	end
+	table.sort(ps_tbl, sort_func)
+	local ps_tbl_djot = std.pipe_table(ps_tbl_fields, ps_tbl)
+	term.write("\n" .. text.render_djot(table.concat(ps_tbl_djot, "\n")) .. "\n")
+	return 0
+end
+
 local _M
 
 local files_matching_help = [[
@@ -1227,6 +1412,7 @@ local builtins = {
 	["ktl"] = ktl,
 	["dig"] = dig,
 	["digg"] = dig,
+	["ps"] = kinda_ps,
 }
 
 local dont_fork = { z = true, cd = true, setenv = true, export = true, unsetenv = true, ktl = true }

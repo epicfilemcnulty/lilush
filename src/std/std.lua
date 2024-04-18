@@ -487,7 +487,7 @@ local system_users = function()
 		for line in passwd_raw:gmatch("(.-)\n") do
 			local user, uid, gid = line:match("^([^:]+):x:([^:]+):([^:]+)")
 			if user and uid and gid then
-				users[uid] = { login = user, gid = tonumber(gid) }
+				users[tonumber(uid)] = { login = user, gid = tonumber(gid) }
 			end
 		end
 	end
@@ -1050,10 +1050,12 @@ local calc_table_maxes = function(headers, tbl)
 	end
 	for i, row in ipairs(tbl) do
 		for j, col in ipairs(row) do
-			local len = utf.len(tostring(col))
-			local h_name = parse_pipe_table_header(headers[j])
-			if len > maxes[h_name] then
-				maxes[h_name] = len
+			if headers[j] then
+				local len = utf.len(tostring(col))
+				local h_name = parse_pipe_table_header(headers[j])
+				if len > maxes[h_name] then
+					maxes[h_name] = len
+				end
 			end
 		end
 	end
@@ -1169,6 +1171,7 @@ local deviant = {
 	exec_one_line = exec_one_line,
 	waitpid = waitpid,
 	wait = wait,
+	clockticks = core.clockticks,
 	getpid = getpid,
 	sleep = sleep,
 	sleep_ms = sleep_ms,
