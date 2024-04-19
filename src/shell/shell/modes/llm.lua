@@ -88,6 +88,7 @@ local load_llm_config = function(store)
 	local settings = {
 		api_url = "http://127.0.0.1:8013",
 		generation = {
+			stop_conditions = "",
 			temperature = 0.5,
 			tokens = 512,
 			top_k = 40,
@@ -206,10 +207,14 @@ local run = function(self)
 		messages =
 			llm.render_prompt_tmpl(self.chats_meta[self.chat_idx].prompt_template, self.chats[self.chat_idx], true)
 	end
+	local stop_conditions = {}
+	for sc in self.conf.generation.stop_conditions:gmatch("([^,]+),?") do
+		table.insert(stop_conditions, sc)
+	end
 	if backend == "mamba" and mode == "chat" then
 		messages = convert_to_mamba_fmt(messages, completion)
 	end
-	resp, err = client:complete(model, messages, sampler, { "</REPLY>", "</TXT>" }, uuid)
+	resp, err = client:complete(model, messages, sampler, stop_conditions, uuid)
 
 	if resp then
 		local text = resp.text:gsub("^%s", "")

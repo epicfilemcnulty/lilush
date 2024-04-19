@@ -47,6 +47,7 @@ local complete = function(self, model, query, sampler, sc, uuid)
 				answer.price = 0
 				answer.rate = body.timings.predicted_per_second
 				answer.model = body.model or "unknown"
+				answer.backend = "llamacpp"
 				return answer
 			end
 			return nil, err
