@@ -504,6 +504,7 @@ local new = function(mode, source, store)
 		["Alt+W"] = scroll_completion_up,
 		["Tab"] = promote_completion,
 		["Backspace"] = backspace,
+		["Ctrl+H"] = backspace,
 		["Del"] = delete,
 		["Enter"] = execute,
 		add = add,

@@ -98,8 +98,8 @@ render_dir = function(path, pattern, indent, args)
 		local ext_attr = buffer.new()
 		if args.long then
 			local atime = std.ts_tostring(all_files[dir].atime)
-			local user = sys_users[tostring(all_files[dir].uid)].login
-			local group = sys_users[tostring(all_files[dir].gid)].login
+			local user = sys_users[all_files[dir].uid].login
+			local group = sys_users[all_files[dir].gid].login
 			ext_attr:put(
 				tss:apply("builtins.ls.user", user),
 				":",
@@ -155,8 +155,8 @@ render_dir = function(path, pattern, indent, args)
 		local alignment = longest_name_size - std.utf.len(file)
 		if args.long then
 			local atime = std.ts_tostring(all_files[file].atime)
-			local user = sys_users[tostring(all_files[file].uid)].login
-			local group = sys_users[tostring(all_files[file].gid)].login
+			local user = sys_users[all_files[file].uid].login
+			local group = sys_users[all_files[file].gid].login
 			ext_attr:put(
 				tss:apply("builtins.ls.user", user),
 				":",

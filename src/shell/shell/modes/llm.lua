@@ -102,11 +102,11 @@ local load_llm_config = function(store)
 			},
 			backend = {
 				selected = "exl2",
-				options = { "exl2", "tf", "mamba", "llamacpp", "Claude", "MistralAI", "OpenAI" },
+				options = { "exl2", "mamba", "llamacpp", "Claude", "MistralAI", "OpenAI" },
 			},
 		},
 		renderer = {
-			mode = { selected = "djot", options = { "djot", "markdown", "simple", "raw" } },
+			mode = { selected = "djot", options = { "djot", "markdown", "raw" } },
 			wrap = 120,
 			codeblock_wrap = true,
 			user_indent = 2,
@@ -132,7 +132,7 @@ local load_llm_config = function(store)
 		models = {
 			OpenAI = {
 				selected = "gpt-3.5-turbo",
-				options = { "gpt-3.5-turbo", "gpt-4", "gpt-4-32k" },
+				options = { "gpt-3.5-turbo", "gpt-4-turbo" },
 			},
 			MistralAI = {
 				selected = "mistral-small-latest",
@@ -143,7 +143,6 @@ local load_llm_config = function(store)
 				options = { "claude-3-haiku-20240307", "claude-3-sonnet-20240229", "claude-3-opus-20240229" },
 			},
 			exl2 = {},
-			tf = {},
 			llamacpp = {},
 			mamba = {},
 		},
@@ -152,28 +151,24 @@ local load_llm_config = function(store)
 	return settings
 end
 
-local convert_to_mamba_fmt = function(messages)
-	local msgs = { { kind = "spt", content = "<CHAT>" } }
+local convert_to_mamba_fmt = function(messages, completion)
+	if completion then
+		return { { kind = "spt", token = "<TXT>", content = messages[#messages].content } }
+	end
+	local msgs = { { kind = "spt", token = "<CHAT>" } }
 	for i, msg in ipairs(messages) do
-		if completion then
-			table.insert(msgs, { kind = "txt", content = msg.content })
-		else
-			if msg.role == "system" then
-				table.insert(msgs, { kind = "spt", content = "<SYS>" })
-				table.insert(msgs, { kind = "txt", content = msg.content })
-				table.insert(msgs, { kind = "spt", content = "</SYS>" })
-			elseif msg.role == "user" then
-				table.insert(msgs, { kind = "spt", content = "<QUERY>" })
-				table.insert(msgs, { kind = "txt", content = msg.content })
-				table.insert(msgs, { kind = "spt", content = "</QUERY>" })
-			else
-				table.insert(msgs, { kind = "spt", content = "<REPLY>" })
-				table.insert(msgs, { kind = "txt", content = msg.content })
-				table.insert(msgs, { kind = "spt", content = "</REPLY>" })
-			end
+		if msg.role == "system" then
+			table.insert(msgs, { kind = "spt", token = "<SYS>", content = msg.content })
+			table.insert(msgs, { kind = "spt", token = "</SYS>" })
+		elseif msg.role == "user" then
+			table.insert(msgs, { kind = "spt", token = "<QUERY>", content = msg.content })
+			table.insert(msgs, { kind = "spt", token = "</QUERY>" })
+		elseif msg.role == "assistant" then
+			table.insert(msgs, { kind = "spt", token = "<REPLY>", content = msg.content })
+			table.insert(msgs, { kind = "spt", token = "</REPLY>" })
 		end
 	end
-	table.insert(msgs, { kind = "spt", content = "<REPLY>" })
+	table.insert(msgs, { kind = "spt", token = "<REPLY>" })
 	return msgs
 end
 
@@ -197,22 +192,21 @@ local run = function(self)
 		model = self.conf.models[backend].selected or model
 	end
 	local messages = self.chats[self.chat_idx]
+	local completion = false
 	if mode == "completion" then
-		messages = { messages[#messages] }
-		if backend == "mamba" then
-			messages = { { kind = "spt", content = "<TXT>" }, { kind = "txt", content = messages[#messages].content } }
-		end
+		completion = true
 	end
-	if not backend:match("^%u") and backend ~= "mamba" then -- local backend
-		messages =
-			llm.render_prompt_tmpl(self.chats_meta[self.chat_idx].prompt_template, self.chats[self.chat_idx], true)
+	if not backend:match("^%u") then -- local backend
+		if backend == "mamba" then
+			messages = convert_to_mamba_fmt(messages, completion)
+		else
+			messages =
+				llm.render_prompt_tmpl(self.chats_meta[self.chat_idx].prompt_template, self.chats[self.chat_idx], true)
+		end
 	end
 	local stop_conditions = {}
 	for sc in self.conf.generation.stop_conditions:gmatch("([^,]+),?") do
 		table.insert(stop_conditions, sc)
-	end
-	if backend == "mamba" and mode == "chat" then
-		messages = convert_to_mamba_fmt(messages, completion)
 	end
 	resp, err = client:complete(model, messages, sampler, stop_conditions, uuid)
 

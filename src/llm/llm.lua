@@ -2,26 +2,13 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 
 local std = require("std")
-local openai = require("llm.openai")
 local anthropic = require("llm.anthropic")
 local general = require("llm.general")
 local ggml = require("llm.ggml")
 
-local new = function(backend, api_url, api_key)
-	if backend == "OpenAI" then
-		return openai.new(backend, api_key, api_url)
-	end
-	if backend == "MistralAI" then
-		local api_url = api_url or "https://api.mistral.ai/v1"
-		local api_key = api_key or os.getenv("MISTRAL_API_KEY")
-		return openai.new(backend, api_key, api_url)
-	end
-	if backend == "Claude" then
-		return anthropic.new(api_key, api_url)
-	end
-	if backend:match("^%u") then
-		local api_url = api_url or "http://127.0.0.1:8080/v1"
-		return openai.new(backend, api_key, api_url)
+local new = function(backend, api_url)
+	if backend == "OpenAI" or backend == "MistralAI" or backend == "Claude" then
+		return anthropic.new(backend)
 	end
 	if backend == "llamacpp" then
 		return ggml.new(api_url)
