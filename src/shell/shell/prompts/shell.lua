@@ -120,7 +120,11 @@ local user_prompt = function(self)
 end
 
 local kube_prompt = function(self)
-	local profile = os.getenv("KUBECONFIG") or "default"
+	local profile = os.getenv("KUBECONFIG")
+	local home = os.getenv("HOME") or ""
+	if not profile then
+		profile = std.readlink(home .. "/.kube/config") or ""
+	end
 	profile = profile:match("/?([^/]+)$")
 	local ns = os.getenv("KTL_NAMESPACE") or "kube-system"
 	local buf = buffer.new()

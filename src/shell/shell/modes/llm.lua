@@ -102,7 +102,7 @@ local load_llm_config = function(store)
 			},
 			backend = {
 				selected = "exl2",
-				options = { "exl2", "mamba", "llamacpp", "Claude", "MistralAI", "OpenAI" },
+				options = { "exl2", "mamba", "tf", "llamacpp", "Claude", "MistralAI", "OpenAI" },
 			},
 		},
 		renderer = {
@@ -145,6 +145,7 @@ local load_llm_config = function(store)
 			exl2 = {},
 			llamacpp = {},
 			mamba = {},
+			tf = {},
 		},
 		autosave = false,
 	}

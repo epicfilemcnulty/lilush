@@ -693,6 +693,14 @@ local ktl = function(cmd, args)
 		if args[2] then
 			local home = os.getenv("HOME") or ""
 			std.setenv("KUBECONFIG", home .. "/.kube/cfgs/" .. args[2])
+			-- We check if there is a `~/.kube/config` file and it is a symlink.
+			-- If it is, we remove it and create a new one. If it's not a symlink
+			-- we leave it intact.
+			local target = std.readlink(home .. "/.kube/config")
+			if target then
+				std.remove(home .. "/.kube/config")
+				std.symlink(home .. "/.kube/cfgs/" .. args[2], home .. "/.kube/config")
+			end
 			return 0
 		end
 		errmsg("no profile specified")
