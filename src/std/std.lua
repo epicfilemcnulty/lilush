@@ -629,9 +629,11 @@ local function longest(t)
 	local max = 0
 	local t = t or {}
 	for _, v in ipairs(t) do
-		local utf_len = utf.len(v)
-		if utf_len > max then
-			max = utf_len
+		if type(v) == "string" then
+			local utf_len = utf.len(v)
+			if utf_len > max then
+				max = utf_len
+			end
 		end
 	end
 	return max

@@ -699,6 +699,8 @@ local ktl = function(cmd, args)
 			local target = std.readlink(home .. "/.kube/config")
 			if target then
 				std.remove(home .. "/.kube/config")
+			end
+			if not std.file_exists(home .. "/.kube/config") then
 				std.symlink(home .. "/.kube/cfgs/" .. args[2], home .. "/.kube/config")
 			end
 			return 0
