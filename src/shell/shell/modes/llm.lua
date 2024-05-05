@@ -47,63 +47,55 @@ local choose_preset = function(self, combo)
 	end
 	local preset = presets[choice]
 	self.preset = choice
-	if preset.generation then
-		for k, v in pairs(preset.generation) do
-			if k == "backend" then
-				self.conf.generation.backend.selected = v
-			elseif k == "mode" then
-				self.conf.generation.mode.selected = v
-			else
-				self.conf.generation[k] = v
+	local custom_api_url = false
+	for k, v in pairs(preset) do
+		if k == "backend" then
+			self.conf.backend.selected = v
+		elseif k == "sys_prompt" then
+			self.conf.sys_prompt.selected = v
+		elseif k == "prompt_template" then
+			self.conf.prompt_template.selected = preset.prompt_template
+		elseif k == "api_url" then
+			self.conf.api_url = v
+			custom_api_url = true
+		elseif k == "sampler" then
+			local user_samplers = self.store:get_hash_key("llm", "samplers.json", true)
+			if user_samplers and user_samplers[v] then
+				for k1, v1 in pairs(user_samplers[v]) do
+					self.conf.sampler[k1] = v1
+				end
 			end
 		end
 	end
-	if preset.sys_prompt then
-		if preset.sys_prompt.prompt then
-			self.conf.sys_prompt.user.prompt = preset.sys_prompt.prompt
-			self.conf.sys_prompt.selected = "user"
-		else
-			self.conf.sys_prompt.selected = preset.sys_prompt
-		end
-	end
-	if preset.prompt_template then
-		if type(preset.prompt_template) == "string" then
-			self.conf.prompt_template.selected = preset.prompt_template
-		else
-			self.conf.prompt_template.user = preset.prompt_template
-			self.conf.prompt_template.selected = "user"
-		end
-	end
-	if preset.api_url then
-		self.conf.api_url = preset.api_url
+	if not custom_api_url then
+		-- if custom api_url was already set before
+		-- we want to reset it.
+		self.conf.api_url = nil
 	end
 	return self:flush()
 end
 
 local load_llm_config = function(store)
-	local user_prompt_template = store:get_hash_key("llm", "prompt_template.json")
-		or { prefix = "", infix = "", suffix = "" }
-	local sys_prompt_text = store:get_hash_key("llm", "sys_prompt.txt") or ""
+	local user_prompt_templates = store:get_hash_key("llm", "prompt_templates.json", true)
+	local user_sys_prompts = store:get_hash_key("llm", "sys_prompts.json", true)
 
 	local settings = {
-		api_url = "http://127.0.0.1:8013",
-		generation = {
+		sampler = {
 			stop_conditions = "",
 			temperature = 0.5,
 			tokens = 512,
 			top_k = 40,
 			top_p = 0.75,
 			min_p = 0,
+			add_bos = true,
+			add_eos = false,
+			encode_special_tokens = true,
 			hide_special_tokens = true,
 			repetition_penalty = 1.05,
-			mode = {
-				selected = "chat",
-				options = { "chat", "completion" },
-			},
-			backend = {
-				selected = "exl2",
-				options = { "exl2", "mamba", "tf", "llamacpp", "Claude", "MistralAI", "OpenAI" },
-			},
+		},
+		backend = {
+			selected = "exl2",
+			options = { "exl2", "mamba", "tf", "llamacpp", "Claude", "MistralAI", "OpenAI" },
 		},
 		renderer = {
 			mode = { selected = "djot", options = { "djot", "markdown", "raw" } },
@@ -115,10 +107,7 @@ local load_llm_config = function(store)
 		},
 		sys_prompt = {
 			selected = "null",
-			null = {
-				prompt = "",
-			},
-			user = { prompt = sys_prompt_text },
+			null = "",
 		},
 		prompt_template = {
 			selected = "null",
@@ -127,7 +116,6 @@ local load_llm_config = function(store)
 				infix = "",
 				suffix = "",
 			},
-			user = user_prompt_template,
 		},
 		models = {
 			OpenAI = {
@@ -149,6 +137,16 @@ local load_llm_config = function(store)
 		},
 		autosave = false,
 	}
+	for k, v in pairs(user_prompt_templates) do
+		settings.prompt_template[k] = v
+	end
+	for k, v in pairs(user_sys_prompts) do
+		settings.sys_prompt[k] = v
+	end
+	local sys_prompt_text = store:get_hash_key("llm", "sys_prompt.txt")
+	if sys_prompt_text then
+		settings.sys_prompt.user = sys_prompt_text
+	end
 	return settings
 end
 
@@ -182,7 +180,6 @@ local run = function(self)
 	local resp, err
 	local api_url = self.chats_meta[self.chat_idx].api_url
 	local backend = self.chats_meta[self.chat_idx].backend
-	local mode = self.chats_meta[self.chat_idx].mode
 	local uuid = self.chats_meta[self.chat_idx].uuid
 	local sampler = self.chats_meta[self.chat_idx].sampler
 	local client = llm.new(backend, api_url)
@@ -193,21 +190,19 @@ local run = function(self)
 		model = self.conf.models[backend].selected or model
 	end
 	local messages = self.chats[self.chat_idx]
-	local completion = false
-	if mode == "completion" then
-		completion = true
-	end
 	if not backend:match("^%u") then -- local backend
 		if backend == "mamba" then
-			messages = convert_to_mamba_fmt(messages, completion)
+			messages = convert_to_mamba_fmt(messages)
 		else
 			messages =
 				llm.render_prompt_tmpl(self.chats_meta[self.chat_idx].prompt_template, self.chats[self.chat_idx], true)
 		end
 	end
 	local stop_conditions = {}
-	for sc in self.conf.generation.stop_conditions:gmatch("([^,]+),?") do
-		table.insert(stop_conditions, sc)
+	for sc in self.conf.sampler.stop_conditions:gmatch("([^,]+),?") do
+		if tonumber(sc) then -- stop condidtions are expected to be token ids, not strings
+			table.insert(stop_conditions, sc)
+		end
 	end
 	resp, err = client:complete(model, messages, sampler, stop_conditions, uuid)
 
@@ -249,28 +244,30 @@ end
 local sync_meta = function(self)
 	self.chats_meta[self.chat_idx].prompt_template = self.conf.prompt_template[self.conf.prompt_template.selected]
 	self.chats_meta[self.chat_idx].sys_prompt = self.conf.sys_prompt[self.conf.sys_prompt.selected]
-	self.chats_meta[self.chat_idx].mode = self.conf.generation.mode.selected
-	self.chats_meta[self.chat_idx].backend = self.conf.generation.backend.selected
+	self.chats_meta[self.chat_idx].backend = self.conf.backend.selected
 	self.chats_meta[self.chat_idx].api_url = self.conf.api_url
 	self.chats_meta[self.chat_idx].sampler = {
-		temperature = self.conf.generation.temperature,
-		hide_special_tokens = self.conf.generation.hide_special_tokens,
-		top_k = self.conf.generation.top_k,
-		top_p = self.conf.generation.top_p,
-		min_p = self.conf.generation.min_p,
-		repetition_penalty = self.conf.generation.repetition_penalty,
-		max_new_tokens = self.conf.generation.tokens,
+		temperature = self.conf.sampler.temperature,
+		hide_special_tokens = self.conf.sampler.hide_special_tokens,
+		encode_special_tokens = self.conf.sampler.encode_special_tokens,
+		top_k = self.conf.sampler.top_k,
+		top_p = self.conf.sampler.top_p,
+		min_p = self.conf.sampler.min_p,
+		repetition_penalty = self.conf.sampler.repetition_penalty,
+		add_bos = self.conf.sampler.add_bos,
+		add_eos = self.conf.sampler.add_eos,
+		max_new_tokens = self.conf.sampler.tokens,
 	}
 end
 
 local sync_conf = function(self)
-	self.conf.generation.temperature = self.chats_meta[self.chat_idx].sampler.temperature
-	self.conf.generation.top_k = self.chats_meta[self.chat_idx].sampler.top_k
-	self.conf.generation.top_p = self.chats_meta[self.chat_idx].sampler.top_p
-	self.conf.generation.min_p = self.chats_meta[self.chat_idx].sampler.min_p
-	self.conf.generation.hide_special_tokens = self.chats_meta[self.chat_idx].sampler.hide_special_tokens
-	self.conf.generation.repetition_penalty = self.chats_meta[self.chat_idx].sampler.repetition_penalty
-	self.conf.generation.tokens = self.chats_meta[self.chat_idx].sampler.max_new_tokens
+	self.conf.sampler.temperature = self.chats_meta[self.chat_idx].sampler.temperature
+	self.conf.sampler.top_k = self.chats_meta[self.chat_idx].sampler.top_k
+	self.conf.sampler.top_p = self.chats_meta[self.chat_idx].sampler.top_p
+	self.conf.sampler.min_p = self.chats_meta[self.chat_idx].sampler.min_p
+	self.conf.sampler.hide_special_tokens = self.chats_meta[self.chat_idx].sampler.hide_special_tokens
+	self.conf.sampler.repetition_penalty = self.chats_meta[self.chat_idx].sampler.repetition_penalty
+	self.conf.sampler.tokens = self.chats_meta[self.chat_idx].sampler.max_new_tokens
 	self.conf.prompt_template.user = self.chats_meta[self.chat_idx].prompt_template
 	self.conf.sys_prompt.user = self.chats_meta[self.chat_idx].sys_prompt
 	self.conf.prompt_template.selected = "user"
@@ -310,7 +307,6 @@ local flush = function(self, combo)
 		chat = self.chat_idx,
 		temperature = self.chats_meta[self.chat_idx].sampler.temperature,
 		tokens = self.chats_meta[self.chat_idx].sampler.max_new_tokens,
-		endpoint = self.chats_meta[self.chat_idx].mode,
 		prompt = self.conf.prompt_template.selected,
 	})
 	term.clear()
@@ -323,7 +319,7 @@ local save = function(self)
 	if msg_count > 0 then
 		local uuid = self.chats_meta[self.chat_idx].uuid
 		local model = self.chats_meta[self.chat_idx].model
-		local name = model .. ": " .. os.date()
+		local name = model .. "_" .. os.date("%")
 		if self.chats_meta[self.chat_idx].name then
 			name = self.chats_meta[self.chat_idx].name
 		else
@@ -336,7 +332,6 @@ local save = function(self)
 			sampler = self.chats_meta[self.chat_idx].sampler,
 			backend = self.chats_meta[self.chat_idx].backend,
 			ctx = self.chats_meta[self.chat_idx].ctx,
-			mode = self.chats_meta[self.chat_idx].mode,
 			model = self.chats_meta[self.chat_idx].model,
 			api_url = self.chats_meta[self.chat_idx].api_url,
 			uuid = self.chats_meta[self.chat_idx].uuid,
@@ -346,20 +341,19 @@ end
 
 local settings = function(self, combo)
 	term.hide_cursor()
-	local backend = self.conf.generation.backend.selected
+	local backend = self.conf.backend.selected
 	widgets.settings(self.conf, "LLM Mode Settings", theme.widgets.settings.llm, theme.widgets.switcher.llm, 3, 5)
 	self.input.prompt:set({
 		prompt = self.conf.prompt_template.selected,
-		tokens = self.conf.generation.tokens,
-		temperature = self.conf.generation.temperature,
-		backend = self.conf.generation.backend.selected,
-		endpoint = self.conf.generation.mode.selected,
+		tokens = self.conf.sampler.tokens,
+		temperature = self.conf.sampler.temperature,
+		backend = self.conf.backend.selected,
 	})
-	if backend ~= self.conf.generation.backend.selected then
+	if backend ~= self.conf.backend.selected then
 		self.preset = nil
 		local model = ""
-		if self.conf.models[self.conf.generation.backend.selected] then
-			model = self.conf.models[self.conf.generation.backend.selected].selected or ""
+		if self.conf.models[self.conf.backend.selected] then
+			model = self.conf.models[self.conf.backend.selected].selected or ""
 		end
 		self.chats_meta[self.chat_idx].model = model
 		self.input.prompt:set({ preset = "", model = model })
@@ -381,6 +375,42 @@ local change_renderer = function(self, combo)
 	term.show_cursor()
 	if choice ~= "" then
 		self.conf.renderer.mode.selected = choice
+	end
+	self:show_conversation()
+	return true
+end
+
+local change_sampler = function(self, combo)
+	local user_samplers = self.store:get_hash_key("llm", "samplers.json", true)
+	local content = { title = "Choose sampler preset", options = std.sort_keys(user_samplers) }
+	term.hide_cursor()
+	term.switch_screen("alt")
+	local choice = widgets.switcher(content, theme.widgets.switcher.llm)
+	term.switch_screen("main")
+	term.show_cursor()
+	if choice ~= "" then
+		for k, v in pairs(user_samplers[choice]) do
+			self.conf.sampler[k] = v
+		end
+	end
+	return self:flush()
+end
+
+local attach_file = function(self, combo)
+	local text_files = std.list_files(os.getenv("HOME") .. "/Downloads", "txt$")
+	local content = { title = "Choose a file to attach", options = std.sort_keys(text_files) }
+	term.hide_cursor()
+	term.switch_screen("alt")
+	local choice = widgets.switcher(content, theme.widgets.switcher.llm)
+	term.switch_screen("main")
+	term.show_cursor()
+	if choice ~= "" then
+		local file_content = std.read_file(os.getenv("HOME") .. "/Downloads/" .. choice)
+		local file_size = text_files[choice].size / 1024
+		table.insert(
+			self.chats[self.chat_idx],
+			{ role = "user", content = file_content, file = choice, size = file_size }
+		)
 	end
 	self:show_conversation()
 	return true
@@ -450,7 +480,7 @@ local adjust_temperature = function(self, combo)
 	self.input.prompt:set({
 		temperature = self.chats_meta[self.chat_idx].sampler.temperature,
 	})
-	self.conf.generation.temperature = self.chats_meta[self.chat_idx].sampler.temperature
+	self.conf.sampler.temperature = self.chats_meta[self.chat_idx].sampler.temperature
 	term.clear_line(2)
 	term.move("column")
 	return true
@@ -470,7 +500,7 @@ local adjust_tokens = function(self, combo)
 	self.input.prompt:set({
 		tokens = self.chats_meta[self.chat_idx].sampler.max_new_tokens,
 	})
-	self.conf.generation.tokens = self.chats_meta[self.chat_idx].sampler.max_new_tokens
+	self.conf.sampler.tokens = self.chats_meta[self.chat_idx].sampler.max_new_tokens
 	term.clear_line(2)
 	term.move("column")
 	return true
@@ -488,6 +518,12 @@ local show_conversation = function(self, combo)
 				term.write(text.render_djot(sys_prompt, theme.renderer.llm.sys_prompt) .. "\n")
 			elseif m.role == "user" then
 				local user_msg = m.content
+				if m.file then
+					user_msg = table.concat(
+						std.pipe_table({ "File name", "Size (KB)" }, { { m.file, string.format("%.2f", m.size) } }),
+						"\n"
+					)
+				end
 				term.write("\r\n" .. self:render(user_msg, self.conf.renderer.user_indent, theme.renderer.llm.user))
 			elseif m.role == "assistant" then
 				term.write("\r\n" .. self:render(m.content, self.conf.renderer.llm_indent))
@@ -498,51 +534,8 @@ local show_conversation = function(self, combo)
 	end
 end
 
-local switch_chat = function(self, combo)
-	if combo == "Ctrl+Up" then
-		if self.chat_idx > 1 then
-			self.chat_idx = self.chat_idx - 1
-			self.input.prompt:set({
-				ctx = self.chats_meta[self.chat_idx].ctx,
-				chat = self.chat_idx,
-				backend = self.chats_meta[self.chat_idx].backend,
-				model = self.chats_meta[self.chat_idx].model,
-				tokens = self.chats_meta[self.chat_idx].sampler.max_new_tokens,
-				temperature = self.chats_meta[self.chat_idx].sampler.temperature,
-			})
-			self:show_conversation()
-			return true
-		end
-		return false
-	end
-	if self.chat_idx < #self.chats then
-		self.chat_idx = self.chat_idx + 1
-		self.input.prompt:set({
-			ctx = self.chats_meta[self.chat_idx].ctx,
-			chat = self.chat_idx,
-			backend = self.chats_meta[self.chat_idx].backend,
-			model = self.chats_meta[self.chat_idx].model,
-			tokens = self.chats_meta[self.chat_idx].sampler.max_new_tokens,
-			temperature = self.chats_meta[self.chat_idx].sampler.temperature,
-		})
-		self:show_conversation()
-		return true
-	elseif #self.chats[self.chat_idx] > 2 then
-		local backend = self.chats_meta[self.chat_idx].backend
-		local mode = self.chats_meta[self.chat_idx].mode
-		local sampler = self.chats_meta[self.chat_idx].sampler
-		self.chat_idx = self.chat_idx + 1
-		self.chats_meta[self.chat_idx] = {}
-		self.chats_meta[self.chat_idx].backend = backend
-		self.chats_meta[self.chat_idx].mode = mode
-		self.chats_meta[self.chat_idx].sampler = sampler
-		self:flush()
-		return true
-	end
-end
-
 local get_system_prompt = function(self)
-	local sys_prompt = self.conf.sys_prompt[self.conf.sys_prompt.selected].prompt or ""
+	local sys_prompt = self.conf.sys_prompt[self.conf.sys_prompt.selected] or ""
 	return sys_prompt
 end
 
@@ -565,8 +558,8 @@ local new = function(input, prompt, store)
 			["Ctrl+F"] = flush,
 			["Ctrl+Y"] = save,
 			["Ctrl+T"] = change_renderer,
-			["Ctrl+Up"] = switch_chat,
-			["Ctrl+Down"] = switch_chat,
+			["Ctrl+Up"] = change_sampler,
+			["Ctrl+Down"] = attach_file,
 			["Alt+Up"] = adjust_temperature,
 			["Alt+Down"] = adjust_temperature,
 			["Alt+Left"] = adjust_tokens,
@@ -593,16 +586,16 @@ local new = function(input, prompt, store)
 		chats_meta = {
 			{
 				uuid = std.uuid(),
-				backend = conf.generation.backend.selected,
+				backend = conf.backend.selected,
 				model = conf.models.OpenAI.selected,
 				ctx = 0,
 				sampler = {
-					temperature = conf.generation.temperature,
-					tokens = conf.generation.tokens,
-					top_k = conf.generation.top_k,
-					top_p = conf.generation.top_p,
-					min_p = conf.generation.min_p,
-					repetition_penalty = conf.generation.repetition_penalty,
+					temperature = conf.sampler.temperature,
+					tokens = conf.sampler.tokens,
+					top_k = conf.sampler.top_k,
+					top_p = conf.sampler.top_p,
+					min_p = conf.sampler.min_p,
+					repetition_penalty = conf.sampler.repetition_penalty,
 				},
 			},
 		},

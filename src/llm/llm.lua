@@ -11,8 +11,10 @@ local new = function(backend, api_url)
 		return anthropic.new(backend)
 	end
 	if backend == "llamacpp" then
+		local api_url = api_url or "http://127.0.0.1:8080"
 		return ggml.new(api_url)
 	end
+	local api_url = api_url or "http://127.0.0.1:8013"
 	return general.new(api_url)
 end
 

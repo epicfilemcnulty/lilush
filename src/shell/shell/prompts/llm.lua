@@ -7,14 +7,8 @@ local tss_gen = require("term.tss")
 local tss = tss_gen.new(theme)
 
 local llm_prompt = function(self)
-	local chat_nums = { "❶ ", "❷ ", "❸ ", "❹ ", "❺ ", "❻ ", "❼ ", "❽ ", "❾ " }
 	local buf = buffer.new()
-	buf:put(tss:apply("prompts.shell.sep", "("), tss:apply("prompts.llm.chat", chat_nums[self.chat]))
-	if self.endpoint == "chat" then
-		buf:put(tss:apply("prompts.llm.endpoint.chat"))
-	else
-		buf:put(tss:apply("prompts.llm.endpoint.complete"))
-	end
+	buf:put(tss:apply("prompts.shell.sep", "("), tss:apply("prompts.llm.endpoint.chat"))
 	buf:put(tss:apply("prompts.llm.ctx", self.ctx))
 	if self.model_name ~= "" then
 		buf:put(tss:apply("prompts.llm.model", self.model))
@@ -24,7 +18,6 @@ local llm_prompt = function(self)
 	else
 		buf:put(tss:apply("prompts.llm.backend", self.backend), tss:apply("prompts.llm.prompt", self.prompt))
 	end
-
 	buf:put(tss:apply("prompts.llm.temperature", self.temperature), tss:apply("prompts.llm.tokens", self.tokens))
 	buf:put(tss:apply("prompts.llm.rate", string.format("%.2f", self.rate)))
 	if self.backend:match("^%u") then
