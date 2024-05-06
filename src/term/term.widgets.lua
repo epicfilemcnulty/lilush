@@ -188,7 +188,14 @@ local render_options = function(options, idx, tss, l, c)
 		end
 		if i ~= idx then
 			if val_type == "table" and not option_val then
-				term.write(tss:apply("category", opt))
+				if options[opt][1] then
+					term.write(
+						tss:apply("option", opt)
+							.. tss:apply("option.value." .. val_type, table.concat(options[opt], ","))
+					)
+				else
+					term.write(tss:apply("category", opt))
+				end
 			else
 				term.write(tss:apply("option", opt) .. tss:apply("option.value." .. val_type, option_val))
 			end

@@ -81,7 +81,7 @@ local load_llm_config = function(store)
 
 	local settings = {
 		sampler = {
-			stop_conditions = "",
+			stop_conditions = {},
 			temperature = 0.5,
 			tokens = 512,
 			top_k = 40,
@@ -198,13 +198,7 @@ local run = function(self)
 				llm.render_prompt_tmpl(self.chats_meta[self.chat_idx].prompt_template, self.chats[self.chat_idx], true)
 		end
 	end
-	local stop_conditions = {}
-	for sc in self.conf.sampler.stop_conditions:gmatch("([^,]+),?") do
-		if tonumber(sc) then -- stop condidtions are expected to be token ids, not strings
-			table.insert(stop_conditions, sc)
-		end
-	end
-	resp, err = client:complete(model, messages, sampler, stop_conditions, uuid)
+	resp, err = client:complete(model, messages, sampler, self.conf.sampler.stop_conditions, uuid)
 
 	if resp then
 		local text = resp.text:gsub("^%s", "")
@@ -389,8 +383,15 @@ local change_sampler = function(self, combo)
 	term.switch_screen("main")
 	term.show_cursor()
 	if choice ~= "" then
+		local custom_stop_conditions = false
 		for k, v in pairs(user_samplers[choice]) do
+			if k == "stop_conditions" then
+				custom_stop_conditions = true
+			end
 			self.conf.sampler[k] = v
+		end
+		if not custom_stop_conditions then
+			self.conf.sampler.stop_conditions = {}
 		end
 	end
 	return self:flush()
@@ -520,7 +521,10 @@ local show_conversation = function(self, combo)
 				local user_msg = m.content
 				if m.file then
 					user_msg = table.concat(
-						std.pipe_table({ "File name", "Size (KB)" }, { { m.file, string.format("%.2f", m.size) } }),
+						std.pipe_table(
+							{ "File name", "Size (KB)" },
+							{ { "`" .. m.file .. "`", string.format("%.2f", m.size) } }
+						),
 						"\n"
 					)
 				end
