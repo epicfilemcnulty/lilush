@@ -4,37 +4,28 @@ local std = require("std")
 local storage = require("shell.storage")
 
 local widgets_default = {
-	switcher = {
-		aws = {
-			title = { fg = 94, bg = 184 },
-			option = { fg = 100 },
-			border = { fg = 65 },
-		},
-		llm = {
-			border = { fg = 109 },
-			title = { fg = 220, bg = 99 },
-			option = { fg = 103 },
-		},
-		python = {
-			title = { fg = 27, bg = 223 },
-			option = { fg = 179, selected = { fg = 185, s = "bold" } },
-			border = { fg = 94 },
-		},
-		shell = {
-			border = { fg = 69 },
-			option = { fg = 67 },
-			title = { fg = 137 },
-		},
+	aws = {
+		title = { fg = 94, bg = 184 },
+		option = { fg = 100 },
+		borders = { fg = 65 },
 	},
-	settings = {
-		shell = {
-			title = { fg = 137 },
-			fg = 67,
-		},
-		llm = {
-			title = { fg = 220, bg = 99 },
-			fg = 103,
-		},
+	llm = {
+		fg = 103,
+		borders = { fg = 109 },
+		title = { fg = 220, bg = 99 },
+		option = { fg = 103 },
+		file = { directory = { fg = 105 } },
+	},
+	python = {
+		title = { fg = 27, bg = 223 },
+		option = { fg = 179, selected = { fg = 185, s = "bold" } },
+		borders = { fg = 94 },
+	},
+	shell = {
+		fg = 67,
+		borders = { fg = 69 },
+		option = { fg = 67 },
+		title = { fg = 137 },
 	},
 }
 
@@ -71,6 +62,7 @@ local renderer_default = {
 			border = { fg = 59, s = "dim" },
 		},
 		thematic_break = { fg = 137 },
+		div = { bg = 17 },
 		class = {
 			tbl = { fg = 136 },
 			str = { fg = 144 },
@@ -80,22 +72,18 @@ local renderer_default = {
 			file = { fg = 152 },
 			dir = { fg = 153 },
 			link = { lcl = { s = "not_underlined" } },
+			div = { s = "italic" },
 		},
 	},
-	llm = {
-		sys_prompt = {
-			global_indent = 0,
-			codeblock = {
-				align = "center",
-				padding = 2,
-				s = "dim",
-				bg = { 33, 0, 33 },
-				fg = 175,
-				lang = { fg = 183, bg = { 44, 10, 44 } },
-			},
-		},
-		user = {
-			fg = { 180, 210, 180 },
+	llm_sys_prompt = {
+		global_indent = 0,
+		codeblock = {
+			align = "center",
+			padding = 2,
+			s = "dim",
+			bg = { 33, 0, 33 },
+			fg = 175,
+			lang = { fg = 183, bg = { 44, 10, 44 } },
 		},
 	},
 }

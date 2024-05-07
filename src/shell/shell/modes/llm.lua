@@ -9,8 +9,8 @@ local theme = require("shell.theme")
 local text = require("text")
 local tss_gen = require("term.tss")
 
-local render = function(self, content, indent, style)
-	local style = style or theme.renderer.kat
+local render = function(self, content, indent)
+	local rss = theme.renderer.kat
 	local mode = self.conf.renderer.mode.selected
 	local out
 	local conf = {
@@ -20,9 +20,9 @@ local render = function(self, content, indent, style)
 		hide_links = self.conf.renderer.hide_links,
 	}
 	if mode == "markdown" then
-		out = text.render_markdown(content, style, conf)
+		out = text.render_markdown(content, rss, conf)
 	elseif mode == "djot" then
-		out = text.render_djot(content, style, conf)
+		out = text.render_djot(content, rss, conf)
 	else
 		local opts = { raw = {}, simple = { global_indent = 2, wrap = 80 } }
 		out = text.render_text(content, opts[mode], conf) .. "\r\n"
@@ -38,7 +38,7 @@ local choose_preset = function(self, combo)
 	local content = { title = "Choose a preset", options = std.sort_keys(presets) }
 	term.switch_screen("alt")
 	term.hide_cursor()
-	local choice = widgets.switcher(content, theme.widgets.switcher.llm)
+	local choice = widgets.switcher(content, theme.widgets.llm)
 	term.switch_screen("main")
 	term.show_cursor()
 	if choice == "" then
@@ -82,8 +82,8 @@ local load_llm_config = function(store)
 	local settings = {
 		sampler = {
 			stop_conditions = {},
-			temperature = 0.5,
-			tokens = 512,
+			temperature = 0.75,
+			tokens = 1024,
 			top_k = 40,
 			top_p = 0.75,
 			min_p = 0,
@@ -136,6 +136,7 @@ local load_llm_config = function(store)
 			tf = {},
 		},
 		autosave = false,
+		attach_as_codeblock = false,
 	}
 	for k, v in pairs(user_prompt_templates) do
 		settings.prompt_template[k] = v
@@ -184,7 +185,14 @@ local run = function(self)
 	local sampler = self.chats_meta[self.chat_idx].sampler
 	local client = llm.new(backend, api_url)
 
-	table.insert(self.chats[self.chat_idx], { role = "user", content = user_message })
+	if self.attachment and self.conf.attach_as_codeblock then
+		local previous_message = self.chats[self.chat_idx][#self.chats[self.chat_idx]].content
+		local msg = "```\n" .. previous_message .. "\n```\n\n" .. user_message
+		self.chats[self.chat_idx][#self.chats[self.chat_idx]].content = msg
+		self.attachment = false
+	else
+		table.insert(self.chats[self.chat_idx], { role = "user", content = user_message })
+	end
 	local model = "local"
 	if self.conf.models[backend] then
 		model = self.conf.models[backend].selected or model
@@ -194,8 +202,14 @@ local run = function(self)
 		if backend == "mamba" then
 			messages = convert_to_mamba_fmt(messages)
 		else
-			messages =
-				llm.render_prompt_tmpl(self.chats_meta[self.chat_idx].prompt_template, self.chats[self.chat_idx], true)
+			messages = llm.render_prompt_tmpl(
+				self.conf.prompt_template[self.chats_meta[self.chat_idx].prompt_template],
+				self.chats[self.chat_idx],
+				true
+			)
+		end
+		if os.getenv("LILUSH_DEBUG") then
+			std.print(messages)
 		end
 	end
 	resp, err = client:complete(model, messages, sampler, self.conf.sampler.stop_conditions, uuid)
@@ -236,8 +250,8 @@ local run = function(self)
 end
 
 local sync_meta = function(self)
-	self.chats_meta[self.chat_idx].prompt_template = self.conf.prompt_template[self.conf.prompt_template.selected]
-	self.chats_meta[self.chat_idx].sys_prompt = self.conf.sys_prompt[self.conf.sys_prompt.selected]
+	self.chats_meta[self.chat_idx].prompt_template = self.conf.prompt_template.selected
+	self.chats_meta[self.chat_idx].sys_prompt = self.conf.sys_prompt.selected
 	self.chats_meta[self.chat_idx].backend = self.conf.backend.selected
 	self.chats_meta[self.chat_idx].api_url = self.conf.api_url
 	self.chats_meta[self.chat_idx].sampler = {
@@ -262,10 +276,8 @@ local sync_conf = function(self)
 	self.conf.sampler.hide_special_tokens = self.chats_meta[self.chat_idx].sampler.hide_special_tokens
 	self.conf.sampler.repetition_penalty = self.chats_meta[self.chat_idx].sampler.repetition_penalty
 	self.conf.sampler.tokens = self.chats_meta[self.chat_idx].sampler.max_new_tokens
-	self.conf.prompt_template.user = self.chats_meta[self.chat_idx].prompt_template
-	self.conf.sys_prompt.user = self.chats_meta[self.chat_idx].sys_prompt
-	self.conf.prompt_template.selected = "user"
-	self.conf.sys_prompt.selected = "user"
+	self.conf.prompt_template.selected = self.chats_meta[self.chat_idx].prompt_template
+	self.conf.sys_prompt.selected = self.chats_meta[self.chat_idx].sys_prompt
 	self.conf.api_url = self.chats_meta[self.chat_idx].api_url
 end
 
@@ -313,7 +325,7 @@ local save = function(self)
 	if msg_count > 0 then
 		local uuid = self.chats_meta[self.chat_idx].uuid
 		local model = self.chats_meta[self.chat_idx].model
-		local name = model .. "_" .. os.date("%")
+		local name = model .. "_" .. os.date("%s")
 		if self.chats_meta[self.chat_idx].name then
 			name = self.chats_meta[self.chat_idx].name
 		else
@@ -321,14 +333,15 @@ local save = function(self)
 		end
 		self.store:set_hash_key("llm/chats", name, {
 			conversation = self.chats[self.chat_idx],
-			prompt_template = self.conf.prompt_template[self.conf.prompt_template.selected],
-			sys_prompt = self.conf.sys_prompt[self.conf.sys_prompt.selected],
+			prompt_template_name = self.conf.prompt_template.selected,
+			sys_prompt_name = self.conf.sys_prompt.selected,
 			sampler = self.chats_meta[self.chat_idx].sampler,
 			backend = self.chats_meta[self.chat_idx].backend,
 			ctx = self.chats_meta[self.chat_idx].ctx,
 			model = self.chats_meta[self.chat_idx].model,
 			api_url = self.chats_meta[self.chat_idx].api_url,
 			uuid = self.chats_meta[self.chat_idx].uuid,
+			attach_as_codeblock = self.conf.attach_as_codeblock,
 		}, true)
 	end
 end
@@ -336,7 +349,7 @@ end
 local settings = function(self, combo)
 	term.hide_cursor()
 	local backend = self.conf.backend.selected
-	widgets.settings(self.conf, "LLM Mode Settings", theme.widgets.settings.llm, theme.widgets.switcher.llm, 3, 5)
+	widgets.settings(self.conf, "LLM Mode Settings", theme.widgets.llm, 3, 5)
 	self.input.prompt:set({
 		prompt = self.conf.prompt_template.selected,
 		tokens = self.conf.sampler.tokens,
@@ -364,7 +377,7 @@ local change_renderer = function(self, combo)
 	local content = { title = "Choose text rendering mode", options = self.conf.renderer.mode.options }
 	term.hide_cursor()
 	term.switch_screen("alt")
-	local choice = widgets.switcher(content, theme.widgets.switcher.llm)
+	local choice = widgets.switcher(content, theme.widgets.llm)
 	term.switch_screen("main")
 	term.show_cursor()
 	if choice ~= "" then
@@ -379,7 +392,7 @@ local change_sampler = function(self, combo)
 	local content = { title = "Choose sampler preset", options = std.sort_keys(user_samplers) }
 	term.hide_cursor()
 	term.switch_screen("alt")
-	local choice = widgets.switcher(content, theme.widgets.switcher.llm)
+	local choice = widgets.switcher(content, theme.widgets.llm)
 	term.switch_screen("main")
 	term.show_cursor()
 	if choice ~= "" then
@@ -398,21 +411,90 @@ local change_sampler = function(self, combo)
 end
 
 local attach_file = function(self, combo)
-	local text_files = std.list_files(os.getenv("HOME") .. "/Downloads", "txt$")
-	local content = { title = "Choose a file to attach", options = std.sort_keys(text_files) }
 	term.hide_cursor()
 	term.switch_screen("alt")
-	local choice = widgets.switcher(content, theme.widgets.switcher.llm)
+	local chosen_file = widgets.file_chooser(
+		"Choose a file to attach",
+		os.getenv("HOME"),
+		theme.widgets.llm,
+		{ mode = "[fdl]", select = "f" }
+	)
 	term.switch_screen("main")
 	term.show_cursor()
-	if choice ~= "" then
-		local file_content = std.read_file(os.getenv("HOME") .. "/Downloads/" .. choice)
-		local file_size = text_files[choice].size / 1024
-		table.insert(
-			self.chats[self.chat_idx],
-			{ role = "user", content = file_content, file = choice, size = file_size }
-		)
+	if chosen_file then
+		local file_content = std.read_file(chosen_file)
+		local file_size = #file_content / 1024
+		table.insert(self.chats[self.chat_idx], {
+			role = "user",
+			content = file_content,
+			file = chosen_file,
+			size = file_size,
+		})
+		self.attachment = true
 	end
+	self:show_conversation()
+	return true
+end
+
+local load_model = function(self, combo)
+	term.hide_cursor()
+	term.switch_screen("alt")
+	local model_dir =
+		widgets.file_chooser("Choose model dir", "/storage/models", theme.widgets.llm, { mode = "d", select = "d" })
+	if not model_dir then
+		term.switch_screen("main")
+		term.show_cursor()
+		self:show_conversation()
+		return true
+	end
+	local alias = model_dir:match("([^/]+)/?$")
+	local model_conf = { model_type = "exl2", context_length = 0, model_alias = alias, model_dir = model_dir }
+	widgets.settings(model_conf, "Set model options", theme.widgets.llm, 3, 5)
+	local client = llm.new(model_conf.model_type)
+	term.clear()
+	term.go(1, 1)
+	term.write("LOADING...")
+	local progress = std.progress_icon()
+	local ok, err = client:load_model(model_conf)
+	progress.stop()
+	if ok then
+		term.write("\r\nLOADED")
+		std.sleep(1)
+	end
+	term.switch_screen("main")
+	term.show_cursor()
+	self:show_conversation()
+	return true
+end
+
+local unload_model = function(self, combo)
+	local client = llm.new(self.conf.backend.selected)
+	local models = client:models()
+	if not models then
+		self:show_conversation()
+		return true
+	end
+	term.switch_screen("alt")
+	term.hide_cursor()
+	local choice = widgets.switcher({ title = "Select modelt to unload", options = models.models }, theme.widgets.llm)
+	if choice == "" then
+		term.switch_screen("main")
+		term.show_cursor()
+		self:show_conversation()
+		return true
+	end
+	term.clear()
+	term.go(1, 1)
+	term.write("UNLOADING...")
+	local progress = std.progress_icon()
+	local ok = client:unload_model(choice)
+	progress.stop()
+	if ok then
+		term.write("\r\nUNLOADED")
+		std.sleep(1)
+	end
+	term.switch_screen("main")
+	term.show_cursor()
 	self:show_conversation()
 	return true
 end
@@ -428,7 +510,7 @@ local load_conversation = function(self, combo)
 	end
 	term.switch_screen("alt")
 	term.hide_cursor()
-	local choice = widgets.switcher(content, theme.widgets.switcher.llm)
+	local choice = widgets.switcher(content, theme.widgets.llm)
 	term.switch_screen("main")
 	term.show_cursor()
 	if choice == "" then
@@ -446,12 +528,16 @@ local load_conversation = function(self, combo)
 		self.chats_meta[self.chat_idx].uuid = chat.uuid
 		self.chats_meta[self.chat_idx].ctx = chat.ctx
 		self.chats_meta[self.chat_idx].sampler = chat.sampler
-		self.chats_meta[self.chat_idx].prompt_template = chat.prompt_template
-		self.chats_meta[self.chat_idx].sys_prompt = chat.sys_prompt
+		self.chats_meta[self.chat_idx].prompt_template = chat.prompt_template_name
+		self.chats_meta[self.chat_idx].sys_prompt = chat.sys_prompt_name
+		self.conf.attach_as_codeblock = chat.attach_as_codeblock
+		self.conf.backend.selected = chat.backend
 		self:sync_conf()
 		self:show_conversation()
 		self.input.prompt:set({
 			ctx = self.chats_meta[self.chat_idx].ctx,
+			model = self.chats_meta[self.chat_idx].model,
+			backend = self.conf.backend.selected,
 		})
 		return true
 	end
@@ -510,25 +596,29 @@ end
 local show_conversation = function(self, combo)
 	local tss = tss_gen.new(theme)
 	local msg_count = #self.chats[self.chat_idx]
+	term.clear()
+	term.go(1, 1)
 	if msg_count > 0 then
-		term.clear()
-		term.go(1, 1)
 		for i, m in ipairs(self.chats[self.chat_idx]) do
 			if m.role == "system" then
 				local sys_prompt = "```System_Prompt\n\n" .. m.content .. "\n```"
-				term.write(text.render_djot(sys_prompt, theme.renderer.llm.sys_prompt) .. "\n")
+				term.write(text.render_djot(sys_prompt, theme.renderer.llm_sys_prompt) .. "\n")
 			elseif m.role == "user" then
 				local user_msg = m.content
 				if m.file then
 					user_msg = table.concat(
 						std.pipe_table(
-							{ "File name", "Size (KB)" },
+							{ "  Attached file", "Size (KB)" },
 							{ { "`" .. m.file .. "`", string.format("%.2f", m.size) } }
 						),
 						"\n"
 					)
+					if self.conf.attach_as_codeblock and m.content then
+						local query = m.content:match("^```\n.*\n```\n\n(.*)$") or ""
+						user_msg = user_msg .. "\n\n" .. query
+					end
 				end
-				term.write("\r\n" .. self:render(user_msg, self.conf.renderer.user_indent, theme.renderer.llm.user))
+				term.write("\r\n" .. self:render("::: user\n" .. user_msg .. "\n:::\n", self.conf.renderer.user_indent))
 			elseif m.role == "assistant" then
 				term.write("\r\n" .. self:render(m.content, self.conf.renderer.llm_indent))
 			end
@@ -561,9 +651,10 @@ local new = function(input, prompt, store)
 		combos = {
 			["Ctrl+F"] = flush,
 			["Ctrl+Y"] = save,
-			["Ctrl+T"] = change_renderer,
-			["Ctrl+Up"] = change_sampler,
-			["Ctrl+Down"] = attach_file,
+			["Ctrl+T"] = change_sampler,
+			["Ctrl+U"] = unload_model,
+			["Ctrl+Down"] = load_model,
+			["Ctrl+Up"] = attach_file,
 			["Alt+Up"] = adjust_temperature,
 			["Alt+Down"] = adjust_temperature,
 			["Alt+Left"] = adjust_tokens,

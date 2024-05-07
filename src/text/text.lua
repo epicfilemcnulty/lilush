@@ -228,6 +228,17 @@ local render_markdown = function(raw, tss, conf)
 	return std.indent(buf:get(), g_indent)
 end
 
+-- All things djot are below =)
+local typographics = {
+	["en_dash"] = "–",
+	["em_dash"] = "—",
+	["ellipsis"] = "…",
+	["right_single_quote"] = "’",
+	["left_single_quote"] = "‘",
+	["right_double_quote"] = "”",
+	["left_double_quote"] = "“",
+}
+
 local render_djot_element
 render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 	local wrap = wrap or 0
@@ -274,15 +285,6 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 		return classes
 	end
 
-	local typographics = {
-		["en_dash"] = "–",
-		["em_dash"] = "—",
-		["ellipsis"] = "…",
-		["right_single_quote"] = "’",
-		["left_single_quote"] = "‘",
-		["right_double_quote"] = "”",
-		["left_double_quote"] = "“",
-	}
 	if typographics[el.tag] then
 		return typographics[el.tag]
 	end
@@ -374,8 +376,13 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 		out = out .. string.rep(" ", indent) .. tss:apply("codeblock.border.bottom_line") .. "\n"
 		return out .. "\n"
 	end
+	if el.tag == "div" then
+		local elements = get_classes(el, el.tag)
+		return tss:apply({ el.tag, unpack(elements) }, get_children(el.children, "div"))
+	end
 	if el.tag == "para" then
-		local content = tss:apply(el.tag, get_children(el.children, "para"))
+		local elements = get_classes(el, parent)
+		local content = tss:apply({ el.tag, unpack(elements) }, get_children(el.children, "para"))
 		local trailing_newline = "\n\n"
 		local indent = 0
 		local list_level, list_indent, list_style = get_list_info(parent)

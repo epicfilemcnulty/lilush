@@ -72,7 +72,7 @@ local load_model = function(self, options)
 		model_type = options.model_type,
 		model_alias = options.model_alias,
 		lora_dir = options.lora_dir,
-		context_length = options.context.length,
+		context_length = options.context_length,
 	}
 	local resp, err = web.request(
 		self.api_url .. "/load",
@@ -88,6 +88,21 @@ local load_model = function(self, options)
 	return nil, "request failed: " .. tostring(err)
 end
 
+local unload_model = function(self, model_alias)
+	local resp, err = web.request(self.api_url .. "/unload", {
+		method = "DELETE",
+		body = json.encode({ model_alias = model_alias }),
+		headers = { ["Content-Type"] = "application/json" },
+	}, self.timeout)
+	if resp then
+		if resp.status == 200 then
+			return true
+		end
+		return "failed to unload the model: " .. resp.status .. "\n" .. resp.body
+	end
+	return nil, "failed to unload the model: " .. tostring(err)
+end
+
 local complete = function(self, model, query, sampler, sc, uuid)
 	local data = {
 		model = model,
@@ -100,10 +115,12 @@ local complete = function(self, model, query, sampler, sc, uuid)
 		repetition_penalty = sampler.repetition_penalty,
 		max_new_tokens = sampler.max_new_tokens,
 		hide_special_tokens = sampler.hide_special_tokens,
-		stop_conditions = sc,
 		query = query,
 		uuid = uuid,
 	}
+	if sc and #sc > 0 then
+		data.stop_conditions = sc
+	end
 	local resp, err = web.request(
 		self.api_url .. "/complete",
 		{ method = "POST", body = json.encode(data), headers = { ["Content-Type"] = "application/json" } },
@@ -127,6 +144,7 @@ local new = function(api_url, timeout)
 		complete = complete,
 		models = models,
 		load_model = load_model,
+		unload_model = unload_model,
 	}
 	return client
 end

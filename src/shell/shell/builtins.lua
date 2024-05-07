@@ -774,7 +774,7 @@ local aws_profile = function(cmd, args)
 		term.switch_screen("alt")
 		term.set_raw_mode()
 		term.hide_cursor()
-		local profile = widgets.switcher(content, theme.widgets.switcher.aws)
+		local profile = widgets.switcher(content, theme.widgets.aws)
 		term.show_cursor()
 		term.switch_screen("main")
 		term.set_sane_mode()
@@ -798,7 +798,7 @@ local aws_region = function(cmd, args)
 		term.switch_screen("alt")
 		term.set_raw_mode()
 		term.hide_cursor()
-		local region = widgets.switcher(content, theme.widgets.switcher.aws)
+		local region = widgets.switcher(content, theme.widgets.aws)
 		term.show_cursor()
 		term.set_sane_mode()
 		term.switch_screen("main")
@@ -1117,7 +1117,7 @@ local kinda_ps = function(cmd, args)
 			kind = "str",
 			idx = 1,
 			default = ".*",
-			note = "Show only those processes whose cmdline mathes the pattern",
+			note = "Show only those processes whose cmdline matches the pattern",
 		},
 	}, ps_help)
 	local args, err, help = parser:parse(args)

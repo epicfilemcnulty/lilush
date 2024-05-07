@@ -1035,6 +1035,7 @@ local align_text = function(text, max, side)
 end
 
 local parse_pipe_table_header = function(header)
+	local header = header or ""
 	local name = header
 	local align = "left"
 	if type(header) == "table" then
@@ -1046,6 +1047,8 @@ end
 
 local calc_table_maxes = function(headers, tbl)
 	local maxes = {}
+	local headers = headers or {}
+	local tbl = tbl or {}
 	for i, header in ipairs(headers) do
 		local h_name, h_align = parse_pipe_table_header(header)
 		maxes[h_name] = utf.len(h_name)

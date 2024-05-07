@@ -243,6 +243,29 @@ local string_to_mods = function(combination)
 	return byte
 end
 
+local simple_get = function()
+	local cp, mods, event, shifted, base = get()
+	if cp and event ~= 3 then
+		if mods <= 2 and std.utf.len(cp) < 2 then
+			if shifted then
+				cp = shifted
+			end
+			return cp
+		end
+		if base then
+			cp = base
+		end
+		local mod_string = mods_to_string(mods - 1)
+		local shortcut = mod_string .. "+"
+		if mod_string == "" then
+			shortcut = cp
+		else
+			shortcut = shortcut .. cp
+		end
+		return shortcut
+	end
+	return nil
+end
 --[[
     Input Object functions & methods.
     For the object definition see `new_input_obj` function below.
@@ -557,6 +580,7 @@ local _M = {
 	mods_to_string = mods_to_string,
 	string_to_mods = string_to_mods,
 	get = get,
+	simple_get = simple_get,
 	new = new_input_obj,
 }
 
