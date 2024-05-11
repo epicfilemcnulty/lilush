@@ -3,6 +3,18 @@
 local std = require("std")
 local term = require("term")
 
+--[[
+     TSS stands for Terminal Style Sheet. The idea is obviously inspired by CSS,
+     but adapted to the harsh realms of terminal.
+
+     In the code `tss` refers to the tss object -- table with methods + the style sheet itself,
+     whereas `rss` denotes "raw" style sheet, i.e. a plain lua table, defining a style.
+
+     A `rss` table defines a style, but it's user code's task to interprete and apply
+     this style.
+
+]]
+
 local calc_el_width = function(self, w, max)
 	if not max then
 		max = self.__window.w
@@ -145,20 +157,20 @@ local apply = function(self, elements, content, position)
 	return term.style(unpack(props.s)) .. term.color(props.fg, props.bg) .. text .. term.style("reset")
 end
 
-local new = function(ss)
+local new = function(rss)
 	local win_l, win_c = term.window_size()
 	return {
 		__window = { h = win_l, w = win_c },
-		__style = ss or {},
+		__style = rss or {},
 		calc_el_width = calc_el_width,
 		get = get,
 		apply = apply,
 	}
 end
 
-local merge = function(ss1, ss2)
-	local merged = std.copy_table(ss1)
-	merged = std.merge_tables(merged, ss2)
+local merge = function(rss_1, rss_2)
+	local merged = std.copy_table(rss_1)
+	merged = std.merge_tables(merged, rss_2)
 	return new(merged)
 end
 

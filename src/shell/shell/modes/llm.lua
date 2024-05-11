@@ -76,8 +76,8 @@ local choose_preset = function(self, combo)
 end
 
 local load_llm_config = function(store)
-	local user_prompt_templates = store:get_hash_key("llm", "prompt_templates.json", true)
-	local user_sys_prompts = store:get_hash_key("llm", "sys_prompts.json", true)
+	local user_prompt_templates = store:get_hash_key("llm", "prompt_templates.json", true) or {}
+	local user_sys_prompts = store:get_hash_key("llm", "sys_prompts.json", true) or {}
 
 	local settings = {
 		sampler = {

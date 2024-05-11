@@ -373,7 +373,13 @@ local file_chooser = function(title, start_dir, rss, patterns)
 	local patterns = patterns or { mode = "[fdl]", select = "[fdl]" }
 	local tss = style.merge(default_widgets_rss, rss)
 	local start_dir = start_dir or std.cwd()
-	local cur_dir = os.getenv("LILUSH_FC_LASTDIR") or start_dir
+	local last_dir = os.getenv("LILUSH_FC_LASTDIR") or start_dir
+	local cur_dir
+	if last_dir:match("^" .. start_dir) then
+		cur_dir = last_dir
+	else
+		cur_dir = start_dir
+	end
 	local w_y, w_x = term.window_size()
 	if new_input.has_kkbp() then
 		new_input.enable_kkbp()
