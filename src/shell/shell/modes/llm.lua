@@ -151,27 +151,6 @@ local load_llm_config = function(store)
 	return settings
 end
 
-local convert_to_mamba_fmt = function(messages, completion)
-	if completion then
-		return { { kind = "spt", token = "<TXT>", content = messages[#messages].content } }
-	end
-	local msgs = { { kind = "spt", token = "<CHAT>" } }
-	for i, msg in ipairs(messages) do
-		if msg.role == "system" then
-			table.insert(msgs, { kind = "spt", token = "<SYS>", content = msg.content })
-			table.insert(msgs, { kind = "spt", token = "</SYS>" })
-		elseif msg.role == "user" then
-			table.insert(msgs, { kind = "spt", token = "<QUERY>", content = msg.content })
-			table.insert(msgs, { kind = "spt", token = "</QUERY>" })
-		elseif msg.role == "assistant" then
-			table.insert(msgs, { kind = "spt", token = "<REPLY>", content = msg.content })
-			table.insert(msgs, { kind = "spt", token = "</REPLY>" })
-		end
-	end
-	table.insert(msgs, { kind = "spt", token = "<REPLY>" })
-	return msgs
-end
-
 local run = function(self)
 	local user_message = self.input:render()
 	if #user_message == 0 then
@@ -199,15 +178,11 @@ local run = function(self)
 	end
 	local messages = self.chats[self.chat_idx]
 	if not backend:match("^%u") then -- local backend
+		local prompt_template = self.conf.prompt_template[self.chats_meta[self.chat_idx].prompt_template]
 		if backend == "mamba" then
-			messages = convert_to_mamba_fmt(messages)
-		else
-			messages = llm.render_prompt_tmpl(
-				self.conf.prompt_template[self.chats_meta[self.chat_idx].prompt_template],
-				self.chats[self.chat_idx],
-				true
-			)
+			prompt_template = "mamba"
 		end
+		messages = llm.render_prompt_tmpl(prompt_template, self.chats[self.chat_idx], true)
 		if os.getenv("LILUSH_DEBUG") then
 			std.print(messages)
 		end

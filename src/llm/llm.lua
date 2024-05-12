@@ -18,7 +18,33 @@ local new = function(backend, api_url)
 	return general.new(api_url)
 end
 
+local convert_to_bltzr_fmt = function(messages, completion)
+	if completion then
+		return { { kind = "spt", token = "<TXT>", content = messages[#messages].content } }
+	end
+	local msgs = { { kind = "spt", token = "<CHAT>" } }
+	for i, msg in ipairs(messages) do
+		if msg.role == "system" then
+			table.insert(msgs, { kind = "spt", token = "<SYS>", content = msg.content })
+			table.insert(msgs, { kind = "spt", token = "</SYS>" })
+		elseif msg.role == "user" then
+			table.insert(msgs, { kind = "spt", token = "<QUERY>", content = msg.content })
+			table.insert(msgs, { kind = "spt", token = "</QUERY>" })
+		elseif msg.role == "assistant" then
+			table.insert(msgs, { kind = "spt", token = "<REPLY>", content = msg.content })
+			table.insert(msgs, { kind = "spt", token = "</REPLY>" })
+		end
+	end
+	table.insert(msgs, { kind = "spt", token = "<REPLY>" })
+	return msgs
+end
+
 local render_prompt_tmpl = function(tmpl, messages, add_last_suffix)
+	if tmpl and type(tmpl) == "string" then
+		if tmpl == "mamba" then
+			return convert_to_bltzr_fmt(messages, true)
+		end
+	end
 	local tmpl = tmpl or {}
 	local default_tmpl = {
 		system = {
