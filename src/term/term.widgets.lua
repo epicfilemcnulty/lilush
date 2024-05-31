@@ -2,10 +2,8 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
 local term = require("term")
-local tinp = require("term.legacy_input")
-local input = require("shell.input")
 local style = require("term.tss")
-local new_input = require("term.input")
+local input = require("term.input")
 
 local default_widgets_rss = {
 	align = "center",
@@ -161,23 +159,23 @@ local switcher = function(content, rss, l, c)
 	local buf = ""
 
 	while true do
-		local key = tinp.get()
-		if key == "Esc" then
+		local key = input.simple_get()
+		if key == "ESC" then
 			if buf ~= "" then
 				buf = ""
 			else
 				return ""
 			end
-		elseif key == "Enter" then
+		elseif key == "ENTER" then
 			return content.options[content.selected]
-		elseif key == "Up" then
+		elseif key == "UP" then
 			if idx > 1 then
 				render_option(idx, "option")
 				idx = idx - 1
 				content.selected = idx
 				render_option(idx, "option.selected")
 			end
-		elseif key == "Down" then
+		elseif key == "DOWN" then
 			if idx < #content.options then
 				render_option(idx, "option")
 				idx = idx + 1
@@ -263,30 +261,30 @@ local settings = function(config, title, rss, l, c)
 	render_options(config, idx, tss, l + 2, c)
 
 	while true do
-		local key = tinp.get()
-		if key == "Esc" then
+		local key = input.simple_get()
+		if key == "ESC" then
 			return true
 		end
-		if key == "Up" then
+		if key == "UP" then
 			if idx > 1 then
 				idx = idx - 1
 				render_options(std.get_nested_value(config, target), idx, tss, l + 2, c)
 			end
 		end
-		if key == "Down" then
+		if key == "DOWN" then
 			local options = std.exclude_keys(std.sort_keys(std.get_nested_value(config, target)), "selected")
 			if idx < #options then
 				idx = idx + 1
 				render_options(std.get_nested_value(config, target), idx, tss, l + 2, c)
 			end
 		end
-		if key == "Right" or key == "Enter" then
+		if key == "RIGHT" or key == "ENTER" then
 			local objs = std.get_nested_value(config, target)
 			local keys = std.exclude_keys(std.sort_keys(objs), "selected")
 			local chosen = keys[idx]
 
 			if type(objs[chosen]) == "table" and not objs[chosen].options then
-				if key == "Right" or not objs[chosen].selected then
+				if key == "RIGHT" or not objs[chosen].selected then
 					target = target .. "." .. keys[idx]
 					term.clear()
 					idx = 1
@@ -325,12 +323,12 @@ local settings = function(config, title, rss, l, c)
 					render_title(title .. subcat, tss, l, c)
 					render_options(std.get_nested_value(config, target), idx, tss, l + 2, c)
 				elseif type(objs[chosen]) == "string" or type(objs[chosen]) == "number" then
-					local buf = input.new("raw")
 					local m = std.longest(keys)
 					local val_indent = tss.__style.option.value.indent or 0
 					term.go(l + 1 + idx, c + m + 4 + val_indent)
 					term.clear_line()
 					term.show_cursor()
+					local buf = input.new({ l = l + 1 + idx, c = c + m + 4 + val_indent, 20 })
 					while true do
 						local event, combo = buf:event()
 						if event == "execute" then
@@ -346,6 +344,9 @@ local settings = function(config, title, rss, l, c)
 								break
 							end
 						end
+						if event == "exit" then
+							break
+						end
 					end
 					term.hide_cursor()
 					term.clear()
@@ -355,7 +356,7 @@ local settings = function(config, title, rss, l, c)
 				end
 			end
 		end
-		if key == "Left" then
+		if key == "LEFT" then
 			if target ~= "" then
 				target = target:gsub("%.?[^.]+$", "")
 				term.clear()
@@ -369,10 +370,11 @@ local settings = function(config, title, rss, l, c)
 end
 
 local file_chooser = function(title, start_dir, rss, patterns)
+	local invoke_dir = std.cwd()
 	local title = title or "Select a file/dir"
 	local patterns = patterns or { mode = "[fdl]", select = "[fdl]" }
 	local tss = style.merge(default_widgets_rss, rss)
-	local start_dir = start_dir or std.cwd()
+	local start_dir = start_dir or invoke_dir
 	local last_dir = os.getenv("LILUSH_FC_LASTDIR") or start_dir
 	local cur_dir
 	if last_dir:match("^" .. start_dir) then
@@ -381,9 +383,6 @@ local file_chooser = function(title, start_dir, rss, patterns)
 		cur_dir = start_dir
 	end
 	local w_y, w_x = term.window_size()
-	if new_input.has_kkbp() then
-		new_input.enable_kkbp()
-	end
 
 	local get_dir_files = function(dir)
 		local files = std.list_files(dir, "^[^.]", patterns.mode)
@@ -424,7 +423,7 @@ local file_chooser = function(title, start_dir, rss, patterns)
 		render_files()
 		local key
 		repeat
-			key = new_input.simple_get()
+			key = input.simple_get()
 			if key then
 				if key == "UP" and idx > 1 then
 					idx = idx - 1
@@ -456,8 +455,8 @@ local file_chooser = function(title, start_dir, rss, patterns)
 			end
 		until key == "change_dir"
 	until key == "chosen" or key == "ESC"
-	new_input.disable_kkbp()
 	std.setenv("LILUSH_FC_LASTDIR", std.cwd())
+	std.chdir(invoke_dir)
 	return choice
 end
 

@@ -8,6 +8,7 @@ local json = require("cjson.safe")
 local theme = require("shell.theme")
 local text = require("text")
 local tss_gen = require("term.tss")
+local ngi = require("term.input")
 
 local render = function(self, content, indent)
 	local rss = theme.renderer.kat
@@ -38,7 +39,9 @@ local choose_preset = function(self, combo)
 	local content = { title = "Choose a preset", options = std.sort_keys(presets) }
 	term.switch_screen("alt")
 	term.hide_cursor()
+	ngi.enable_kkbp()
 	local choice = widgets.switcher(content, theme.widgets.llm)
+	ngi.disable_kkbp()
 	term.switch_screen("main")
 	term.show_cursor()
 	if choice == "" then
@@ -324,7 +327,9 @@ end
 local settings = function(self, combo)
 	term.hide_cursor()
 	local backend = self.conf.backend.selected
+	ngi.enable_kkbp()
 	widgets.settings(self.conf, "LLM Mode Settings", theme.widgets.llm, 3, 5)
+	ngi.disable_kkbp()
 	self.input.prompt:set({
 		prompt = self.conf.prompt_template.selected,
 		tokens = self.conf.sampler.tokens,
@@ -352,7 +357,9 @@ local change_renderer = function(self, combo)
 	local content = { title = "Choose text rendering mode", options = self.conf.renderer.mode.options }
 	term.hide_cursor()
 	term.switch_screen("alt")
+	ngi.enable_kkbp()
 	local choice = widgets.switcher(content, theme.widgets.llm)
+	ngi.disable_kkbp()
 	term.switch_screen("main")
 	term.show_cursor()
 	if choice ~= "" then
@@ -367,7 +374,9 @@ local change_sampler = function(self, combo)
 	local content = { title = "Choose sampler preset", options = std.sort_keys(user_samplers) }
 	term.hide_cursor()
 	term.switch_screen("alt")
+	ngi.enable_kkbp()
 	local choice = widgets.switcher(content, theme.widgets.llm)
+	ngi.disable_kkbp()
 	term.switch_screen("main")
 	term.show_cursor()
 	if choice ~= "" then
@@ -388,12 +397,14 @@ end
 local attach_file = function(self, combo)
 	term.hide_cursor()
 	term.switch_screen("alt")
+	ngi.enable_kkbp()
 	local chosen_file = widgets.file_chooser(
 		"Choose a file to attach",
 		os.getenv("HOME"),
 		theme.widgets.llm,
 		{ mode = "[fdl]", select = "f" }
 	)
+	ngi.disable_kkbp()
 	term.switch_screen("main")
 	term.show_cursor()
 	if chosen_file then
@@ -414,8 +425,9 @@ end
 local load_model = function(self, combo)
 	term.hide_cursor()
 	term.switch_screen("alt")
-	local model_dir =
-		widgets.file_chooser("Choose model dir", "/storage/models", theme.widgets.llm, { mode = "d", select = "d" })
+	local model_dir = ngi.enable_kkbp()
+	widgets.file_chooser("Choose model dir", "/storage/models", theme.widgets.llm, { mode = "d", select = "d" })
+	ngi.disable_kkbp()
 	if not model_dir then
 		term.switch_screen("main")
 		term.show_cursor()
@@ -424,7 +436,9 @@ local load_model = function(self, combo)
 	end
 	local alias = model_dir:match("([^/]+)/?$")
 	local model_conf = { model_type = "exl2", context_length = 0, model_alias = alias, model_dir = model_dir }
+	ngi.enable_kkbp()
 	widgets.settings(model_conf, "Set model options", theme.widgets.llm, 3, 5)
+	ngi.disable_kkbp()
 	local client = llm.new(model_conf.model_type)
 	term.clear()
 	term.go(1, 1)
@@ -451,7 +465,9 @@ local unload_model = function(self, combo)
 	end
 	term.switch_screen("alt")
 	term.hide_cursor()
+	ngi.enable_kkbp()
 	local choice = widgets.switcher({ title = "Select modelt to unload", options = models.models }, theme.widgets.llm)
+	ngi.disable_kkbp()
 	if choice == "" then
 		term.switch_screen("main")
 		term.show_cursor()
@@ -485,7 +501,9 @@ local load_conversation = function(self, combo)
 	end
 	term.switch_screen("alt")
 	term.hide_cursor()
+	ngi.enable_kkbp()
 	local choice = widgets.switcher(content, theme.widgets.llm)
+	ngi.disable_kkbp()
 	term.switch_screen("main")
 	term.show_cursor()
 	if choice == "" then
