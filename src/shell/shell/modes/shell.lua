@@ -8,6 +8,7 @@ local builtins = require("shell.builtins")
 local theme = require("shell.theme")
 local tss_gen = require("term.tss")
 local tss = tss_gen.new(theme)
+local ngi = require("term.input")
 
 local check_config_dirs = function(self)
 	if not std.dir_exists(self.home .. "/.config/lilush") then
@@ -42,12 +43,14 @@ end
 local settings = function(self, combo)
 	local l, c = term.cursor_position()
 	term.switch_screen("alt")
-	term.set_raw_mode()
+	-- term.set_raw_mode()
 	term.hide_cursor()
+	ngi.enable_kkbp()
 	widgets.settings(self.conf, "Shell Settings", theme.widgets.shell, 3, 5)
 	-- This is dubious, what if it was already changed via setenv?
 	std.setenv("AWS_REGIONS", self.conf.aws.regions)
 	term.switch_screen("main")
+	ngi.disable_kkbp()
 	term.show_cursor()
 	term.go(l, c)
 	term.move("column")
@@ -168,13 +171,13 @@ local python_env = function(self, cmd, args)
 			local content = { title = "Choose a python venv", options = venvs }
 			local l, c = term.cursor_position()
 			term.switch_screen("alt")
-			term.set_raw_mode()
+			ngi.enable_kkbp()
 			term.hide_cursor()
 			local choice = widgets.switcher(content, theme.widgets.python)
 			term.switch_screen("main")
 			term.show_cursor()
 			term.go(l, c)
-			term.set_sane_mode()
+			ngi.disable_kkbp()
 			virtual_env = base_dir .. "/" .. choice
 		end
 		if not virtual_env:match("^/") then
