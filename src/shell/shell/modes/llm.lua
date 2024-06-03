@@ -7,8 +7,7 @@ local std = require("std")
 local json = require("cjson.safe")
 local theme = require("shell.theme")
 local text = require("text")
-local tss_gen = require("term.tss")
-local ngi = require("term.input")
+local style = require("term.tss")
 
 local render = function(self, content, indent)
 	local rss = theme.renderer.kat
@@ -37,12 +36,10 @@ local choose_preset = function(self, combo)
 		return false
 	end
 	local content = { title = "Choose a preset", options = std.sort_keys(presets) }
-	term.switch_screen("alt")
+	term.switch_screen("alt", true)
 	term.hide_cursor()
-	ngi.enable_kkbp()
 	local choice = widgets.switcher(content, theme.widgets.llm)
-	ngi.disable_kkbp()
-	term.switch_screen("main")
+	term.switch_screen("main", nil, true)
 	term.show_cursor()
 	if choice == "" then
 		self:show_conversation()
@@ -325,11 +322,10 @@ local save = function(self)
 end
 
 local settings = function(self, combo)
+	term.switch_screen("alt", true)
 	term.hide_cursor()
 	local backend = self.conf.backend.selected
-	ngi.enable_kkbp()
 	widgets.settings(self.conf, "LLM Mode Settings", theme.widgets.llm, 3, 5)
-	ngi.disable_kkbp()
 	self.input.prompt:set({
 		prompt = self.conf.prompt_template.selected,
 		tokens = self.conf.sampler.tokens,
@@ -346,6 +342,7 @@ local settings = function(self, combo)
 		self.input.prompt:set({ preset = "", model = model })
 	end
 	self:sync_meta()
+	term.switch_screen("main", nil, true)
 	term.clear()
 	term.go(1, 1)
 	term.show_cursor()
@@ -356,11 +353,9 @@ end
 local change_renderer = function(self, combo)
 	local content = { title = "Choose text rendering mode", options = self.conf.renderer.mode.options }
 	term.hide_cursor()
-	term.switch_screen("alt")
-	ngi.enable_kkbp()
+	term.switch_screen("alt", true)
 	local choice = widgets.switcher(content, theme.widgets.llm)
-	ngi.disable_kkbp()
-	term.switch_screen("main")
+	term.switch_screen("main", nil, true)
 	term.show_cursor()
 	if choice ~= "" then
 		self.conf.renderer.mode.selected = choice
@@ -373,11 +368,9 @@ local change_sampler = function(self, combo)
 	local user_samplers = self.store:get_hash_key("llm", "samplers.json", true)
 	local content = { title = "Choose sampler preset", options = std.sort_keys(user_samplers) }
 	term.hide_cursor()
-	term.switch_screen("alt")
-	ngi.enable_kkbp()
+	term.switch_screen("alt", true)
 	local choice = widgets.switcher(content, theme.widgets.llm)
-	ngi.disable_kkbp()
-	term.switch_screen("main")
+	term.switch_screen("main", nil, true)
 	term.show_cursor()
 	if choice ~= "" then
 		local custom_stop_conditions = false
@@ -396,16 +389,14 @@ end
 
 local attach_file = function(self, combo)
 	term.hide_cursor()
-	term.switch_screen("alt")
-	ngi.enable_kkbp()
+	term.switch_screen("alt", true)
 	local chosen_file = widgets.file_chooser(
 		"Choose a file to attach",
 		os.getenv("HOME"),
 		theme.widgets.llm,
 		{ mode = "[fdl]", select = "f" }
 	)
-	ngi.disable_kkbp()
-	term.switch_screen("main")
+	term.switch_screen("main", nil, true)
 	term.show_cursor()
 	if chosen_file then
 		local file_content = std.read_file(chosen_file)
@@ -424,21 +415,18 @@ end
 
 local load_model = function(self, combo)
 	term.hide_cursor()
-	term.switch_screen("alt")
-	local model_dir = ngi.enable_kkbp()
-	widgets.file_chooser("Choose model dir", "/storage/models", theme.widgets.llm, { mode = "d", select = "d" })
-	ngi.disable_kkbp()
+	term.switch_screen("alt", true)
+	local model_dir =
+		widgets.file_chooser("Choose model dir", "/storage/models", theme.widgets.llm, { mode = "d", select = "d" })
 	if not model_dir then
-		term.switch_screen("main")
+		term.switch_screen("main", nil, true)
 		term.show_cursor()
 		self:show_conversation()
 		return true
 	end
 	local alias = model_dir:match("([^/]+)/?$")
 	local model_conf = { model_type = "exl2", context_length = 0, model_alias = alias, model_dir = model_dir }
-	ngi.enable_kkbp()
 	widgets.settings(model_conf, "Set model options", theme.widgets.llm, 3, 5)
-	ngi.disable_kkbp()
 	local client = llm.new(model_conf.model_type)
 	term.clear()
 	term.go(1, 1)
@@ -450,7 +438,7 @@ local load_model = function(self, combo)
 		term.write("\r\nLOADED")
 		std.sleep(1)
 	end
-	term.switch_screen("main")
+	term.switch_screen("main", nil, true)
 	term.show_cursor()
 	self:show_conversation()
 	return true
@@ -463,13 +451,11 @@ local unload_model = function(self, combo)
 		self:show_conversation()
 		return true
 	end
-	term.switch_screen("alt")
+	term.switch_screen("alt", true)
 	term.hide_cursor()
-	ngi.enable_kkbp()
 	local choice = widgets.switcher({ title = "Select modelt to unload", options = models.models }, theme.widgets.llm)
-	ngi.disable_kkbp()
 	if choice == "" then
-		term.switch_screen("main")
+		term.switch_screen("main", nil, true)
 		term.show_cursor()
 		self:show_conversation()
 		return true
@@ -484,7 +470,7 @@ local unload_model = function(self, combo)
 		term.write("\r\nUNLOADED")
 		std.sleep(1)
 	end
-	term.switch_screen("main")
+	term.switch_screen("main", nil, true)
 	term.show_cursor()
 	self:show_conversation()
 	return true
@@ -499,12 +485,10 @@ local load_conversation = function(self, combo)
 	if #content.options == 0 then
 		return false
 	end
-	term.switch_screen("alt")
+	term.switch_screen("alt", true)
 	term.hide_cursor()
-	ngi.enable_kkbp()
 	local choice = widgets.switcher(content, theme.widgets.llm)
-	ngi.disable_kkbp()
-	term.switch_screen("main")
+	term.switch_screen("main", nil, true)
 	term.show_cursor()
 	if choice == "" then
 		self:show_conversation()
@@ -539,7 +523,7 @@ end
 
 local adjust_temperature = function(self, combo)
 	local t = self.chats_meta[self.chat_idx].sampler.temperature
-	if combo == "Alt+Up" then
+	if combo == "ALT+UP" then
 		if t < 0.9 then
 			self.chats_meta[self.chat_idx].sampler.temperature = t + 0.1
 		else
@@ -568,7 +552,7 @@ end
 
 local adjust_tokens = function(self, combo)
 	local tokens = self.chats_meta[self.chat_idx].sampler.max_new_tokens
-	if combo == "Alt+Left" then
+	if combo == "ALT+LEFT" then
 		if tokens > 64 then
 			self.chats_meta[self.chat_idx].sampler.max_new_tokens = tokens - 64
 		end
@@ -587,7 +571,7 @@ local adjust_tokens = function(self, combo)
 end
 
 local show_conversation = function(self, combo)
-	local tss = tss_gen.new(theme)
+	local tss = style.new(theme)
 	local msg_count = #self.chats[self.chat_idx]
 	term.clear()
 	term.go(1, 1)
@@ -637,25 +621,25 @@ local get_saved_costs = function(self)
 	return cost
 end
 
-local new = function(input, prompt, store)
+local new = function(input, store)
 	local conf = load_llm_config(store)
 
 	local mode = {
 		combos = {
-			["Ctrl+F"] = flush,
-			["Ctrl+Y"] = save,
-			["Ctrl+T"] = change_sampler,
-			["Ctrl+U"] = unload_model,
-			["Ctrl+Down"] = load_model,
-			["Ctrl+Up"] = attach_file,
-			["Alt+Up"] = adjust_temperature,
-			["Alt+Down"] = adjust_temperature,
-			["Alt+Left"] = adjust_tokens,
-			["Alt+Right"] = adjust_tokens,
-			["Ctrl+S"] = settings,
-			["Ctrl+O"] = load_conversation,
-			["Ctrl+R"] = show_conversation,
-			["Ctrl+P"] = choose_preset,
+			["CTRL+f"] = flush,
+			["CTRL+y"] = save,
+			["CTRL+t"] = change_sampler,
+			["CTRL+u"] = unload_model,
+			["CTRL+DOWN"] = load_model,
+			["CTRL+UP"] = attach_file,
+			["ALT+UP"] = adjust_temperature,
+			["ALT+DOWN"] = adjust_temperature,
+			["ALT+LEFT"] = adjust_tokens,
+			["ALT+RIGHT"] = adjust_tokens,
+			["CTRL+s"] = settings,
+			["CTRL+o"] = load_conversation,
+			["CTRL+r"] = show_conversation,
+			["CTRL+p"] = choose_preset,
 		},
 		store = store,
 		show_conversation = show_conversation,
@@ -691,7 +675,6 @@ local new = function(input, prompt, store)
 	}
 	mode.conf = conf
 	mode.total_cost = mode:get_saved_costs()
-	mode.input.prompt = prompt
 	mode.input.prompt:set({ total_cost = mode.total_cost })
 	mode:flush()
 	return mode

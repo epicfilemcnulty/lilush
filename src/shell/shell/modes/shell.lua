@@ -6,9 +6,8 @@ local widgets = require("term.widgets")
 local utils = require("shell.utils")
 local builtins = require("shell.builtins")
 local theme = require("shell.theme")
-local tss_gen = require("term.tss")
-local tss = tss_gen.new(theme)
-local ngi = require("term.input")
+local style = require("term.tss")
+local tss = style.new(theme)
 
 local check_config_dirs = function(self)
 	if not std.dir_exists(self.home .. "/.config/lilush") then
@@ -41,19 +40,13 @@ local load_shell_config = function()
 end
 
 local settings = function(self, combo)
-	local l, c = term.cursor_position()
-	term.switch_screen("alt")
-	-- term.set_raw_mode()
+	term.switch_screen("alt", true)
 	term.hide_cursor()
-	ngi.enable_kkbp()
 	widgets.settings(self.conf, "Shell Settings", theme.widgets.shell, 3, 5)
 	-- This is dubious, what if it was already changed via setenv?
 	std.setenv("AWS_REGIONS", self.conf.aws.regions)
-	term.switch_screen("main")
-	ngi.disable_kkbp()
+	term.switch_screen("main", nil, true)
 	term.show_cursor()
-	term.go(l, c)
-	term.move("column")
 	return true
 end
 
@@ -170,14 +163,11 @@ local python_env = function(self, cmd, args)
 			venvs = std.alphanumsort(venvs)
 			local content = { title = "Choose a python venv", options = venvs }
 			local l, c = term.cursor_position()
-			term.switch_screen("alt")
-			ngi.enable_kkbp()
+			term.switch_screen("alt", true)
 			term.hide_cursor()
 			local choice = widgets.switcher(content, theme.widgets.python)
-			term.switch_screen("main")
+			term.switch_screen("main", nil, true)
 			term.show_cursor()
-			term.go(l, c)
-			ngi.disable_kkbp()
 			virtual_env = base_dir .. "/" .. choice
 		end
 		if not virtual_env:match("^/") then
@@ -242,10 +232,10 @@ local run = function(self)
 	end
 end
 
-local new = function(input, prompt)
+local new = function(input)
 	local mode = {
 		combos = {
-			["Ctrl+S"] = settings,
+			["CTRL+s"] = settings,
 		},
 		aliases = {},
 		home = os.getenv("HOME") or "HOMELESS",
@@ -264,19 +254,20 @@ local new = function(input, prompt)
 		unalias = alias,
 	}
 	mode.input = input
-	mode.input.prompt = prompt
 	mode:check_config_dirs()
 	mode:load_config()
 	mode.conf = load_shell_config()
 	std.setenv("PWD", mode.pwd)
 	local prompts = os.getenv("LILUSH_PROMPT") or "user,dir"
-	mode.input.prompt:set({
-		home = mode.home,
-		user = mode.user,
-		hostname = mode.hostname,
-		pwd = mode.pwd,
-		prompts = prompts,
-	})
+	if mode.input.prompt then
+		mode.input.prompt:set({
+			home = mode.home,
+			user = mode.user,
+			hostname = mode.hostname,
+			pwd = mode.pwd,
+			prompts = prompts,
+		})
+	end
 	return mode
 end
 

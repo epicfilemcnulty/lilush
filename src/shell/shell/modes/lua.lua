@@ -3,8 +3,8 @@
 local term = require("term")
 local std = require("std")
 local theme = require("shell.theme")
-local tss_gen = require("term.tss")
-local tss = tss_gen.new(theme)
+local style = require("term.tss")
+local tss = style.new(theme)
 
 local combos = {}
 
@@ -44,13 +44,12 @@ local run = function(self)
 	return 0
 end
 
-local new = function(input, prompt)
+local new = function(input)
 	local mode = {
 		input = input,
 		combos = {},
 		run = run,
 	}
-	mode.input.prompt = prompt
 	return mode
 end
 

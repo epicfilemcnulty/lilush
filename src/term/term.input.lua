@@ -4,55 +4,6 @@ local std = require("std")
 local term = require("term")
 local buffer = require("string.buffer")
 
---[[ 
-  We use and support [kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/)
-  first and foremost. Legacy protocol will be supported eventually, though.
-  `kkbp` in function names stands for Kitty KeyBoard Protocol. ]]
-
---[[
- `has_kkbp` checks for the kkbp support.
-
- We issue a request for kkbp enhancement flags status and for
- the primary device attributes. If we get the kkbp response
- first (which ends with `u`), the protocol is supported. ]]
-local has_kkbp = function()
-	term.set_raw_mode()
-	term.write("\027[?u\027[c")
-	local buf = buffer.new()
-	repeat
-		local c = io.read(1)
-		if c then
-			buf:put(c)
-		end
-	until not c or c == "u"
-	local answer = buf:get()
-	if answer:match("u$") then
-		return true
-	end
-	return false
-end
---[[
-    kkbp has progressive enhancements, which are encoded as a bitfield enum:
-
-     0b1 (1)  Disambiguate escape codes
-     0b10 (2) Report event types
-     0b100 (4) Report alternate keys
-     0b1000 (8) Report all keys as escape codes
-     0b10000 (16) Report associated text
-
-    `enable_kkbp` is hardcoded to set progressive enhancements enum to 15,
-    and the code in the `get` function is based on the assumption that we
-    are working in this mode.
-]]
-local enable_kkbp = function()
-	term.write("\027[>1u")
-	term.write("\027[=15;1u")
-end
-
-local disable_kkbp = function()
-	term.write("\027[<u")
-end
-
 local kkbp_codes = {
 	["57441"] = "LEFT_SHIFT",
 	["57442"] = "LEFT_CTRL",
@@ -288,17 +239,23 @@ local input_obj_display = function(self)
 	term.go(self.__config.l, self.__config.c)
 	term.write(string.rep(" ", max + 1))
 	term.go(self.__config.l, self.__config.c)
-	local display_part = std.utf.sub(self.buffer, self.position, self.position + max)
+	local prompt_len = 0
+	local prompt = ""
+	if self.prompt then
+		prompt = self.prompt:get()
+		prompt_len = std.utf.len(prompt)
+	end
+	local display_part = std.utf.sub(self.buffer, self.position, self.position + (max - prompt_len))
 	if self.__config.escape_newlines then
 		display_part = display_part:gsub("\n", "␊")
 	end
-	term.write(display_part)
-	term.go(self.__config.l, self.__config.c + self.cursor)
+	term.write(prompt .. display_part)
+	term.go(self.__config.l, self.__config.c + self.cursor + prompt_len)
 end
 
 local input_obj_flush = function(self)
 	if self.history then
-		self.history:add(self:render())
+		--self.history:add(self:render())
 	end
 	if self.completions then
 		self.completions:flush()
@@ -404,7 +361,11 @@ end
 
 local input_obj_add = function(self, key)
 	local buf_len = std.utf.len(self.buffer)
-	local max = self:max_width()
+	local prompt_len = 0
+	if self.prompt then
+		prompt_len = std.utf.len(self.prompt:get())
+	end
+	local max = self:max_width() - prompt_len
 	if self.cursor == 0 then
 		if self.position == 1 then
 			self.buffer = key .. self.buffer
@@ -510,6 +471,7 @@ local input_obj_event = function(self)
 		if action then
 			return self[action](self)
 		end
+		return "combo", shortcut
 	end
 	return nil
 end
@@ -532,6 +494,7 @@ local new_input_obj = function(config)
 		position = 1,
 		history = config.history,
 		completions = config.completions,
+		prompt = config.prompt,
 		-- METHODS
 		add = input_obj_add,
 		left = input_obj_left,
@@ -569,14 +532,10 @@ local new_input_obj = function(config)
 		clear = { "CTRL+c" },
 	}
 	input_obj.__ctrls = ctrls
-	term.go(config.l, config.c)
 	return input_obj
 end
 
 local _M = {
-	enable_kkbp = enable_kkbp,
-	disable_kkbp = disable_kkbp,
-	has_kkbp = has_kkbp,
 	mods_to_string = mods_to_string,
 	string_to_mods = string_to_mods,
 	get = get,

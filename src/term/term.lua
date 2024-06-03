@@ -2,6 +2,7 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
 local core = require("term.core")
+local buffer = require("string.buffer")
 
 --[[ 
      See https://en.wikipedia.org/wiki/ANSI_escape_code 
@@ -33,16 +34,6 @@ end
 local write_at = function(l, c, s)
 	go(l, c)
 	io.write(s)
-	io.flush()
-end
-
-local switch_screen = function(scr)
-	local scr = scr or "main"
-	if scr == "main" then
-		io.write("\027[?47l")
-	else
-		io.write("\027[?47h")
-	end
 	io.flush()
 end
 
@@ -128,8 +119,7 @@ end
 local set_style = function(...)
 	local ansi = style(...)
 	if ansi ~= "" then
-		io.write(ansi)
-		io.flush()
+		write(ansi)
 	end
 end
 
@@ -160,12 +150,11 @@ end
 local set_color = function(fg, bg)
 	local ansi = color(fg, bg)
 	if ansi ~= "" then
-		io.write(ansi)
+		write(ansi)
 	end
 end
 
 local cursor_position = function()
-	core.set_raw_mode()
 	write("\027[6n")
 	local response = ""
 	repeat
@@ -185,8 +174,7 @@ local cursor_position = function()
 end
 
 local title = function(str)
-	io.write("\027]0;" .. str .. string.char(7))
-	io.flush()
+	write("\027]0;" .. str .. string.char(7))
 end
 
 local kitty_notify = function(title, body)
@@ -196,14 +184,91 @@ local kitty_notify = function(title, body)
 	if title and body then
 		local out = start .. "d=0:p=title;" .. title .. ending
 		out = out .. start .. "d=1:p=body;" .. body .. ending
-		io.write(out)
-		io.flush()
+		write(out)
 	elseif title or body then
 		local msg = title or body
 		local out = start .. "d=1:p=body;" .. msg .. ending
-		io.write(out)
-		io.flush()
+		write(out)
 	end
+end
+
+--[[ 
+  We use and support [kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/)
+  first and foremost. Legacy protocol will be supported eventually, though.
+  `kkbp` in function names stands for Kitty KeyBoard Protocol. ]]
+
+--[[
+ `has_kkbp` checks for the kkbp support.
+ 
+ We issue a request for kkbp enhancement flags status and for
+ the primary device attributes. If we get the kkbp response
+ first (which ends with `u`), the protocol is supported. ]]
+local has_kkbp = function()
+	write("\027[?u\027[c")
+	local buf = buffer.new()
+	repeat
+		local c = io.read(1)
+		if c then
+			buf:put(c)
+		end
+	until not c or c == "u"
+	local answer = buf:get()
+	if answer:match("u$") then
+		return true
+	end
+	return false
+end
+--[[
+    kkbp has progressive enhancements, which are encoded as a bitfield enum:
+ 
+     0b1     (1)  Disambiguate escape codes
+     0b10    (2)  Report event types
+     0b100   (4)  Report alternate keys
+     0b1000  (8)  Report all keys as escape codes
+     0b10000 (16) Report associated text
+ 
+    `enable_kkbp` is hardcoded to set progressive enhancements enum to 15,
+    and the code in the `term.input` module is based on the assumption that we
+    are working in this mode.
+]]
+local enable_kkbp = function()
+	write("\027[>1u")
+	write("\027[=15;1u")
+end
+
+local disable_kkbp = function()
+	write("\027[<u")
+end
+
+local set_sane_mode = function()
+	disable_kkbp()
+	core.set_sane_mode()
+end
+
+local set_raw_mode = function(with_kkbp)
+	local with_kkbp = with_kkbp or false
+	core.set_raw_mode()
+	if with_kkbp then
+		enable_kkbp()
+	end
+end
+
+local switch_screen = function(scr, with_kkbp, disable_kkbp_before_switch)
+	local scr = scr or "main"
+	local with_kkbp = with_kkbp or false
+	local disable_kkbp_before_switch = disable_kkbp_before_switch or false
+	if disable_kkbp_before_switch then
+		disable_kkbp()
+	end
+	if scr == "main" then
+		io.write("\027[?47l")
+	else
+		io.write("\027[?47h")
+	end
+	if with_kkbp then
+		enable_kkbp()
+	end
+	io.flush()
 end
 
 local _M = {
@@ -223,11 +288,14 @@ local _M = {
 	color = color,
 	set_style = set_style,
 	set_color = set_color,
-	set_raw_mode = core.set_raw_mode,
-	set_sane_mode = core.set_sane_mode,
+	set_raw_mode = set_raw_mode,
+	set_sane_mode = set_sane_mode,
 	resized = core.resized,
 	window_size = core.get_window_size,
 	switch_screen = switch_screen,
+	has_kkbp = has_kkbp,
+	enable_kkbp = enable_kkbp,
+	disable_kkbp = disable_kkbp,
 }
 
 return _M
