@@ -121,7 +121,7 @@ local run = function(self)
 				term.set_raw_mode(true)
 				local l, c = term.cursor_position()
 				self.modes[self.mode].input.__config.l = l
-				self.modes[self.mode].input.__config.c = c
+				self.modes[self.mode].input.__config.c = 1
 				self.modes[self.mode].input:display()
 			elseif event == "combo" then
 				if combos[combo] then
