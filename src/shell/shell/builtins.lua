@@ -1350,7 +1350,7 @@ local files_matching = function(cmd, args)
 	return 0
 end
 
-local storage = require("shell.storage")
+local storage = require("storage")
 
 local zx_help = [[
 : zx

@@ -63,6 +63,8 @@ typedef struct mod_lua {
 #include "../build/djot/mod_lua_djot.inline.h"
 // redis
 #include "../build/redis/mod_lua_redis.h"
+// redis backed storage
+#include "../build/storage/mod_lua_storage.h"
 // llm
 #include "../build/llm/mod_lua_llm.anthropic.h"
 #include "../build/llm/mod_lua_llm.general.h"
@@ -86,7 +88,6 @@ typedef struct mod_lua {
 #include "../build/shell/mod_lua_shell.prompts.llm.h"
 #include "../build/shell/mod_lua_shell.prompts.lua.h"
 #include "../build/shell/mod_lua_shell.prompts.shell.h"
-#include "../build/shell/mod_lua_shell.storage.h"
 #include "../build/shell/mod_lua_shell.theme.h"
 #include "../build/shell/mod_lua_shell.utils.h"
 
@@ -130,7 +131,7 @@ const mod_lua__t lua_preload[] = {
     {"shell.theme",                        mod_lua_shell_theme,                        &mod_lua_shell_theme_SIZE                 },
     {"shell.builtins",                     mod_lua_shell_builtins,                     &mod_lua_shell_builtins_SIZE              },
     {"shell.utils",                        mod_lua_shell_utils,                        &mod_lua_shell_utils_SIZE                 },
-    {"shell.storage",                      mod_lua_shell_storage,                      &mod_lua_shell_storage_SIZE               },
+    {"storage",                            mod_lua_storage,                            &mod_lua_storage_SIZE                     },
     {"shell.history",                      mod_lua_shell_history,                      &mod_lua_shell_history_SIZE               },
     {"shell.completions",                  mod_lua_shell_completions,                  &mod_lua_shell_completions_SIZE           },
     {"shell.completions.shell",            mod_lua_shell_completions_shell,            &mod_lua_shell_completions_shell_SIZE     },

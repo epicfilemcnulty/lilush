@@ -3,8 +3,9 @@
 local std = require("std")
 local term = require("term")
 local text = require("text")
-
+local storage = require("storage")
 local input = require("term.input")
+
 local shell_mode = require("shell.modes.shell")
 local lua_mode = require("shell.modes.lua")
 local llm_mode = require("shell.modes.llm")
@@ -16,7 +17,6 @@ local llm_prompt = require("shell.prompts.llm")
 local shell_completions = require("shell.completions.shell")
 local builtins = require("shell.builtins")
 local utils = require("shell.utils")
-local storage = require("shell.storage")
 local theme = require("shell.theme")
 
 local show_error_message = function(status, err)

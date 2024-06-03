@@ -4,7 +4,7 @@
 local std = require("std")
 local core = require("std.core")
 local json = require("cjson.safe")
-local storage = require("shell.storage")
+local storage = require("storage")
 
 local dir_history_complete = function(args)
 	local candidates = {}

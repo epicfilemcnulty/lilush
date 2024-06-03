@@ -2,7 +2,7 @@
 set -euo pipefail
 
 base_dir=${PWD%/build}
-dirs=(luasocket std crypto term text djot redis llm shell dns argparser markdown)
+dirs=(luasocket std crypto term text djot redis llm shell dns argparser markdown storage)
 
 headers_from_luamod () {
     file_name="${1##*/}"
