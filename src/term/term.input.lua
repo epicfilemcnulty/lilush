@@ -230,32 +230,43 @@ local input_obj_max_width = function(self)
 	return max
 end
 
+local input_obj_prompt_len = function(self)
+	local len = 0
+	local prompt = ""
+	if self.prompt and self.prompt.get then
+		prompt = self.prompt:get()
+		len = std.utf.len(prompt)
+	end
+	return len, prompt
+end
+
 local input_obj_render = function(self)
 	return self.buffer
 end
 
-local input_obj_display = function(self)
+local input_obj_display = function(self, redraw_prompt)
+	local prompt_len, prompt = self:prompt_len()
 	local max = self:max_width()
-	term.go(self.__config.l, self.__config.c)
-	term.write(string.rep(" ", max + 1))
-	term.go(self.__config.l, self.__config.c)
-	local prompt_len = 0
-	local prompt = ""
-	if self.prompt then
-		prompt = self.prompt:get()
-		prompt_len = std.utf.len(prompt)
+	if redraw_prompt and prompt_len > 0 then
+		term.go(self.__config.l, self.__config.c)
+		term.write(prompt)
 	end
+	term.go(self.__config.l, self.__config.c + prompt_len)
+	term.clear_line()
 	local display_part = std.utf.sub(self.buffer, self.position, self.position + (max - prompt_len))
 	if self.__config.escape_newlines then
 		display_part = display_part:gsub("\n", "␊")
 	end
-	term.write(prompt .. display_part)
+	term.write(display_part)
+	if self.cursor > max - prompt_len then
+		self.cursor = max - prompt_len
+	end
 	term.go(self.__config.l, self.__config.c + self.cursor + prompt_len)
 end
 
 local input_obj_flush = function(self)
 	if self.history then
-		--self.history:add(self:render())
+		self.history:add(self:render())
 	end
 	if self.completions then
 		self.completions:flush()
@@ -263,6 +274,25 @@ local input_obj_flush = function(self)
 	self.buffer = ""
 	self.position = 1
 	self.cursor = 0
+end
+
+local input_obj_up = function(self)
+	if self.history and self.history:up() then
+		if #self.buffer > 0 and self.history.position == #self.history.entries then
+			self.history:stash(self.buffer)
+		end
+		self.buffer = self.history:get()
+		self:end_of_line()
+	end
+	return false
+end
+
+local input_obj_down = function(self)
+	if self.history and self.history:down() then
+		self.buffer = self.history:get()
+		self:end_of_line()
+	end
+	return false
 end
 
 local input_obj_left = function(self)
@@ -313,14 +343,13 @@ end
 
 local input_obj_end_of_line = function(self)
 	local buf_len = std.utf.len(self.buffer)
-	local max = self:max_width()
-	if buf_len <= max then
-		self.cursor = buf_len
-		term.go(self.__config.l, self.__config.c + self.cursor)
-		return false
+	local max = self:max_width() - self:prompt_len()
+	self.position = 1
+	self.cursor = buf_len
+	if buf_len > max then
+		self.cursor = max
+		self.position = buf_len - max
 	end
-	self.position = buf_len - max
-	self.cursor = max
 	self:display()
 end
 
@@ -499,6 +528,8 @@ local new_input_obj = function(config)
 		add = input_obj_add,
 		left = input_obj_left,
 		right = input_obj_right,
+		up = input_obj_up,
+		down = input_obj_down,
 		backspace = input_obj_backspace,
 		display = input_obj_display,
 		render = input_obj_render,
@@ -512,6 +543,7 @@ local new_input_obj = function(config)
 		execute = input_obj_execute,
 		clear = input_obj_clear,
 		max_width = input_obj_max_width,
+		prompt_len = input_obj_prompt_len,
 		map_ctrl = input_obj_map_ctrl,
 		external_editor = input_obj_external_editor,
 	}
@@ -523,6 +555,8 @@ local new_input_obj = function(config)
 		exit = { "ESC" },
 		left = { "LEFT" },
 		right = { "RIGHT" },
+		up = { "UP" },
+		down = { "DOWN" },
 		execute = { "ENTER" },
 		end_of_line = { "END", "CTRL+e" },
 		start_of_line = { "HOME", "CTRL+a" },

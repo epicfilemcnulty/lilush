@@ -5,6 +5,7 @@ local term = require("term")
 local text = require("text")
 local storage = require("storage")
 local input = require("term.input")
+local history = require("term.input.history")
 
 local shell_mode = require("shell.modes.shell")
 local lua_mode = require("shell.modes.lua")
@@ -100,7 +101,7 @@ local run = function(self)
 	end
 	term.enable_kkbp()
 	term.clear()
-	self.modes[self.mode].input:display()
+	self.modes[self.mode].input:display(true)
 	while true do
 		local event, combo = self.modes[self.mode].input:event()
 		if event then
@@ -122,15 +123,15 @@ local run = function(self)
 				local l, c = term.cursor_position()
 				self.modes[self.mode].input.__config.l = l
 				self.modes[self.mode].input.__config.c = 1
-				self.modes[self.mode].input:display()
+				self.modes[self.mode].input:display(true)
 			elseif event == "combo" then
 				if combos[combo] then
 					if combos[combo](self, combo) then
-						self.modes[self.mode].input:display()
+						self.modes[self.mode].input:display(true)
 					end
 				elseif self.modes[self.mode].combos[combo] then
 					if self.modes[self.mode].combos[combo](self.modes[self.mode], combo) then
-						self.modes[self.mode].input:display()
+						self.modes[self.mode].input:display(true)
 					end
 				end
 			end
@@ -174,13 +175,16 @@ local new = function()
 			end
 		end
 	end
-	local history = storage.new()
+	local history_store = storage.new()
 	local llm_store = storage.new()
 	local shell = {
 		modes = {
-			shell = shell_mode.new(input.new({ history = history, prompt = shell_prompt })),
-			lua = lua_mode.new(input.new({ history = history, prompt = lua_prompt })),
-			llm = llm_mode.new(input.new({ history = history, prompt = llm_prompt }), llm_store),
+			shell = shell_mode.new(input.new({ history = history.new("shell", history_store), prompt = shell_prompt })),
+			lua = lua_mode.new(input.new({ history = history.new("lua", history_store), prompt = lua_prompt })),
+			llm = llm_mode.new(
+				input.new({ history = history.new("llm", history_store), prompt = llm_prompt }),
+				llm_store
+			),
 		},
 		mode = "shell",
 		run = run,
