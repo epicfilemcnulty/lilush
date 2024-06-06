@@ -3,8 +3,8 @@
 local term = require("term")
 local buffer = require("string.buffer")
 local theme = require("shell.theme")
-local tss_gen = require("term.tss")
-local tss = tss_gen.new(theme)
+local style = require("term.tss")
+local tss = style.new(theme)
 
 local llm_prompt = function(self)
 	local buf = buffer.new()

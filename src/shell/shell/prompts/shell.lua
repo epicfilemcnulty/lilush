@@ -4,8 +4,8 @@ local std = require("std")
 local buffer = require("string.buffer")
 local term = require("term")
 local theme = require("shell.theme")
-local tss_gen = require("term.tss")
-local tss = tss_gen.new(theme)
+local style = require("term.tss")
+local tss = style.new(theme)
 
 local git_prompt = function(self)
 	local resp = std.exec_simple("git status --porcelain --branch")
@@ -169,15 +169,15 @@ local set = function(self, options, export)
 	for k, v in pairs(options) do
 		self[k] = v
 	end
-	self.prompts = self.prompts or "user,dir"
+	self.blocks = self.blocks or "user,dir"
 	if export then
-		std.setenv("LILUSH_PROMPT", self.prompts)
+		std.setenv("LILUSH_PROMPT", self.blocks)
 	end
 end
 
 local get = function(self)
 	local enabled = {}
-	local enabled_blocks = os.getenv("LILUSH_PROMPT") or self.prompts
+	local enabled_blocks = os.getenv("LILUSH_PROMPT") or self.blocks
 	for b in enabled_blocks:gmatch("(%w+),?") do
 		table.insert(enabled, b)
 	end

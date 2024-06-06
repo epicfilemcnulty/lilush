@@ -1,9 +1,9 @@
 -- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
-local term = require("term")
 local text = require("text")
 local storage = require("storage")
+local term = require("term")
 local input = require("term.input")
 local history = require("term.input.history")
 local completion = require("term.input.completion")
@@ -76,8 +76,8 @@ local toggle_blocks_combo = function(self, combo)
 			table.insert(blocks, 1, map[combo])
 		end
 	end
-	prompt = table.concat(blocks, ",")
-	self.modes.shell.input.prompt:set({ prompts = prompt }, true)
+	enabled_blocks = table.concat(blocks, ",")
+	self.modes.shell.input.prompt:set({ blocks = enabled_blocks }, true)
 	return true
 end
 
@@ -179,13 +179,11 @@ local new = function()
 	local llm_store = storage.new()
 	local shell = {
 		modes = {
-			shell = shell_mode.new(
-				input.new({
-					completion = completion.new({ kind = "shell", sources = "bin" }),
-					history = history.new("shell", history_store),
-					prompt = shell_prompt,
-				})
-			),
+			shell = shell_mode.new(input.new({
+				completion = completion.new({ kind = "shell", sources = "bin" }),
+				history = history.new("shell", history_store),
+				prompt = shell_prompt,
+			})),
 			lua = lua_mode.new(input.new({ history = history.new("lua", history_store), prompt = lua_prompt })),
 			llm = llm_mode.new(
 				input.new({ history = history.new("llm", history_store), prompt = llm_prompt }),
