@@ -6,6 +6,7 @@ local text = require("text")
 local storage = require("storage")
 local input = require("term.input")
 local history = require("term.input.history")
+local completion = require("term.input.completion")
 
 local shell_mode = require("shell.modes.shell")
 local lua_mode = require("shell.modes.lua")
@@ -15,7 +16,6 @@ local shell_prompt = require("shell.prompts.shell")
 local lua_prompt = require("shell.prompts.lua")
 local llm_prompt = require("shell.prompts.llm")
 
-local shell_completions = require("shell.completions.shell")
 local builtins = require("shell.builtins")
 local utils = require("shell.utils")
 local theme = require("shell.theme")
@@ -179,7 +179,13 @@ local new = function()
 	local llm_store = storage.new()
 	local shell = {
 		modes = {
-			shell = shell_mode.new(input.new({ history = history.new("shell", history_store), prompt = shell_prompt })),
+			shell = shell_mode.new(
+				input.new({
+					completion = completion.new({ kind = "shell", sources = "bin" }),
+					history = history.new("shell", history_store),
+					prompt = shell_prompt,
+				})
+			),
 			lua = lua_mode.new(input.new({ history = history.new("lua", history_store), prompt = lua_prompt })),
 			llm = llm_mode.new(
 				input.new({ history = history.new("llm", history_store), prompt = llm_prompt }),

@@ -1,1 +1,0 @@
-shell/completions/shell.lua

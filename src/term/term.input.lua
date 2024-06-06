@@ -522,7 +522,7 @@ local new_input_obj = function(config)
 		cursor = 0,
 		position = 1,
 		history = config.history,
-		completions = config.completions,
+		completion = config.completion,
 		prompt = config.prompt,
 		-- METHODS
 		add = input_obj_add,

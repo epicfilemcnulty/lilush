@@ -1,1 +1,0 @@
-shell/completions/sources/cmds.lua
