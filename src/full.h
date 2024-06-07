@@ -34,6 +34,7 @@ typedef struct mod_lua {
 #include "../build/term/mod_lua_term.input.completion.h"
 #include "../build/term/mod_lua_term.input.h"
 #include "../build/term/mod_lua_term.input.history.h"
+#include "../build/term/mod_lua_term.input.prompt.h"
 #include "../build/term/mod_lua_term.tss.h"
 #include "../build/term/mod_lua_term.widgets.h"
 // markdown
@@ -86,6 +87,7 @@ const mod_lua__t lua_preload[] = {
     {"term.tss",              mod_lua_term_tss,              &mod_lua_term_tss_SIZE             },
     {"term.input",            mod_lua_term_input,            &mod_lua_term_input_SIZE           },
     {"term.input.history",    mod_lua_term_input_history,    &mod_lua_term_input_history_SIZE   },
+    {"term.input.prompt",     mod_lua_term_input_prompt,     &mod_lua_term_input_prompt_SIZE    },
     {"term.input.completion", mod_lua_term_input_completion, &mod_lua_term_input_completion_SIZE},
     {"dns.resolver",          mod_lua_dns_resolver,          &mod_lua_dns_resolver_SIZE         },
     {"dns.parser",            mod_lua_dns_parser,            &mod_lua_dns_parser_SIZE           },

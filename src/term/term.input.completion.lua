@@ -42,15 +42,13 @@ end
 
 -- Creates a new instance of a completion object
 local new = function(config)
-	local default_config = {
-		kind = "shell",
-		sources = "bin",
-	}
-	default_config = std.merge_tables(default_config, config)
-	if not std.module_available("completion." .. default_config.kind) then
-		return nil, "no such completion"
+	if not config or not config.path then
+		return nil, "no config provided"
 	end
-	local compl_kind = require("completion." .. default_config.kind)
+	if not std.module_available(config.path) then
+		return nil, "no such completion module: " .. config.path
+	end
+	local search_function = require(config.path)
 	local completion = {
 		-- DATA
 		__candidates = {},
@@ -61,19 +59,21 @@ local new = function(config)
 			exec_on_promotion = false,
 		},
 		-- METHODS
-		search = compl_kind.search,
+		search = search_function,
 		available = available,
 		get = get,
 		flush = flush,
 		update = update,
 		provide = provide,
 	}
-	for source in default_config.sources:gmatch("([%w_]+),?") do
-		if not std.module_available("completion.source." .. default_config.kind .. "." .. source) then
-			return nil, "no such completion source"
+	if config.sources then
+		for name, path in pairs(config.sources) do
+			if not std.module_available(path) then
+				return nil, "no such completion source: " .. path
+			end
+			local s = require(path)
+			completion.__sources[name] = s.new()
 		end
-		local s = require("completion.source." .. default_config.kind .. "." .. source)
-		completion.__sources[source] = s.new()
 	end
 	completion:update()
 	return completion
