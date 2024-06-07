@@ -48,7 +48,7 @@ local new = function(config)
 	if not std.module_available(config.path) then
 		return nil, "no such completion module: " .. config.path
 	end
-	local search_function = require(config.path)
+	local mod = require(config.path)
 	local completion = {
 		-- DATA
 		__candidates = {},
@@ -59,9 +59,9 @@ local new = function(config)
 			exec_on_promotion = false,
 		},
 		-- METHODS
-		search = search_function,
+		search = mod.search,
 		available = available,
-		get = get,
+		get = mod.get or get,
 		flush = flush,
 		update = update,
 		provide = provide,

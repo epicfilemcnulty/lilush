@@ -297,8 +297,8 @@ end
 
 local input_obj_left = function(self)
 	if self.cursor > 0 then
-		if self.completions then
-			self.completions:clear()
+		if self.completion then
+			term.clear_line()
 		end
 		self.cursor = self.cursor - 1
 		term.move("left")
@@ -376,6 +376,9 @@ local input_obj_backspace = function(self)
 		return false
 	end
 	if self.position + self.cursor - 1 == buf_len then
+		if self.completion then
+			term.clear_line()
+		end
 		self.buffer = std.utf.sub(self.buffer, 1, std.utf.len(self.buffer) - 1)
 		term.write("\b \b")
 		self.cursor = self.cursor - 1
@@ -414,7 +417,17 @@ local input_obj_add = function(self, key)
 			if key == "\n" and self.__config.escape_newlines then
 				key = "␊"
 			end
-			term.write(key)
+			local compl = ""
+			if self.completion then
+				term.clear_line()
+				if key ~= " " and self.completion:search(self:render()) then
+					compl = self.completion:get()
+				end
+			end
+			term.write(key .. compl)
+			if #compl > 0 then
+				term.go(self.__config.l, self.__config.c + self.cursor + prompt_len)
+			end
 		else
 			self.position = self.position + 1
 			self:display()
