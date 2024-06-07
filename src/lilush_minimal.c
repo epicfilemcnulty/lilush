@@ -11,7 +11,7 @@
 #include <lua.h>
 #include <lualib.h>
 
-#include "full.h"
+#include "minimal.h"
 
 void preload_modules(lua_State *const L) {
     assert(L != NULL);
@@ -63,50 +63,6 @@ int main(int argc, char **argv) {
     lua_State *L = luaL_newstate();
     preload_modules(L);
 
-    char *cmd = basename(argv[0]);
-    if (strcmp(cmd, "lilush") != 0 && strcmp(cmd, "-lilush") != 0) {
-        lua_pushstring(L, cmd);
-        lua_setglobal(L, "cmd");
-        int args = argc - 1;
-        lua_createtable(L, args, args);
-        int i;
-        for (i = 1; i < argc; i++) {
-            lua_pushstring(L, argv[i]);
-            lua_rawseti(L, -2, i);
-        }
-        lua_setglobal(L, "arg");
-        error = luaL_dostring(L, EXEC_BUILTIN);
-        if (error) {
-            fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
-            return 1;
-        }
-        return 0;
-    }
-    if (argc < 2) {
-        error = luaL_dostring(L, START_SHELL);
-        if (error) {
-            fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
-            return 1;
-        }
-        return 0;
-    }
-
-    if (strcmp(argv[1], "-c") == 0) {
-        int args = argc - 2;
-        lua_createtable(L, args, args);
-        int i;
-        for (i = 2; i < argc; i++) {
-            lua_pushstring(L, argv[i]);
-            lua_rawseti(L, -2, i - 1);
-        }
-        lua_setglobal(L, "arg");
-        error = luaL_dostring(L, START_MINI_SHELL);
-        if (error) {
-            fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
-            return 1;
-        }
-        return 0;
-    }
     if (strcmp(argv[1], "-v") == 0) {
         fprintf(stdout, "version %s\n", LILUSH_VERSION);
         return 0;

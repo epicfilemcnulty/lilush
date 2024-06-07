@@ -5,9 +5,9 @@ local buffer = require("string.buffer")
 local term = require("term")
 local markdown = require("markdown")
 local djot = require("djot")
-local tss_gen = require("term.tss")
+local style = require("term.tss")
 
-local default_plain_tss = {
+local default_plain_rss = {
 	clip = -1,
 	fg = 253,
 	global_indent = -1,
@@ -23,7 +23,7 @@ local default_borders = {
 	v = { content = "⎜", w = 1 },
 }
 
-local default_formatted_tss = {
+local default_formatted_rss = {
 	wrap = 80,
 	codeblock_wrap = true,
 	global_indent = 2,
@@ -73,8 +73,8 @@ local default_formatted_tss = {
 	},
 }
 
-local render_text = function(raw, tss, conf)
-	local tss = tss_gen.merge(default_plain_tss, tss)
+local render_text = function(raw, rss, conf)
+	local tss = style.merge(default_plain_rss, rss)
 	local conf = conf or {}
 	local wrap = tss.__style.wrap or 0
 	if conf.wrap then
@@ -91,8 +91,8 @@ local render_text = function(raw, tss, conf)
 	return std.indent(out, g_indent)
 end
 
-local render_markdown = function(raw, tss, conf)
-	local tss = tss_gen.merge(default_formatted_tss, tss)
+local render_markdown = function(raw, rss, conf)
+	local tss = style.merge(default_formatted_rss, rss)
 	local conf = conf or {}
 
 	local ast = markdown.ast(raw)
@@ -508,8 +508,8 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 	return "\n"
 end
 
-local render_djot = function(raw, tss, conf)
-	local tss = tss_gen.merge(default_formatted_tss, tss)
+local render_djot = function(raw, rss, conf)
+	local tss = style.merge(default_formatted_rss, rss)
 	local conf = conf or {}
 	local wrap = conf.wrap or tss.__style.wrap or 0
 	local g_indent = conf.global_indent or tss.__style.global_indent or 0
