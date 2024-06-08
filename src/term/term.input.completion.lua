@@ -1,6 +1,12 @@
 -- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
+local style = require("term.tss")
+
+local rss = {
+	default = { fg = 247 },
+}
+local tss = style.new(rss)
 
 local flush = function(self)
 	self.__candidates = {}
@@ -19,10 +25,14 @@ local available = function(self)
 	return false
 end
 
-local get = function(self)
+local get = function(self, promoted)
 	if #self.__candidates > 0 then
 		if self.__chosen <= #self.__candidates then
-			return self.__candidates[self.__chosen]
+			local variant = self.__candidates[self.__chosen]
+			if promoted then
+				return variant
+			end
+			return tss:apply("default", variant)
 		end
 	end
 	return ""

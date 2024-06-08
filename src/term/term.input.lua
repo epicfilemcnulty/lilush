@@ -311,7 +311,7 @@ end
 
 local input_obj_right = function(self)
 	local buf_len = std.utf.len(self.buffer)
-	local max = self:max_width()
+	local max = self:max_width() - self:prompt_len()
 	if self.position + self.cursor - 1 < buf_len then
 		if self.cursor <= max then
 			self.cursor = self.cursor + 1
@@ -320,6 +320,8 @@ local input_obj_right = function(self)
 			self.position = self.position + 1
 			self:display()
 		end
+	else
+		self:scroll_completion()
 	end
 	return nil
 end
@@ -411,7 +413,6 @@ local input_obj_add = function(self, key)
 		return false
 	end
 	if buf_len == self.position + self.cursor - 1 then
-		self.buffer = self.buffer .. key
 		if self.cursor < max then
 			self.cursor = self.cursor + 1
 			if key == "\n" and self.__config.escape_newlines then
@@ -420,7 +421,14 @@ local input_obj_add = function(self, key)
 			local compl = ""
 			if self.completion then
 				term.clear_line()
-				if key ~= " " and self.completion:search(self:render()) then
+				if key == " " then
+					if self.completion and self.completion:available() then
+						self.cursor = self.cursor - 1
+						return self:scroll_completion()
+					end
+				end
+				self.buffer = self.buffer .. key
+				if self.completion:search(self:render()) then
 					compl = self.completion:get()
 				end
 			end
@@ -429,6 +437,7 @@ local input_obj_add = function(self, key)
 				term.go(self.__config.l, self.__config.c + self.cursor + prompt_len)
 			end
 		else
+			self.buffer = self.buffer .. key
 			self.position = self.position + 1
 			self:display()
 		end
@@ -458,8 +467,42 @@ local input_obj_external_editor = function(self)
 	stdout:close_out()
 	self.buffer = result
 	self:end_of_line()
-	-- Ugly, cause we might end up calling display twice...
 	self:display()
+end
+
+local scroll_completion = function(self)
+	if self.completion then
+		local prompt_len = 0
+		if self.prompt then
+			prompt_len = std.utf.len(self.prompt:get())
+		end
+		if self.completion:available() then
+			term.clear_line()
+			local total = #self.completion.__candidates
+			self.completion.__chosen = self.completion.__chosen + 1
+			if self.completion.__chosen > total then
+				self.completion.__chosen = 1
+			end
+			term.write(self.completion:get())
+			term.go(self.__config.l, self.__config.c + self.cursor + prompt_len)
+		end
+	end
+end
+
+local promote_completion = function(self)
+	if self.completion then
+		local prompt_len = 0
+		if self.prompt then
+			prompt_len = std.utf.len(self.prompt:get())
+		end
+		if self.completion:available() then
+			term.clear_line()
+			local promoted = self.completion:get(true)
+			self.buffer = self.buffer .. promoted
+			self.completion:flush()
+			self:end_of_line()
+		end
+	end
 end
 
 local input_obj_newline = function(self)
@@ -549,6 +592,9 @@ local new_input_obj = function(config)
 		flush = input_obj_flush,
 		event = input_obj_event,
 		exit = input_obj_exit,
+		tab = promote_completion,
+		scroll_completion = scroll_completion,
+		promote_completion = promote_completion,
 		newline = input_obj_newline,
 		end_of_line = input_obj_end_of_line,
 		start_of_line = input_obj_start_of_line,
@@ -570,6 +616,7 @@ local new_input_obj = function(config)
 		right = { "RIGHT" },
 		up = { "UP" },
 		down = { "DOWN" },
+		tab = { "TAB" },
 		execute = { "ENTER" },
 		end_of_line = { "END", "CTRL+e" },
 		start_of_line = { "HOME", "CTRL+a" },

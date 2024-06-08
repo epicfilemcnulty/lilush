@@ -53,37 +53,9 @@ local change_mode_combo = function(self, combo)
 	return clear_combo(self)
 end
 
-local toggle_blocks_combo = function(self, combo)
-	local map = { ["ALT+k"] = "kube", ["ALT+a"] = "aws", ["ALT+g"] = "git" }
-
-	local prompt = os.getenv("LILUSH_PROMPT") or ""
-	local blocks = {}
-	local toggled = false
-	for b in prompt:gmatch("(%w+),?") do
-		if b ~= map[combo] then
-			table.insert(blocks, b)
-		else
-			toggled = true
-		end
-	end
-	if not toggled then
-		if map[combo] == "git" then
-			table.insert(blocks, map[combo])
-		else
-			table.insert(blocks, 1, map[combo])
-		end
-	end
-	enabled_blocks = table.concat(blocks, ",")
-	self.modes.shell.input.prompt:set({ blocks = enabled_blocks }, true)
-	return true
-end
-
 local combos = {
 	["CTRL+d"] = exit_combo,
 	["CTRL+l"] = clear_combo,
-	["ALT+k"] = toggle_blocks_combo,
-	["ALT+a"] = toggle_blocks_combo,
-	["ALT+g"] = toggle_blocks_combo,
 	["F1"] = change_mode_combo,
 	["F2"] = change_mode_combo,
 	["F3"] = change_mode_combo,
