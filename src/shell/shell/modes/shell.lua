@@ -100,8 +100,8 @@ end
 -- cause they need access to the mode's self object.
 
 local rehash = function(self, cmd, args)
-	if self.input.completions then
-		self.input.completions.source:update()
+	if self.input.completion then
+		self.input.completion:update()
 	end
 	return 0
 end
@@ -122,15 +122,15 @@ local alias = function(self, cmd, args)
 		elseif #args > 1 then
 			local a = table.remove(args, 1)
 			self.aliases[a] = table.concat(args, " ")
-			if self.input.completions then
-				self.input.completions.source.sources.builtins:update(self.aliases)
+			if self.input.completion then
+				self.input.completion.__sources["builtins"]:update(self.aliases)
 			end
 		end
 	elseif cmd == "unalias" then
 		if #args > 0 then
 			self.aliases[args[1]] = nil
-			if self.input.completions then
-				self.input.completions.source.sources.builtins:update(self.aliases)
+			if self.input.completion then
+				self.input.completion.__sources["builtins"]:update(self.aliases)
 			end
 		end
 	end
@@ -205,14 +205,10 @@ local run = function(self)
 		return 0
 	end
 
-	if self.input.completions then
+	if self.input.completion then
 		for _, cmdline in ipairs(pipeline) do
 			local cmd = cmdline.cmd
-			if
-				not builtins.get(cmd)
-				and not self.input.completions.source.sources.bin.binaries[cmd]
-				and not tlb[cmd]
-			then
+			if not builtins.get(cmd) and not self.input.completion.__sources["bin"].binaries[cmd] and not tlb[cmd] then
 				if not cmd:match("^%.?/") then
 					return 255, "uknown command in pipeline: `" .. cmdline.cmd .. "`"
 				end
@@ -297,6 +293,9 @@ local new = function(input)
 			pwd = mode.pwd,
 			prompts = prompts,
 		})
+	end
+	if mode.input.completion then
+		mode.input.completion.__sources["builtins"]:update(mode.aliases)
 	end
 	return mode
 end
