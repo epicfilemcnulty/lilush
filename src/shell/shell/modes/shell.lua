@@ -162,12 +162,10 @@ local python_env = function(self, cmd, args)
 			end
 			venvs = std.alphanumsort(venvs)
 			local content = { title = "Choose a python venv", options = venvs }
-			term.set_raw_mode(true)
 			term.switch_screen("alt", true)
 			term.hide_cursor()
 			local choice = widgets.switcher(content, theme.widgets.python)
 			term.switch_screen("main", nil, true)
-			term.set_sane_mode()
 			term.show_cursor()
 			virtual_env = base_dir .. "/" .. choice
 		end
