@@ -521,6 +521,9 @@ local promote_completion = function(self)
 			local promoted = self.completion:get(true)
 			local metadata = self.completion.__meta[self.completion.__chosen]
 			if metadata.replace_prompt then
+				if metadata.trim_promotion then
+					promoted = promoted:gsub("^%s+", "")
+				end
 				self.buffer = metadata.replace_prompt .. promoted
 			else
 				self.buffer = self.buffer .. promoted
