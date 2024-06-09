@@ -770,16 +770,15 @@ local aws_profile = function(cmd, args)
 		for p in aws_config:gmatch("%[profile ([^%]]+)%]") do
 			table.insert(content.options, p)
 		end
-		local l, c = term.cursor_position()
-		term.switch_screen("alt")
 		term.set_raw_mode()
+		local l, c = term.cursor_position()
+		term.switch_screen("alt", true)
 		term.hide_cursor()
 		local profile = widgets.switcher(content, theme.widgets.aws)
 		term.show_cursor()
-		term.switch_screen("main")
-		term.set_sane_mode()
+		term.switch_screen("main", nil, true)
 		term.go(l, c)
-		term.move("column")
+		term.set_sane_mode()
 		if profile ~= "" then
 			std.setenv("AWS_PROFILE", profile)
 		end

@@ -161,12 +161,15 @@ local python_env = function(self, cmd, args)
 				table.insert(venvs, f)
 			end
 			venvs = std.alphanumsort(venvs)
+			term.set_raw_mode()
+			local l, c = term.cursor_position()
 			local content = { title = "Choose a python venv", options = venvs }
 			term.switch_screen("alt", true)
 			term.hide_cursor()
 			local choice = widgets.switcher(content, theme.widgets.python)
 			term.switch_screen("main", nil, true)
 			term.show_cursor()
+			term.go(l, c)
 			virtual_env = base_dir .. "/" .. choice
 		end
 		if not virtual_env:match("^/") then
