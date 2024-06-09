@@ -154,6 +154,9 @@ local new = function()
 					sources = {
 						bin = "shell.completion.source.shell.bin",
 						builtins = "shell.completion.source.shell.builtins",
+						fs = "shell.completion.source.shell.fs",
+						env = "shell.completion.source.shell.env",
+						cmds = "shell.completion.source.shell.cmds",
 					},
 				}),
 				history = history.new("shell", history_store),
