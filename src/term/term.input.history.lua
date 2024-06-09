@@ -94,11 +94,8 @@ local load_history = function(self)
 end
 
 local search = function(self, input)
-	local p = input:find("%s")
-	local cmd = input:sub(1, p)
-	local args_str = input:sub(p)
 	local pattern = ".-"
-	for arg in args_str:gmatch("%S+") do
+	for _, arg in ipairs(input) do
 		pattern = pattern .. std.escape_magic_chars(arg) .. ".-"
 	end
 
@@ -138,11 +135,8 @@ local search = function(self, input)
 end
 
 local dir_search = function(self, input)
-	local p = input:find("%s")
-	local cmd = input:sub(1, p)
-	local args_str = input:sub(p)
 	local pattern = ".-"
-	for arg in args_str:gmatch("%S+") do
+	for _, arg in ipairs(input) do
 		pattern = pattern .. std.escape_magic_chars(arg) .. ".-"
 	end
 

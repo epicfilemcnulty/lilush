@@ -322,7 +322,7 @@ local input_obj_right = function(self)
 			self:display()
 		end
 	else
-		self:promote_completion()
+		return self:promote_completion()
 	end
 	return nil
 end
@@ -423,7 +423,7 @@ local input_obj_add = function(self, key)
 			if self.completion then
 				term.clear_line()
 				self.buffer = self.buffer .. key
-				if self.completion:search(self:render()) then
+				if key ~= " " and self.completion:search(self:render(), self.history) then
 					compl = self.completion:get()
 				end
 			end
@@ -473,7 +473,7 @@ local input_obj_tab = function(self)
 		if self.__tab.long then
 			return self:scroll_completion()
 		end
-		self:promote_completion()
+		return self:promote_completion()
 	end
 end
 
@@ -514,9 +514,17 @@ local promote_completion = function(self)
 		if self.completion:available() then
 			term.clear_line()
 			local promoted = self.completion:get(true)
-			self.buffer = self.buffer .. promoted
+			local metadata = self.completion.__meta[self.completion.__chosen]
+			if metadata.replace_prompt then
+				self.buffer = metadata.replace_prompt .. promoted
+			else
+				self.buffer = self.buffer .. promoted
+			end
 			self.completion:flush()
 			self:end_of_line()
+			if metadata.exec_on_prom then
+				return "execute"
+			end
 		end
 	end
 end
