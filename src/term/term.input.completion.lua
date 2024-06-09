@@ -59,15 +59,17 @@ local new = function(config)
 		return nil, "no such completion module: " .. config.path
 	end
 	local mod = require(config.path)
+
 	local completion = {
 		-- DATA
 		__candidates = {},
 		__sources = {},
 		__chosen = 0,
-		__meta = {
-			replace_args = false,
-			exec_on_promotion = false,
-		},
+		-- meta provides metadata for a candidate at the same index.
+		-- It must provide the name of the source for each candidate,
+		-- and may provide additional information
+		__meta = {},
+		__tab = {}, -- the table for extended info on TAB key presses
 		-- METHODS
 		search = mod.search,
 		available = available,

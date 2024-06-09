@@ -466,9 +466,13 @@ local input_obj_external_editor = function(self)
 end
 
 local input_obj_tab = function(self)
-	if self.__tab.long then
-		self:scroll_completion()
-	else
+	if self.completion and self.completion:available() then
+		if #self.completion.__candidates == 1 then
+			return self:promote_completion()
+		end
+		if self.__tab.long then
+			return self:scroll_completion()
+		end
 		self:promote_completion()
 	end
 end
@@ -492,7 +496,7 @@ local scroll_completion = function(self, direction)
 			else
 				self.completion.__chosen = self.completion.__chosen - 1
 				if self.completion.__chosen < 1 then
-					self.completion.__chosen = 1
+					self.completion.__chosen = total
 				end
 			end
 			term.write(self.completion:get())
