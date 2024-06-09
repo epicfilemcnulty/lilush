@@ -76,8 +76,13 @@ parsing a lot. ]]
 local get = function()
 	local stop_chars = "[ABCDEFHPQSu~]"
 	local csi = io.read(1)
-	if not csi or string.byte(csi) ~= 27 then
+	if not csi then
 		return nil
+	end
+	if string.byte(csi) ~= 27 then
+		-- Sequence does not start from the ESC,
+		-- so it must be paste terminal event
+		return csi .. io.read("*a")
 	end
 	csi = io.read(1)
 	if not csi or csi ~= "[" then
@@ -589,6 +594,12 @@ local input_obj_event = function(self)
 			self.__tab.last_release = now
 		end
 		event = 1
+	end
+	if cp and not mods and not event then
+		for s in cp:gmatch(".") do
+			self:add(s)
+		end
+		return nil
 	end
 	if cp and event ~= 3 then
 		if mods <= 2 and std.utf.len(cp) < 2 then
