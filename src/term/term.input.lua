@@ -3,6 +3,7 @@
 local std = require("std")
 local term = require("term")
 local buffer = require("string.buffer")
+local socket = require("socket")
 
 local kkbp_codes = {
 	["57441"] = "LEFT_SHIFT",
@@ -421,12 +422,6 @@ local input_obj_add = function(self, key)
 			local compl = ""
 			if self.completion then
 				term.clear_line()
-				if key == " " then
-					if self.completion and self.completion:available() then
-						self.cursor = self.cursor - 1
-						return self:scroll_completion()
-					end
-				end
 				self.buffer = self.buffer .. key
 				if self.completion:search(self:render()) then
 					compl = self.completion:get()
@@ -435,6 +430,7 @@ local input_obj_add = function(self, key)
 			term.write(key .. compl)
 			if #compl > 0 then
 				term.go(self.__config.l, self.__config.c + self.cursor + prompt_len)
+				self.__last_tab = socket.gettime()
 			end
 		else
 			self.buffer = self.buffer .. key
@@ -468,6 +464,14 @@ local input_obj_external_editor = function(self)
 	self.buffer = result
 	self:end_of_line()
 	self:display()
+end
+
+local input_obj_tab = function(self)
+	if self.__double_tab then
+		self:promote_completion()
+	else
+		self:scroll_completion()
+	end
 end
 
 local scroll_completion = function(self)
@@ -535,6 +539,20 @@ end
 
 local input_obj_event = function(self)
 	local cp, mods, event, shifted, base = get()
+
+	if cp and cp == "TAB" then
+		if not self.__last_tab and event == 3 then
+			self.__last_tab = socket.gettime()
+		elseif self.__last_tab and event == 1 then
+			local now = socket.gettime()
+			if now - self.__last_tab <= 0.3 then
+				self.__double_tab = true
+			else
+				self.__double_tab = false
+			end
+			self.__last_tab = nil
+		end
+	end
 	if cp and event ~= 3 then
 		if mods <= 2 and std.utf.len(cp) < 2 then
 			if shifted then
@@ -592,7 +610,7 @@ local new_input_obj = function(config)
 		flush = input_obj_flush,
 		event = input_obj_event,
 		exit = input_obj_exit,
-		tab = promote_completion,
+		tab = input_obj_tab,
 		scroll_completion = scroll_completion,
 		promote_completion = promote_completion,
 		newline = input_obj_newline,
