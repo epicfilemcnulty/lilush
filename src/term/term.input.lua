@@ -562,13 +562,13 @@ local input_obj_event = function(self)
 			local now = socket.gettime()
 			self.__tab.long = false
 			if self.__tab.start then
-				if now - self.__tab.start >= self.__tab.long_press then
+				if now - self.__tab.start > self.__tab.quick_press then
 					self.__tab.long = true
 				end
 			end
 			self.__tab.start = nil
 			if self.__tab.last_release then
-				if now - self.__tab.last_release <= self.__tab.long_press then
+				if now - self.__tab.last_release <= self.__tab.quick_press * 2 then
 					self.__tab.double_tap = true
 				else
 					self.__tab.double_tap = false
@@ -617,7 +617,7 @@ local new_input_obj = function(config)
 		-- DATA
 		__window = { h = win_l, w = win_c },
 		__config = config,
-		__tab = { long_press = tonumber(os.getenv("LILUSH_DOUBLE_TAP_TIME")) or 0.1 },
+		__tab = { quick_press = tonumber(os.getenv("LILUSH_QUICK_PRESS")) or 0.07 },
 		buffer = "",
 		cursor = 0,
 		position = 1,
