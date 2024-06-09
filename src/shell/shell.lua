@@ -151,7 +151,10 @@ local new = function()
 			shell = shell_mode.new(input.new({
 				completion = completion.new({
 					path = "shell.completion.shell",
-					sources = { bin = "shell.completion.source.shell.bin" },
+					sources = {
+						bin = "shell.completion.source.shell.bin",
+						builtins = "shell.completion.source.shell.builtins",
+					},
 				}),
 				history = history.new("shell", history_store),
 				prompt = prompt.new("shell.prompts.shell"),
