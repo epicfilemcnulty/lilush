@@ -322,7 +322,7 @@ local input_obj_right = function(self)
 			self:display()
 		end
 	else
-		self:scroll_completion()
+		self:promote_completion()
 	end
 	return nil
 end
@@ -430,7 +430,6 @@ local input_obj_add = function(self, key)
 			term.write(key .. compl)
 			if #compl > 0 then
 				term.go(self.__config.l, self.__config.c + self.cursor + prompt_len)
-				self.__last_tab = socket.gettime()
 			end
 		else
 			self.buffer = self.buffer .. key
@@ -467,14 +466,16 @@ local input_obj_external_editor = function(self)
 end
 
 local input_obj_tab = function(self)
-	if self.__double_tab then
-		self:promote_completion()
-	else
+	if self.__tab.long then
 		self:scroll_completion()
+	else
+		self:promote_completion()
 	end
 end
 
-local scroll_completion = function(self)
+local scroll_completion = function(self, direction)
+	local direction = direction or "down"
+
 	if self.completion then
 		local prompt_len = 0
 		if self.prompt then
@@ -483,9 +484,16 @@ local scroll_completion = function(self)
 		if self.completion:available() then
 			term.clear_line()
 			local total = #self.completion.__candidates
-			self.completion.__chosen = self.completion.__chosen + 1
-			if self.completion.__chosen > total then
-				self.completion.__chosen = 1
+			if direction == "down" then
+				self.completion.__chosen = self.completion.__chosen + 1
+				if self.completion.__chosen > total then
+					self.completion.__chosen = 1
+				end
+			else
+				self.completion.__chosen = self.completion.__chosen - 1
+				if self.completion.__chosen < 1 then
+					self.completion.__chosen = 1
+				end
 			end
 			term.write(self.completion:get())
 			term.go(self.__config.l, self.__config.c + self.cursor + prompt_len)
@@ -517,8 +525,11 @@ local input_obj_execute = function(self)
 	return "execute"
 end
 
-local input_obj_exit = function(self)
-	return "exit"
+local input_obj_escape = function(self)
+	if self.buffer == "" then
+		return "exit"
+	end
+	return self:scroll_completion("up")
 end
 
 local input_obj_clear = function(self)
@@ -539,19 +550,33 @@ end
 
 local input_obj_event = function(self)
 	local cp, mods, event, shifted, base = get()
-
 	if cp and cp == "TAB" then
-		if not self.__last_tab and event == 3 then
-			self.__last_tab = socket.gettime()
-		elseif self.__last_tab and event == 1 then
-			local now = socket.gettime()
-			if now - self.__last_tab <= 0.3 then
-				self.__double_tab = true
-			else
-				self.__double_tab = false
-			end
-			self.__last_tab = nil
+		if not self.__tab.start and event == 1 then
+			self.__tab.start = socket.gettime()
+			return nil
 		end
+		if event == 2 then
+			return nil
+		end
+		if event == 3 then
+			local now = socket.gettime()
+			self.__tab.long = false
+			if self.__tab.start then
+				if now - self.__tab.start >= self.__tab.long_press then
+					self.__tab.long = true
+				end
+			end
+			self.__tab.start = nil
+			if self.__tab.last_release then
+				if now - self.__tab.last_release <= self.__tab.long_press then
+					self.__tab.double_tap = true
+				else
+					self.__tab.double_tap = false
+				end
+			end
+			self.__tab.last_release = now
+		end
+		event = 1
 	end
 	if cp and event ~= 3 then
 		if mods <= 2 and std.utf.len(cp) < 2 then
@@ -592,6 +617,7 @@ local new_input_obj = function(config)
 		-- DATA
 		__window = { h = win_l, w = win_c },
 		__config = config,
+		__tab = { long_press = tonumber(os.getenv("LILUSH_DOUBLE_TAP_TIME")) or 0.1 },
 		buffer = "",
 		cursor = 0,
 		position = 1,
@@ -609,7 +635,7 @@ local new_input_obj = function(config)
 		render = input_obj_render,
 		flush = input_obj_flush,
 		event = input_obj_event,
-		exit = input_obj_exit,
+		esc = input_obj_escape,
 		tab = input_obj_tab,
 		scroll_completion = scroll_completion,
 		promote_completion = promote_completion,
@@ -629,7 +655,7 @@ local new_input_obj = function(config)
 	-- later on...
 	local ctrls = {
 		backspace = { "BACKSPACE" },
-		exit = { "ESC" },
+		esc = { "ESC" },
 		left = { "LEFT" },
 		right = { "RIGHT" },
 		up = { "UP" },
