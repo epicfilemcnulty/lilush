@@ -425,9 +425,9 @@ local input_obj_add = function(self, key)
 				key = "␊"
 			end
 			local compl = ""
+			self.buffer = self.buffer .. key
 			if self.completion then
 				term.clear_line()
-				self.buffer = self.buffer .. key
 				if key ~= " " and self.completion:search(self:render(), self.history) then
 					compl = self.completion:get()
 				end

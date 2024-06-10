@@ -166,7 +166,10 @@ local new = function()
 				input.new({ history = history.new("lua", history_store), prompt = prompt.new("shell.prompts.lua") })
 			),
 			llm = llm_mode.new(
-				input.new({ history = history.new("llm", history_store), prompt = prompt.new("shell.prompts.llm") }),
+				input.new({
+					history = history.new("llm", history_store),
+					prompt = prompt.new("shell.prompts.llm"),
+				}),
 				llm_store
 			),
 		},
