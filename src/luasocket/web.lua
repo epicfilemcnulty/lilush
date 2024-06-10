@@ -151,8 +151,8 @@ local make_form_data = function(items)
 		local content = item.content or ""
 		local name = item.name
 		local filename, mime
-		if item.path and std.file_exists(item.path) then
-			content = std.read_file(item.path)
+		if item.path and std.fs.file_exists(item.path) then
+			content = std.fs.read_file(item.path)
 			filename = item.path:match("[^/]+$")
 			mime = mime_type(filename)
 		end
@@ -186,7 +186,7 @@ local request = function(uri, options, timeout)
 		defaults.server_name = parsed_url.host
 	end
 	defaults.scheme = parsed_url.scheme
-	options = std.merge_tables(defaults, options)
+	options = std.tbl.merge(defaults, options)
 	options.url = uri
 	http.TIMEOUT = timeout
 	local body = {}
@@ -246,7 +246,7 @@ _M.log = function(msg, level)
 		if type(msg) ~= "table" then
 			msg = { msg = msg }
 		end
-		msg = std.merge_tables(log_msg_base, msg)
+		msg = std.tbl.merge(log_msg_base, msg)
 		local log_json = json.encode(msg)
 		print(log_json)
 	end
@@ -466,7 +466,7 @@ _M.server = function(ip, port, handle)
 	while true do
 		-- Do house keeping
 		for i = 1, server_fork_count do
-			local id = std.waitpid(-1)
+			local id = std.ps.waitpid(-1)
 			if server_forks[id] then
 				server_fork_count = server_fork_count - 1
 				server_forks[id] = nil
@@ -478,7 +478,7 @@ _M.server = function(ip, port, handle)
 				local client, err = server:accept()
 
 				local pid = 1
-				pid = std.fork()
+				pid = std.ps.fork()
 				if pid < 0 then
 					_M.log("failed to fork for request processing", "error")
 				end

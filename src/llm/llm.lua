@@ -55,7 +55,7 @@ local render_prompt_tmpl = function(tmpl, messages, add_last_suffix)
 		infix = "",
 		suffix = "",
 	}
-	default_tmpl = std.merge_tables(default_tmpl, tmpl)
+	default_tmpl = std.tbl.merge(default_tmpl, tmpl)
 	local messages = messages or {}
 	local out = ""
 	for i, msg in ipairs(messages) do

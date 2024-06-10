@@ -21,7 +21,7 @@ local filesystem = function(self, arg, filter, perms)
 		dir = dir:gsub("%%", "") -- unescape possible dots in the dir name
 	end
 
-	local dir_files = std.list_files(dir, ".*", filter, true)
+	local dir_files = std.fs.list_files(dir, ".*", filter, true)
 	if dir_files then
 		for f, stat in pairs(dir_files) do
 			if f:match("^" .. file) and stat.perms:match(perms) then
@@ -35,7 +35,7 @@ local filesystem = function(self, arg, filter, perms)
 						if not target:match("^/") then
 							target = dir .. "/" .. target
 						end
-						local st = std.stat(target)
+						local st = std.fs.stat(target)
 						if st and st.mode == "d" then
 							trailing = "/"
 						end

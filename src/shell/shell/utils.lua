@@ -6,48 +6,6 @@ local core = require("std.core")
 local json = require("cjson.safe")
 local storage = require("storage")
 
-local dir_history_complete = function(args)
-	local candidates = {}
-	local pattern = ".-"
-	for _, arg in ipairs(args) do
-		pattern = pattern .. arg .. ".-"
-	end
-	local store = storage.new()
-	local res, err = store:get_set_range("history/shell", 0, -1)
-	store:close(true)
-	if err then
-		return nil, "can't get history: " .. tostring(err)
-	end
-	local cwd = std.cwd()
-	local home = os.getenv("HOME") or ""
-	cwd = cwd:gsub("^" .. home, "~")
-
-	local scores = {}
-	for i, v in ipairs(res) do
-		local entry = json.decode(v)
-		if entry and entry.cwd:match(pattern) then
-			local score = scores[entry.cwd] or 0
-			score = score + 1
-			scores[entry.cwd] = score
-		end
-	end
-	local candidates = {}
-	for k, v in pairs(scores) do
-		table.insert(candidates, k)
-	end
-	table.sort(candidates, function(a, b)
-		if scores[a] == scores[b] then
-			return a > b
-		else
-			return scores[a] > scores[b]
-		end
-	end)
-	for i, c in ipairs(candidates) do
-		candidates[i] = " " .. c
-	end
-	return candidates
-end
-
 local zx_complete = function(args)
 	local candidates = {}
 	local pattern = ".-"
@@ -62,7 +20,7 @@ local zx_complete = function(args)
 			table.insert(candidates, snippet)
 		end
 	end
-	candidates = std.alphanumsort(candidates)
+	candidates = std.tbl.alphanumsort(candidates)
 	for i, c in ipairs(candidates) do
 		candidates[i] = " " .. c
 	end
@@ -82,13 +40,13 @@ local parse_cmdline = function(input, with_inlines)
 	local with_inlines = with_inlines or false
 	local substitutes = {}
 	if with_inlines then
-		local ppls = std.find_all_positions(input, "%$%b()")
+		local ppls = std.txt.find_all_positions(input, "%$%b()")
 		for i, ppl in ipairs(ppls) do
 			local pipeline_raw = input:sub(ppl[1] + 2, ppl[2] - 1)
 			local pipeline = parse_pipeline(pipeline_raw)
 			local sub = ""
 			if pipeline then
-				local out_pipe = std.pipe()
+				local out_pipe = std.ps.pipe()
 				local status, err = run_pipeline(pipeline, out_pipe.inn)
 				local out = out_pipe:read()
 				out_pipe:close_out()
@@ -107,9 +65,9 @@ local parse_cmdline = function(input, with_inlines)
 	end
 	local input = input:gsub("(%$%b())", sub_func)
 
-	local singles = std.find_all_positions(input, "%b''")
-	local doubles = std.find_all_positions(input, '%b""')
-	local curlies = std.find_all_positions(input, "{{.-}}")
+	local singles = std.txt.find_all_positions(input, "%b''")
+	local doubles = std.txt.find_all_positions(input, '%b""')
+	local curlies = std.txt.find_all_positions(input, "{{.-}}")
 
 	local all = {}
 	for _, v in ipairs(singles) do
@@ -228,7 +186,7 @@ run_pipeline = function(pipeline, stdout, builtins, extra)
 	local pipes = {}
 	local pids = {}
 	for i, cmdline in ipairs(pipeline) do
-		pipes[i] = std.pipe()
+		pipes[i] = std.ps.pipe()
 		local stdout = stdout
 		local stdin
 		if pipeline[i].input_file then
@@ -257,7 +215,7 @@ run_pipeline = function(pipeline, stdout, builtins, extra)
 				cmd = builtin
 			end
 		end
-		pids[i] = std.launch(cmd, stdin, stdout, nil, unpack(args))
+		pids[i] = std.ps.launch(cmd, stdin, stdout, nil, unpack(args))
 		if stdin then
 			core.close(stdin)
 		end
@@ -267,7 +225,7 @@ run_pipeline = function(pipeline, stdout, builtins, extra)
 	end
 	for i, pid in ipairs(pids) do
 		if pid ~= 0 then
-			local ret, status = std.wait(pids[i])
+			local ret, status = std.ps.wait(pids[i])
 			if status ~= 0 then
 				return status, "pipeline failed: `" .. pipeline[i].cmd .. "`"
 			end

@@ -23,7 +23,7 @@ local root_servers = {
 }
 
 local parse_resolvconf = function()
-	local resolvconf = std.read_file("/etc/resolv.conf")
+	local resolvconf = std.fs.read_file("/etc/resolv.conf")
 	if resolvconf then
 		local ns =
 			resolvconf:match("nameserver ([0-9][0-9]?[0-9]?%.[0-9][0-9]?[0-9]?%.[0-9][0-9]?[0-9]?%.[0-9][0-9]?[0-9]?)")

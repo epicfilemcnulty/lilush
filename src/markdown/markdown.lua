@@ -106,13 +106,13 @@ local parse_inline_elements = function(ast)
 	for i, v in pairs(ast) do
 		if v.t == "header" or v.t == "p" then
 			local str = table.concat(v.lines, " ")
-			local splits = std.split_by(str, "`[^`]+`", 1, 1)
+			local splits = std.txt.split_by(str, "`[^`]+`", 1, 1)
 			local l1 = {}
 			for i, v in ipairs(splits) do
 				if v.t == "cap" then
 					table.insert(l1, { t = "verbatim", c = v.c })
 				else
-					local bolds = std.split_by(v.c, "%*%*[^*]+%*%*", 2, 2)
+					local bolds = std.txt.split_by(v.c, "%*%*[^*]+%*%*", 2, 2)
 					for i1, v1 in ipairs(bolds) do
 						if v1.t == "cap" then
 							table.insert(l1, { t = "strong", c = v1.c })
@@ -127,7 +127,7 @@ local parse_inline_elements = function(ast)
 				if v.t ~= "reg" then
 					table.insert(l2, v)
 				else
-					local italics = std.split_by(v.c, "%*[^*]+%*", 1, 1)
+					local italics = std.txt.split_by(v.c, "%*[^*]+%*", 1, 1)
 					for i1, v1 in ipairs(italics) do
 						if v1.t == "cap" then
 							table.insert(l2, { t = "emph", c = v1.c })
@@ -142,7 +142,7 @@ local parse_inline_elements = function(ast)
 				if v.t ~= "reg" then
 					table.insert(l3, v)
 				else
-					local links = std.split_by(v.c, "%[[^[%]]+%]%([^()]+%)")
+					local links = std.txt.split_by(v.c, "%[[^[%]]+%]%([^()]+%)")
 					for i1, v1 in ipairs(links) do
 						if v1.t == "cap" then
 							local title = v1.c:match("%[([^[%]]+)%]")

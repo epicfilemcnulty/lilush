@@ -69,15 +69,15 @@ local run = function(self)
 			if event == "execute" then
 				term.set_sane_mode()
 				term.write("\r\n")
-				local cwd = std.cwd()
-				std.setenv("LILUSH_EXEC_CWD", cwd)
-				std.setenv("LILUSH_EXEC_START", os.time())
+				local cwd = std.fs.cwd()
+				std.ps.setenv("LILUSH_EXEC_CWD", cwd)
+				std.ps.setenv("LILUSH_EXEC_START", os.time())
 				local status, err = self.__mode[self.__chosen_mode]:run()
 				if status ~= 0 then
 					show_error_message(status, err)
 				end
-				std.setenv("LILUSH_EXEC_END", os.time())
-				std.setenv("LILUSH_EXEC_STATUS", tostring(status))
+				std.ps.setenv("LILUSH_EXEC_END", os.time())
+				std.ps.setenv("LILUSH_EXEC_STATUS", tostring(status))
 				io.flush()
 				self.__mode[self.__chosen_mode].input:flush()
 				term.set_raw_mode(true)
@@ -112,20 +112,20 @@ end
 
 local new = function()
 	local home = os.getenv("HOME") or ""
-	std.setenv("SHELL", "/bin/lilush")
+	std.ps.setenv("SHELL", "/bin/lilush")
 	local lilush_modules_path = "./?.lua;"
 		.. home
 		.. "/.local/share/lilush/packages/?.lua;"
 		.. home
 		.. "/.local/share/lilush/packages/?/init.lua;/usr/local/share/lilush/?.lua;/usr/local/share/lilush/?/init.lua"
-	std.setenv("LUA_PATH", lilush_modules_path)
+	std.ps.setenv("LUA_PATH", lilush_modules_path)
 	package.path = lilush_modules_path
 	-- Check if there is the `~/.config/lilush/env` file first,
 	-- if there is, we want to export those env vars before
 	-- proceeding with the initialization
-	local env_file = std.read_file(home .. "/.config/lilush/env")
+	local env_file = std.fs.read_file(home .. "/.config/lilush/env")
 	if env_file then
-		local env_lines = std.lines(env_file)
+		local env_lines = std.txt.lines(env_file)
 		for _, line in ipairs(env_lines) do
 			if not line:match("^#") then
 				local cmd, args = utils.parse_cmdline("setenv " .. line, true)
@@ -136,7 +136,7 @@ local new = function()
 			end
 		end
 	end
-	local shell_config_json = std.read_file(home .. "/.config/lilush/config.json")
+	local shell_config_json = std.fs.read_file(home .. "/.config/lilush/config.json")
 	local shell_config = json.decode(shell_config_json)
 		or {
 			chosen_mode = "shell",

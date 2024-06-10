@@ -1,6 +1,5 @@
 -- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
-local std = require("std")
 local core = require("term.core")
 local buffer = require("string.buffer")
 

@@ -223,19 +223,19 @@ local modes_default = {
 local load_user_theme = function()
 	local data_store = storage.new()
 	local widgets = data_store:get_hash_key("theme", "widgets.json", true) or {}
-	std.merge_tables(widgets_default, widgets)
+	std.tbl.merge(widgets_default, widgets)
 
 	local renderer = data_store:get_hash_key("theme", "renderer.json", true) or {}
-	std.merge_tables(renderer_default, renderer)
+	std.tbl.merge(renderer_default, renderer)
 
 	local builtins = data_store:get_hash_key("theme", "builtins.json", true) or {}
-	std.merge_tables(builtins_default, builtins)
+	std.tbl.merge(builtins_default, builtins)
 
 	local prompts = data_store:get_hash_key("theme", "prompts.json", true) or {}
-	std.merge_tables(prompts_default, prompts)
+	std.tbl.merge(prompts_default, prompts)
 
 	local modes = data_store:get_hash_key("theme", "modes.json", true) or {}
-	std.merge_tables(modes_default, modes)
+	std.tbl.merge(modes_default, modes)
 	data_store:close(true)
 	local theme = {
 		widgets = widgets_default,

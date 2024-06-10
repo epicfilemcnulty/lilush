@@ -24,8 +24,8 @@ local init_file_store = function(storage_dir)
 	if not storage_dir then
 		return nil, "storage dir is not provided"
 	end
-	if not std.dir_exists(storage_dir) then
-		local ok, err = std.mkdir(storage_dir, nil, true)
+	if not std.fs.dir_exists(storage_dir) then
+		local ok, err = std.fs.mkdir(storage_dir, nil, true)
 		if not ok then
 			return nil, "can't init storage dir: " .. tostring(err)
 		end
@@ -56,7 +56,7 @@ local get_key = function(self, key, decode_json)
 		end
 	end
 	if self.storage_dir then
-		content, err = std.read_file(self.storage_dir .. "/" .. key)
+		content, err = std.fs.read_file(self.storage_dir .. "/" .. key)
 		if err then
 			return nil, "can't read file: " .. tostring(err)
 		end
@@ -90,9 +90,9 @@ local set_key = function(self, key, value, encode_json)
 		if key:match("/") then
 			local dirs = std.split_path_by_dir(key)
 			table.remove(dirs)
-			std.mkdir(self.storage_dir .. "/" .. table.concat(dirs, "/"), nil, true)
+			std.fs.mkdir(self.storage_dir .. "/" .. table.concat(dirs, "/"), nil, true)
 		end
-		ok, err = std.write_file(self.storage_dir .. "/" .. key, v)
+		ok, err = std.fs.write_file(self.storage_dir .. "/" .. key, v)
 		if err then
 			return nil, "can't write file: " .. tostring(err)
 		end
@@ -125,7 +125,7 @@ local get_hash_key = function(self, hash, key, decode_json)
 	end
 	if self.storage_dir then
 		local hash_dir = self.storage_dir .. "/" .. hash
-		content, err = std.read_file(hash_dir .. "/" .. key)
+		content, err = std.fs.read_file(hash_dir .. "/" .. key)
 		if err then
 			return nil, "can't read file: " .. tostring(err)
 		end
@@ -156,10 +156,10 @@ local set_hash_key = function(self, hash, key, value, encode_json)
 	end
 	if self.storage_dir then
 		local hash_dir = self.storage_dir .. "/" .. hash
-		if not std.dir_exists(hash_dir) then
-			std.mkdir(hash_dir, nil, true)
+		if not std.fs.dir_exists(hash_dir) then
+			std.fs.mkdir(hash_dir, nil, true)
 		end
-		local ok, err = std.write_file(hash_dir .. "/" .. key, v)
+		local ok, err = std.fs.write_file(hash_dir .. "/" .. key, v)
 		if err then
 			return nil, "can't write file: " .. tostring(err)
 		end
@@ -184,12 +184,12 @@ local incr_hash_key = function(self, hash, key, value)
 	end
 	if self.storage_dir then
 		local hash_dir = self.storage_dir .. "/" .. hash
-		if not std.dir_exists(hash_dir) then
-			std.mkdir(hash_dir, nil, true)
+		if not std.fs.dir_exists(hash_dir) then
+			std.fs.mkdir(hash_dir, nil, true)
 		end
-		local cur_val = std.read_file(hash_dir .. "/" .. key)
+		local cur_val = std.fs.read_file(hash_dir .. "/" .. key)
 		cur_val = tonumber(cur_val) or 0
-		local ok, err = std.write_file(hash_dir .. "/" .. key, cur_val + value)
+		local ok, err = std.fs.write_file(hash_dir .. "/" .. key, cur_val + value)
 		if err then
 			return nil, "can't write file: " .. tostring(err)
 		end
@@ -242,22 +242,22 @@ local add_set_member = function(self, set_name, member, score, encode_json)
 	end
 	if self.storage_dir then
 		local set_dir = self.storage_dir .. "/" .. set_name
-		if not std.dir_exists(set_dir) then
-			std.mkdir(set_dir, nil, true)
+		if not std.fs.dir_exists(set_dir) then
+			std.fs.mkdir(set_dir, nil, true)
 		end
 		local m_hash = crypto.bin_to_hex(crypto.sha256(m))
-		local members = std.read_file(set_dir .. "/members.json") or "{}"
+		local members = std.fs.read_file(set_dir .. "/members.json") or "{}"
 		members = json.decode(members) or {}
-		local index = std.read_file(set_dir .. "/index.json") or "{}"
+		local index = std.fs.read_file(set_dir .. "/index.json") or "{}"
 		index = json.decode(index) or {}
-		local scores = std.read_file(set_dir .. "/scores.json") or "{}"
+		local scores = std.fs.read_file(set_dir .. "/scores.json") or "{}"
 		scores = json.decode(scores) or {}
 		members[m_hash] = m
 		scores[m_hash] = score
 		table.insert(index, m_hash)
-		std.write_file(set_dir .. "/members.json", json.encode(members))
-		std.write_file(set_dir .. "/index.json", json.encode(index))
-		std.write_file(set_dir .. "/scores.json", json.encode(scores))
+		std.fs.write_file(set_dir .. "/members.json", json.encode(members))
+		std.fs.write_file(set_dir .. "/index.json", json.encode(index))
+		std.fs.write_file(set_dir .. "/scores.json", json.encode(scores))
 		return true
 	end
 	return nil, "all backends are disabled"
@@ -274,12 +274,12 @@ local get_set_range = function(self, set_name, start, stop)
 	end
 	if self.storage_dir then
 		local set_dir = self.storage_dir .. "/" .. set_name
-		if not std.dir_exists(set_dir) then
+		if not std.fs.dir_exists(set_dir) then
 			return nil, "set does not exist"
 		end
-		local members = json.decode(std.read_file(set_dir .. "/members.json")) or {}
-		local index = json.decode(std.read_file(set_dir .. "/index.json")) or {}
-		local scores = json.decode(std.read_file(set_dir .. "/scores.json")) or {}
+		local members = json.decode(std.fs.read_file(set_dir .. "/members.json")) or {}
+		local index = json.decode(std.fs.read_file(set_dir .. "/index.json")) or {}
+		local scores = json.decode(std.fs.read_file(set_dir .. "/scores.json")) or {}
 		local range = {}
 		local start = start + 1
 		if stop < 0 then
@@ -300,7 +300,7 @@ local close = function(self, no_keepalive)
 end
 
 local new = function(options)
-	local hostname = tostring(std.read_file("/etc/hostname")):gsub("\n", ""):gsub("%s+", "")
+	local hostname = tostring(std.fs.read_file("/etc/hostname")):gsub("\n", ""):gsub("%s+", "")
 	if hostname == "nil" then
 		hostname = "amnesia"
 	end
@@ -314,7 +314,7 @@ local new = function(options)
 		redis_unique = unique,
 	}
 	local options = options or {}
-	std.merge_tables(default_options, options)
+	std.tbl.merge(default_options, options)
 
 	local red = init_redis_store(default_options.redis_url)
 	local storage_dir = init_file_store(default_options.storage_dir)

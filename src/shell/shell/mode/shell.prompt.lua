@@ -8,14 +8,14 @@ local style = require("term.tss")
 local tss = style.new(theme)
 
 local git_prompt = function(self)
-	local resp = std.exec_simple("git status --porcelain --branch")
+	local resp = std.ps.exec_simple("git status --porcelain --branch")
 	local status_lines = resp.stdout
 
 	if not status_lines or #status_lines == 0 or status_lines[1] == "" then
 		return nil
 	end
 
-	local tag = std.exec_one_line("git describe --tags")
+	local tag = std.ps.exec_one_line("git describe --tags")
 	local status = {
 		branch = "",
 		remote_branch = "",
@@ -33,7 +33,7 @@ local git_prompt = function(self)
 
 	local branch_line = table.remove(status_lines, 1)
 	if branch_line:match("HEAD") then
-		local branch_info = std.exec_one_line("git branch")
+		local branch_info = std.ps.exec_one_line("git branch")
 		status.branch = "HEAD" .. "@" .. branch_info:match("detached %w+ ([^)]+)")
 	else
 		status.branch = branch_line:match("## ([^.]+)")
@@ -123,7 +123,7 @@ local kube_prompt = function(self)
 	local profile = os.getenv("KUBECONFIG")
 	local home = os.getenv("HOME") or ""
 	if not profile then
-		profile = std.readlink(home .. "/.kube/config") or ""
+		profile = std.fs.readlink(home .. "/.kube/config") or ""
 	end
 	profile = profile:match("/?([^/]+)$")
 	local ns = os.getenv("KTL_NAMESPACE") or "kube-system"
@@ -139,7 +139,7 @@ local kube_prompt = function(self)
 end
 
 local dir_prompt = function(self)
-	local current_dir = std.cwd():gsub(self.home, "~")
+	local current_dir = std.fs.cwd():gsub(self.home, "~")
 	return tss:apply("prompts.shell.sep", "(")
 		.. tss:apply("prompts.shell.dir", current_dir)
 		.. tss:apply("prompts.shell.sep", ")")
@@ -171,7 +171,7 @@ local set = function(self, options, export)
 	end
 	self.blocks = self.blocks or "user,dir"
 	if export then
-		std.setenv("LILUSH_PROMPT", self.blocks)
+		std.ps.setenv("LILUSH_PROMPT", self.blocks)
 	end
 end
 

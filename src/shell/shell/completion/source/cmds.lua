@@ -51,7 +51,7 @@ local kubectl_completions = function(self, args)
 		end
 		if args[2] and args[1] == "profile" then
 			local home = os.getenv("HOME") or ""
-			local profiles = std.list_files(home .. "/.kube/cfgs")
+			local profiles = std.fs.list_files(home .. "/.kube/cfgs")
 			local p = args[2] or ""
 			for profile, _ in pairs(profiles) do
 				if profile:match("^" .. std.escape_magic_chars(p)) then
@@ -69,7 +69,7 @@ local ssh_profile_completions = function(self, args)
 	local candidates = {}
 	if args[1] then
 		local home = os.getenv("HOME") or ""
-		local files = std.list_files(home .. "/.ssh/profiles/")
+		local files = std.fs.list_files(home .. "/.ssh/profiles/")
 		local profiles = {}
 		if files then
 			for file, st in pairs(files) do
@@ -94,7 +94,7 @@ local ssh_completions = function(self, args)
 	if #args > 0 then
 		local arg = args[#args]
 		local home = os.getenv("HOME") or ""
-		local ssh_config = std.read_file(home .. "/.ssh/config") or ""
+		local ssh_config = std.fs.read_file(home .. "/.ssh/config") or ""
 		local hosts = {}
 		for host in ssh_config:gmatch("Host (%S+)") do
 			table.insert(hosts, host)

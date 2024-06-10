@@ -79,12 +79,12 @@ local validate_arg = function(self, name, arg)
 		end
 	end
 	if kind == "file" then
-		if not std.file_exists(arg) then
+		if not std.fs.file_exists(arg) then
 			return nil, "`" .. arg .. "`{.file} file does not exist"
 		end
 	end
 	if kind == "dir" then
-		if not std.dir_exists(arg) then
+		if not std.fs.dir_exists(arg) then
 			return nil, "`" .. arg .. "`{.dir} directory does not exist"
 		end
 	end
@@ -224,7 +224,7 @@ local new = function(schema, help)
 	local schema = schema or {}
 	local mt = {
 		__tostring = function(tbl)
-			return "\n## Arguments table\n\n" .. table.concat(std.pipe_table(prepare_data(tbl)), "\n") .. "\n"
+			return "\n## Arguments table\n\n" .. table.concat(std.tbl.pipe_table(prepare_data(tbl)), "\n") .. "\n"
 		end,
 	}
 	setmetatable(schema, mt)

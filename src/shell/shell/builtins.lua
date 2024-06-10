@@ -44,7 +44,7 @@ local render_dir
 render_dir = function(path, pattern, indent, args)
 	local tss = tss_gen.new(theme)
 	local indent = indent or 0
-	local all_files, err = std.list_files(path, pattern, ".", args.long)
+	local all_files, err = std.fs.list_files(path, pattern, ".", args.long)
 	if not all_files then
 		return nil, err
 	end
@@ -63,8 +63,8 @@ render_dir = function(path, pattern, indent, args)
 			end
 		end
 	end
-	dirs = std.alphanumsort(dirs)
-	files = std.alphanumsort(files)
+	dirs = std.tbl.alphanumsort(dirs)
+	files = std.tbl.alphanumsort(files)
 
 	local longest_name_size = 0
 	for _, f in ipairs(dirs) do
@@ -97,7 +97,7 @@ render_dir = function(path, pattern, indent, args)
 		local perms = all_files[dir].perms
 		local ext_attr = buffer.new()
 		if args.long then
-			local atime = std.ts_tostring(all_files[dir].atime)
+			local atime = std.conv.ts_to_str(all_files[dir].atime)
 			local user = sys_users[all_files[dir].uid].login
 			local group = sys_users[all_files[dir].gid].login
 			ext_attr:put(
@@ -125,7 +125,7 @@ render_dir = function(path, pattern, indent, args)
 				ext_attr:get(),
 				tss:apply("builtins.ls.perms", perms),
 				" ",
-				tss:apply("builtins.ls.size", std.human_size(size))
+				tss:apply("builtins.ls.size", std.conv.bytes_human(size))
 			)
 		end
 		buf:put("\n")
@@ -154,7 +154,7 @@ render_dir = function(path, pattern, indent, args)
 		local link_target = ""
 		local alignment = longest_name_size - std.utf.len(file)
 		if args.long then
-			local atime = std.ts_tostring(all_files[file].atime)
+			local atime = std.conv.ts_to_str(all_files[file].atime)
 			local user = sys_users[all_files[file].uid].login
 			local group = sys_users[all_files[file].gid].login
 			ext_attr:put(
@@ -189,7 +189,7 @@ render_dir = function(path, pattern, indent, args)
 				ext_attr:get(),
 				tss:apply("builtins.ls.perms", perms),
 				" ",
-				tss:apply("builtins.ls.size", std.human_size(size))
+				tss:apply("builtins.ls.size", std.conv.bytes_human(size))
 			)
 		end
 		buf:put("\n")
@@ -234,7 +234,7 @@ local list_dir = function(cmd, args)
 				args.pathname = "."
 			end
 		else
-			local st = std.stat(args.pathname)
+			local st = std.fs.stat(args.pathname)
 			if not st or st.mode ~= "d" then
 				args.pathname = path
 				pattern = std.escape_magic_chars(p)
@@ -253,9 +253,9 @@ end
 local change_dir = function(cmd, args)
 	local home = os.getenv("HOME") or ""
 	local pathname = args[1] or home
-	if std.chdir(pathname) then
-		local pwd = std.cwd()
-		std.setenv("PWD", pwd)
+	if std.fs.chdir(pathname) then
+		local pwd = std.fs.cwd()
+		std.ps.setenv("PWD", pwd)
 		set_term_title(pwd)
 		return 0
 	end
@@ -282,7 +282,7 @@ local mkdir = function(cmd, args)
 		return 127
 	end
 
-	local status, err = std.mkdir(args.pathname, nil, args.recursive)
+	local status, err = std.fs.mkdir(args.pathname, nil, args.recursive)
 	if not status then
 		errmsg(err)
 		return 127
@@ -303,9 +303,9 @@ end
 local upper_dir = function(cmd, args)
 	local _, count = cmd:gsub("%.", "%1")
 	local path = string.rep("../", count - 1)
-	if std.chdir(path) then
-		local pwd = std.cwd()
-		std.setenv("PWD", pwd)
+	if std.fs.chdir(path) then
+		local pwd = std.fs.cwd()
+		std.ps.setenv("PWD", pwd)
 		set_term_title(pwd)
 		return 0
 	end
@@ -345,7 +345,7 @@ local file_remove = function(cmd, args)
 		return 127
 	end
 	for i, pathname in ipairs(args.pathname) do
-		local st, err = std.stat(pathname)
+		local st, err = std.fs.stat(pathname)
 		if not st then
 			errmsg(err)
 			return 127
@@ -355,7 +355,7 @@ local file_remove = function(cmd, args)
 				errmsg("use `-f`{.flag} flag to remove a dir")
 				return 127
 			end
-			if std.non_empty_dir(pathname) and not args.recursive then
+			if std.fs.non_empty_dir(pathname) and not args.recursive then
 				errmsg("use `-rf`{.flag} flags to remove a non-empty dir")
 				return 127
 			end
@@ -363,7 +363,7 @@ local file_remove = function(cmd, args)
 		-- Do some sanity checks
 		local path = pathname:gsub("/-$", "") -- remove all trailing slashes
 		local home_dir = os.getenv("HOME") or ""
-		local pwd = std.cwd()
+		local pwd = std.fs.cwd()
 		if not path:match("^/") then
 			path = pwd .. "/" .. path
 		end
@@ -374,7 +374,7 @@ local file_remove = function(cmd, args)
 			end
 		end
 
-		local status, err = std.remove(pathname, args.recursive)
+		local status, err = std.fs.remove(pathname, args.recursive)
 		if not status then
 			errmsg(err)
 			return 127
@@ -423,7 +423,7 @@ local cat = function(cmd, args, extra)
 		errmsg(err)
 		return 127
 	end
-	local txt, err = std.read_file(args.pathname)
+	local txt, err = std.fs.read_file(args.pathname)
 	if not txt then
 		errmsg(err)
 		return 127
@@ -432,7 +432,7 @@ local cat = function(cmd, args, extra)
 	if mime:match("^image") then
 		local l, c = term.cursor_position()
 		if args.wrap then
-			local pid = std.launch(
+			local pid = std.ps.launch(
 				"kitten",
 				nil,
 				nil,
@@ -445,11 +445,11 @@ local cat = function(cmd, args, extra)
 				args.dimensions .. "@1x" .. tostring(l),
 				args.pathname
 			)
-			std.wait(pid)
+			std.ps.wait(pid)
 			term.move("down", 10)
 		else
-			local pid = std.launch("kitten", nil, nil, nil, "icat", args.pathname)
-			std.wait(pid)
+			local pid = std.ps.launch("kitten", nil, nil, nil, "icat", args.pathname)
+			std.ps.wait(pid)
 		end
 		return 0
 	end
@@ -478,7 +478,7 @@ end
 
 local exec = function(cmd, args)
 	local cmd = table.remove(args, 1)
-	std.exec(cmd, unpack(args))
+	std.ps.exec(cmd, unpack(args))
 end
 
 local notify = function(cmd, args)
@@ -498,7 +498,7 @@ local notify = function(cmd, args)
 	table.remove(args, 1)
 	local title = table.remove(args, 1) or "reminder!"
 	local msg = table.concat(args, " ")
-	local pid = std.fork()
+	local pid = std.ps.fork()
 	if pid and pid == 0 then
 		std.sleep(seconds)
 		term.kitty_notify(title, msg)
@@ -513,8 +513,8 @@ local list_env = function(cmd, args)
 	local arg = args[1] or ".*" -- for now let's just hardcode the first arg
 	local env = std.environ()
 	local tss = tss_gen.new(theme)
-	local matched = std.include_keys(std.sort_keys(env), arg)
-	tss.__style.builtins.envlist.var.w = std.longest(matched)
+	local matched = std.tbl.include_keys(std.tbl.sort_keys(env), arg)
+	tss.__style.builtins.envlist.var.w = std.tbl.longest(matched)
 
 	local out = ""
 	for _, entry in ipairs(matched) do
@@ -540,7 +540,7 @@ local setenv = function(cmd, args)
 			value = v
 		end
 		if name and value then
-			std.setenv(name, value)
+			std.ps.setenv(name, value)
 			name = nil
 		end
 	end
@@ -550,7 +550,7 @@ end
 local unsetenv = function(cmd, args)
 	local args = args or {}
 	for _, arg in ipairs(args) do
-		std.unsetenv(arg)
+		std.ps.unsetenv(arg)
 	end
 	return 0
 end
@@ -683,7 +683,7 @@ local ktl = function(cmd, args)
 		if arg == "-n" or arg == "--namespace" then
 			if i + 1 <= #args then
 				namespace = args[i + 1]
-				std.setenv("KTL_NAMESPACE", namespace)
+				std.ps.setenv("KTL_NAMESPACE", namespace)
 				break
 			end
 		end
@@ -692,16 +692,16 @@ local ktl = function(cmd, args)
 	if args[1] and args[1] == "profile" then
 		if args[2] then
 			local home = os.getenv("HOME") or ""
-			std.setenv("KUBECONFIG", home .. "/.kube/cfgs/" .. args[2])
+			std.ps.setenv("KUBECONFIG", home .. "/.kube/cfgs/" .. args[2])
 			-- We check if there is a `~/.kube/config` file and it is a symlink.
 			-- If it is, we remove it and create a new one. If it's not a symlink
 			-- we leave it intact.
-			local target = std.readlink(home .. "/.kube/config")
+			local target = std.fs.readlink(home .. "/.kube/config")
 			if target then
-				std.remove(home .. "/.kube/config")
+				std.fs.remove(home .. "/.kube/config")
 			end
-			if not std.file_exists(home .. "/.kube/config") then
-				std.symlink(home .. "/.kube/cfgs/" .. args[2], home .. "/.kube/config")
+			if not std.fs.file_exists(home .. "/.kube/config") then
+				std.fs.symlink(home .. "/.kube/cfgs/" .. args[2], home .. "/.kube/config")
 			end
 			return 0
 		end
@@ -713,8 +713,8 @@ local ktl = function(cmd, args)
 		table.insert(args, 1, namespace)
 		table.insert(args, 1, "--namespace")
 	end
-	local pid = std.launch("kubectl", nil, nil, nil, unpack(args))
-	local ret, status = std.wait(pid)
+	local pid = std.ps.launch("kubectl", nil, nil, nil, unpack(args))
+	local ret, status = std.ps.wait(pid)
 	if status ~= 0 then
 		return status
 	end
@@ -731,13 +731,13 @@ local ssh_profile = function(cmd, args)
 	local profile_full_path = home .. "/.ssh/profiles/" .. profile
 	local ssh_config = home .. "/.ssh/config"
 
-	if not std.file_exists(profile_full_path) then
+	if not std.fs.file_exists(profile_full_path) then
 		errmsg("no such profile")
 		return 255
 	end
-	local st = std.stat(ssh_config)
+	local st = std.fs.stat(ssh_config)
 	if not st then
-		local ret, err = std.symlink(profile_full_path, ssh_config)
+		local ret, err = std.fs.symlink(profile_full_path, ssh_config)
 		if ret then
 			return 0
 		end
@@ -745,12 +745,12 @@ local ssh_profile = function(cmd, args)
 		return 255
 	end
 	if st.mode == "l" then
-		local ret, err = std.remove(ssh_config)
+		local ret, err = std.fs.remove(ssh_config)
 		if not ret then
 			errmsg(err)
 			return 255
 		end
-		local ret, err = std.symlink(profile_full_path, ssh_config)
+		local ret, err = std.fs.symlink(profile_full_path, ssh_config)
 		if not ret then
 			errmsg(err)
 			return 255
@@ -764,7 +764,7 @@ end
 ]]
 
 local aws_profile = function(cmd, args)
-	local aws_config = std.read_file(os.getenv("HOME") .. "/.aws/config")
+	local aws_config = std.fs.read_file(os.getenv("HOME") .. "/.aws/config")
 	if aws_config then
 		local content = { title = "Choose   profile", options = {} }
 		for p in aws_config:gmatch("%[profile ([^%]]+)%]") do
@@ -780,7 +780,7 @@ local aws_profile = function(cmd, args)
 		term.go(l, c)
 		term.set_sane_mode()
 		if profile ~= "" then
-			std.setenv("AWS_PROFILE", profile)
+			std.ps.setenv("AWS_PROFILE", profile)
 		end
 	end
 	return 0
@@ -804,7 +804,7 @@ local aws_region = function(cmd, args)
 		term.go(l, c)
 		term.move("column")
 		if region ~= "" then
-			std.setenv("AWS_REGION", region)
+			std.ps.setenv("AWS_REGION", region)
 		end
 	end
 	return 0
@@ -813,7 +813,7 @@ end
     NETSTAT
 ]]
 local routes = function()
-	local routes_raw, err = std.read_file("/proc/net/route")
+	local routes_raw, err = std.fs.read_file("/proc/net/route")
 	if not routes_raw then
 		return nil, err
 	end
@@ -827,9 +827,9 @@ local routes = function()
 		local iface, dst, gw, mask = line:match("^(%S+)%s+(%S+)%s+(%S+)%s+%S+%s+%S+%s+%S+%s+%S+%s+(%S+)")
 		table.insert(routes, {
 			iface = iface,
-			dst = std.parse_hex_ipv4(dst),
-			gw = std.parse_hex_ipv4(gw),
-			mask = std.parse_hex_ipv4(mask),
+			dst = std.conv.hex_ipv4(dst),
+			gw = std.conv.hex_ipv4(gw),
+			mask = std.hex_ipv4(mask),
 		})
 	end
 	return routes
@@ -850,7 +850,7 @@ local connection_state = {
 }
 
 local netstat = function()
-	local tcp_raw, err = std.read_file("/proc/net/tcp")
+	local tcp_raw, err = std.fs.read_file("/proc/net/tcp")
 	if not tcp_raw then
 		return nil, err
 	end
@@ -871,12 +871,12 @@ local netstat = function()
 		if not parsed[state] then
 			parsed[state] = {}
 		end
-		local src_ip, src_port = std.parse_hex_ipv4(fields[2])
-		local dst_ip, dst_port = std.parse_hex_ipv4(fields[3])
+		local src_ip, src_port = std.conv.hex_ipv4(fields[2])
+		local dst_ip, dst_port = std.conv.hex_ipv4(fields[3])
 		local uid = tonumber(fields[8]) or 0
 		local user = users[uid]
 		local inode = fields[10]
-		local proc_name = std.find_process_by_inode(inode)
+		local proc_name = std.ps.find_by_inode(inode)
 		table.insert(
 			parsed[state],
 			{ src = src_ip .. ":" .. src_port, dst = dst_ip .. ":" .. dst_port, user = user.login, process = proc_name }
@@ -1073,7 +1073,7 @@ local history = function(cmd, args, extra)
 		end
 	end
 	local indent = tss.__style.builtins.history.global_indent or 0
-	term.write(std.indent(lines, indent) .. "\n")
+	term.write(std.txt.indent(lines, indent) .. "\n")
 	return 0
 end
 
@@ -1139,24 +1139,24 @@ local kinda_ps = function(cmd, args)
 	end
 	-- See https://man7.org/linux/man-pages/man5/proc.5.html (or `man 5 proc`) for
 	-- details on the proc pseudo fs
-	local pids = std.list_files("/proc", "^%d", "d") or {}
+	local pids = std.fs.list_files("/proc", "^%d", "d") or {}
 	local processes = {}
 	local sys_users = std.system_users()
-	local uptime_file = std.read_file("/proc/uptime") or ""
+	local uptime_file = std.fs.read_file("/proc/uptime") or ""
 	local uptime_seconds = tonumber(uptime_file:match("^(%S+)")) or 0
-	local mem_file = std.read_file("/proc/meminfo") or ""
+	local mem_file = std.fs.read_file("/proc/meminfo") or ""
 	local mem_total = tonumber(mem_file:match("MemTotal:%s+(%S+)")) or 0
 
 	for pid_s, _ in pairs(pids) do
 		local pid = tonumber(pid_s) or -1
-		local cmdline = std.read_file("/proc/" .. pid_s .. "/cmdline") or ""
+		local cmdline = std.fs.read_file("/proc/" .. pid_s .. "/cmdline") or ""
 		cmdline = cmdline:gsub("%z", " ") -- arguments in cmdline are separated with the \0 character
 		cmdline = cmdline:gsub("%s$", "")
 
 		-- CPU Usage calculation
 		-- See https://stackoverflow.com/questions/16726779/how-do-i-get-the-total-cpu-usage-of-an-application-from-proc-pid-stat for
 		-- useful details and links
-		local stat_file = std.read_file("/proc/" .. pid_s .. "/stat") or ""
+		local stat_file = std.fs.read_file("/proc/" .. pid_s .. "/stat") or ""
 		local utime, stime, cutime, cstime, starttime = stat_file:match(
 			"^%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+%S+%s+(%S+)%s+(%S+)%s+(%S+)%s+(%S+)%s+%S+%s+%S+%s+%S+%s+%S+%s+(%S+)"
 		) -- these values are in clock ticks
@@ -1166,7 +1166,7 @@ local kinda_ps = function(cmd, args)
 		local proc_cpu_seconds = uptime_seconds - (tonumber(starttime) / clk_tck)
 		local cpu_usage = 100 * ((proc_total_cpu_time / clk_tck) / proc_cpu_seconds)
 
-		local status = std.read_file("/proc/" .. pid_s .. "/status") or ""
+		local status = std.fs.read_file("/proc/" .. pid_s .. "/status") or ""
 		local uid = tonumber(status:match("Uid:%s+(%S+)")) or -1
 		local name = status:match("Name:%s+(%S+)") or ""
 		local state = status:match("State:%s+(%S+)") or "U"
@@ -1260,7 +1260,7 @@ local kinda_ps = function(cmd, args)
 		return a[sort_field_idx] < b[sort_field_idx]
 	end
 	table.sort(ps_tbl, sort_func)
-	local ps_tbl_djot = std.pipe_table(ps_tbl_fields, ps_tbl)
+	local ps_tbl_djot = std.tbl.pipe_table(ps_tbl_fields, ps_tbl)
 	term.write("\n" .. text.render_djot(table.concat(ps_tbl_djot, "\n")) .. "\n")
 	return 0
 end
@@ -1306,7 +1306,7 @@ local files_matching = function(cmd, args)
 	if #path == 0 then
 		path = "."
 	end
-	local files = std.list_files(path, pattern) or {}
+	local files = std.fs.list_files(path, pattern) or {}
 	for file, stat in pairs(files) do
 		local cmd = ""
 		local full_path
@@ -1380,7 +1380,7 @@ local zx = function(cmd, args)
 			store:close(true)
 			local txt = "# Running snippet\n\n```" .. snippet .. "\n" .. script .. "\n```\n"
 			term.write("\n" .. text.render_djot(txt, theme.renderer.kat) .. "\n")
-			local script_lines = std.lines(script)
+			local script_lines = std.txt.lines(script)
 			for i, line in ipairs(script_lines) do
 				local pipeline, err = utils.parse_pipeline(line, true)
 				if err then

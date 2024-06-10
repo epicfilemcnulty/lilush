@@ -10,7 +10,7 @@ local history_add = function(self, entry)
 		local end_ts = tonumber(env["LILUSH_EXEC_END"]) or os.time()
 		local status = tonumber(env["LILUSH_EXEC_STATUS"]) or 111
 		local duration = end_ts - start_ts
-		local cwd = std.cwd()
+		local cwd = std.fs.cwd()
 		local home = env["HOME"]
 		cwd = cwd:gsub("^" .. home, "~")
 		local payload = { cmd = entry, ts = start_ts, d = duration, cwd = cwd, exit = status }
@@ -100,7 +100,7 @@ local search = function(self, input)
 	end
 
 	local scores = {}
-	local cwd = std.cwd()
+	local cwd = std.fs.cwd()
 	local home = os.getenv("HOME") or ""
 	cwd = cwd:gsub("^" .. home, "~")
 

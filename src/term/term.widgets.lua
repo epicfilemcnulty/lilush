@@ -99,7 +99,7 @@ local switcher = function(content, rss, l, c)
 	local content = content or {}
 
 	local title = content.title or ""
-	local max = std.longest(content.options)
+	local max = std.tbl.longest(content.options)
 	if std.utf.len(title) > max then
 		max = std.utf.len(title)
 	end
@@ -204,8 +204,8 @@ end
 local render_options = function(options, idx, tss, l, c)
 	local l = l or 1
 	local c = c or 1
-	local option_keys = std.exclude_keys(std.sort_keys(options), "selected")
-	local max_opt_len = std.longest(option_keys)
+	local option_keys = std.tbl.exclude_keys(std.tbl.sort_keys(options), "selected")
+	local max_opt_len = std.tbl.longest(option_keys)
 	tss.__style.w = max_opt_len + 4
 
 	for i, opt in ipairs(option_keys) do
@@ -268,19 +268,20 @@ local settings = function(config, title, rss, l, c)
 		if key == "UP" then
 			if idx > 1 then
 				idx = idx - 1
-				render_options(std.get_nested_value(config, target), idx, tss, l + 2, c)
+				render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
 			end
 		end
 		if key == "DOWN" then
-			local options = std.exclude_keys(std.sort_keys(std.get_nested_value(config, target)), "selected")
+			local options =
+				std.tbl.exclude_keys(std.tbl.sort_keys(std.tbl.get_value_by_ref(config, target)), "selected")
 			if idx < #options then
 				idx = idx + 1
-				render_options(std.get_nested_value(config, target), idx, tss, l + 2, c)
+				render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
 			end
 		end
 		if key == "RIGHT" or key == "ENTER" then
-			local objs = std.get_nested_value(config, target)
-			local keys = std.exclude_keys(std.sort_keys(objs), "selected")
+			local objs = std.tbl.get_value_by_ref(config, target)
+			local keys = std.tbl.exclude_keys(std.tbl.sort_keys(objs), "selected")
 			local chosen = keys[idx]
 
 			if type(objs[chosen]) == "table" and not objs[chosen].options then
@@ -290,7 +291,7 @@ local settings = function(config, title, rss, l, c)
 					idx = 1
 					local subcat = target:gsub("%.", " -> ")
 					render_title(title .. subcat, tss, l, c)
-					render_options(std.get_nested_value(config, target), idx, tss, l + 2, c)
+					render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
 				elseif objs[chosen].selected then
 					local options = {}
 					for k, v in pairs(objs[chosen]) do
@@ -298,7 +299,7 @@ local settings = function(config, title, rss, l, c)
 							table.insert(options, k)
 						end
 					end
-					options = std.alphanumsort(options)
+					options = std.tbl.alphanumsort(options)
 					local choice = switcher({ title = "Choose an option", options = options }, rss, l + 2, c)
 					if choice ~= "" then
 						objs[chosen].selected = choice
@@ -306,12 +307,12 @@ local settings = function(config, title, rss, l, c)
 					term.clear()
 					local subcat = target:gsub("%.", " -> ")
 					render_title(title .. subcat, tss, l, c)
-					render_options(std.get_nested_value(config, target), idx, tss, l + 2, c)
+					render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
 				end
 			else
 				if type(objs[chosen]) == "boolean" then
 					objs[chosen] = not objs[chosen]
-					render_options(std.get_nested_value(config, target), idx, tss, l + 2, c)
+					render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
 				elseif type(objs[chosen]) == "table" then
 					local choice =
 						switcher({ title = "Choose an option", options = objs[chosen].options }, rss, l + 2, c)
@@ -321,9 +322,9 @@ local settings = function(config, title, rss, l, c)
 					term.clear()
 					local subcat = target:gsub("%.", " -> ")
 					render_title(title .. subcat, tss, l, c)
-					render_options(std.get_nested_value(config, target), idx, tss, l + 2, c)
+					render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
 				elseif type(objs[chosen]) == "string" or type(objs[chosen]) == "number" then
-					local m = std.longest(keys)
+					local m = std.tbl.longest(keys)
 					local val_indent = tss.__style.option.value.indent or 0
 					term.clear_line()
 					term.show_cursor()
@@ -352,7 +353,7 @@ local settings = function(config, title, rss, l, c)
 					term.clear()
 					local subcat = target:gsub("%.", " -> ")
 					render_title(title .. subcat, tss, l, c)
-					render_options(std.get_nested_value(config, target), idx, tss, l + 2, c)
+					render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
 				end
 			end
 		end
@@ -363,14 +364,14 @@ local settings = function(config, title, rss, l, c)
 				idx = 1
 				local subcat = target:gsub("%.", " -> ")
 				render_title(title .. subcat, tss, l, c)
-				render_options(std.get_nested_value(config, target), idx, tss, l + 2, c)
+				render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
 			end
 		end
 	end
 end
 
 local file_chooser = function(title, start_dir, rss, patterns)
-	local invoke_dir = std.cwd()
+	local invoke_dir = std.fs.cwd()
 	local title = title or "Select a file/dir"
 	local patterns = patterns or { mode = "[fdl]", select = "[fdl]" }
 	local tss = style.merge(default_widgets_rss, rss)
@@ -385,15 +386,15 @@ local file_chooser = function(title, start_dir, rss, patterns)
 	local w_y, w_x = term.window_size()
 
 	local get_dir_files = function(dir)
-		local files = std.list_files(dir, "^[^.]", patterns.mode)
-		local file_names = std.sort_keys(files)
-		local max_width = std.longest(file_names)
+		local files = std.fs.list_files(dir, "^[^.]", patterns.mode)
+		local file_names = std.tbl.sort_keys(files)
+		local max_width = std.tbl.longest(file_names)
 		return file_names, files, max_width
 	end
 	local choice
 	repeat
 		term.clear()
-		std.chdir(cur_dir)
+		std.fs.chdir(cur_dir)
 		local file_names, files, max_width = get_dir_files(".")
 		if #title > max_width then
 			max_width = #title
@@ -434,19 +435,19 @@ local file_chooser = function(title, start_dir, rss, patterns)
 					render_files()
 				end
 				if key == "RIGHT" and files[file_names[idx]].mode == "d" then
-					cur_dir = std.cwd() .. "/" .. file_names[idx]
+					cur_dir = std.fs.cwd() .. "/" .. file_names[idx]
 					key = "change_dir"
 				end
 				if key == "LEFT" then
 					-- hacky way to restrict going upper than the start_dir
-					if std.utf.len(cur_dir) > std.utf.len(start_dir) and std.chdir("..") then
-						cur_dir = std.cwd()
+					if std.utf.len(cur_dir) > std.utf.len(start_dir) and std.fs.chdir("..") then
+						cur_dir = std.fs.cwd()
 						key = "change_dir"
 					end
 				end
 				if key == "ENTER" and files[file_names[idx]].mode:match(patterns.select) then
 					key = "chosen"
-					choice = std.cwd() .. "/" .. file_names[idx]
+					choice = std.fs.cwd() .. "/" .. file_names[idx]
 					break
 				end
 				if key == "ESC" then
@@ -455,8 +456,8 @@ local file_chooser = function(title, start_dir, rss, patterns)
 			end
 		until key == "change_dir"
 	until key == "chosen" or key == "ESC"
-	std.setenv("LILUSH_FC_LASTDIR", std.cwd())
-	std.chdir(invoke_dir)
+	std.ps.setenv("LILUSH_FC_LASTDIR", std.fs.cwd())
+	std.fs.chdir(invoke_dir)
 	return choice
 end
 

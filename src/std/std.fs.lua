@@ -2,6 +2,18 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local core = require("std.core")
 
+local function symlink(src, dst)
+	return core.symlink(src, dst)
+end
+
+local function cwd()
+	return core.cwd()
+end
+
+local function stat(path)
+	return core.stat(path)
+end
+
 local function readlink(pathname)
 	return core.readlink(pathname)
 end
@@ -172,11 +184,17 @@ local function write_file(filename, text)
 end
 
 local fs = {
+	cwd = cwd,
+	stat = stat,
 	read_file = read_file,
 	write_file = write_file,
 	dir_exists = dir_exists,
 	empty_dir = empty_dir,
+	mkdir = mkdir,
+	chdir = core.chdir,
 	non_empty_dir = non_empty_dir,
+	symlink = symlink,
+	remove = remove,
 	file_exists = file_exists,
 	list_files = list_files,
 	list_dir = list_dir,

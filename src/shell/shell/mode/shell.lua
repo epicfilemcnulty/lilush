@@ -10,11 +10,11 @@ local style = require("term.tss")
 local tss = style.new(theme)
 
 local check_config_dirs = function(self)
-	if not std.dir_exists(self.home .. "/.config/lilush") then
-		std.mkdir(self.home .. "/.config/lilush")
+	if not std.fs.dir_exists(self.home .. "/.config/lilush") then
+		std.fs.mkdir(self.home .. "/.config/lilush")
 	end
-	if not std.dir_exists(self.home .. "/.local/share/lilush") then
-		std.mkdir(self.home .. "/.local/share/lilush")
+	if not std.fs.dir_exists(self.home .. "/.local/share/lilush") then
+		std.fs.mkdir(self.home .. "/.local/share/lilush")
 	end
 end
 
@@ -44,7 +44,7 @@ local settings = function(self, combo)
 	term.hide_cursor()
 	widgets.settings(self.conf, "Shell Settings", theme.widgets.shell, 3, 5)
 	-- This is dubious, what if it was already changed via setenv?
-	std.setenv("AWS_REGIONS", self.conf.aws.regions)
+	std.ps.setenv("AWS_REGIONS", self.conf.aws.regions)
 	term.switch_screen("main", nil, true)
 	term.show_cursor()
 	return true
@@ -54,7 +54,7 @@ local run_script = function(self, cmd, args)
 	local args = args or {}
 	local script_file = args[1] or ""
 	if not script_file:match("^/") then
-		script_file = std.cwd() .. "/" .. script_file
+		script_file = std.fs.cwd() .. "/" .. script_file
 	end
 	local script, err = io.open(script_file, "r")
 	if script then
@@ -111,9 +111,9 @@ local alias = function(self, cmd, args)
 	if cmd == "alias" then
 		if #args == 0 then
 			local max = 0
-			local sorted = std.sort_keys(self.aliases)
+			local sorted = std.tbl.sort_keys(self.aliases)
 			local out = ""
-			tss.__style.builtins.alias.name.w = std.longest(sorted)
+			tss.__style.builtins.alias.name.w = std.tbl.longest(sorted)
 			for _, entry in ipairs(sorted) do
 				out = out .. tss:apply("builtins.alias.name", entry)
 				out = out .. tss:apply("builtins.alias.value", self.aliases[entry]) .. "\n"
@@ -143,11 +143,11 @@ local python_env = function(self, cmd, args)
 	local deactivate = function()
 		local virtual_env = os.getenv("VIRTUAL_ENV")
 		if virtual_env then
-			std.setenv("PATH", self.old_path)
-			std.unsetenv("VIRTUAL_ENV")
+			std.ps.setenv("PATH", self.old_path)
+			std.ps.unsetenv("VIRTUAL_ENV")
 			local prompt = os.getenv("LILUSH_PROMPT") or ""
 			local new_prompt = prompt:gsub("python,?", "")
-			std.setenv("LILUSH_PROMPT", new_prompt)
+			std.ps.setenv("LILUSH_PROMPT", new_prompt)
 			self:rehash()
 		end
 	end
@@ -155,12 +155,12 @@ local python_env = function(self, cmd, args)
 		local base_dir = self.conf.python.venvs_dir
 		local virtual_env = args[1] or ""
 		if virtual_env == "" and base_dir then
-			local files = std.list_files(base_dir, nil, "d") or {}
+			local files = std.fs.list_files(base_dir, nil, "d") or {}
 			local venvs = {}
 			for f, s in pairs(files) do
 				table.insert(venvs, f)
 			end
-			venvs = std.alphanumsort(venvs)
+			venvs = std.tbl.alphanumsort(venvs)
 			term.set_raw_mode()
 			local l, c = term.cursor_position()
 			local content = { title = "Choose a python venv", options = venvs }
@@ -173,21 +173,21 @@ local python_env = function(self, cmd, args)
 			virtual_env = base_dir .. "/" .. choice
 		end
 		if not virtual_env:match("^/") then
-			virtual_env = std.cwd() .. "/" .. virtual_env
+			virtual_env = std.fs.cwd() .. "/" .. virtual_env
 		end
 		virtual_env = virtual_env:gsub("/$", "")
 		local python_path = virtual_env .. "/bin"
-		if std.dir_exists(python_path) and python_path ~= "/bin" then
+		if std.fs.dir_exists(python_path) and python_path ~= "/bin" then
 			if os.getenv("VIRTUAL_ENV") ~= nil then
 				deactivate()
 			end
-			std.setenv("VIRTUAL_ENV", virtual_env)
+			std.ps.setenv("VIRTUAL_ENV", virtual_env)
 			local path = os.getenv("PATH") or ""
 			self.old_path = path
-			std.setenv("PATH", python_path .. ":" .. path)
+			std.ps.setenv("PATH", python_path .. ":" .. path)
 			self:rehash()
 			local prompt = os.getenv("LILUSH_PROMPT") or ""
-			std.setenv("LILUSH_PROMPT", "python," .. prompt)
+			std.ps.setenv("LILUSH_PROMPT", "python," .. prompt)
 		end
 	else
 		deactivate()
@@ -266,8 +266,8 @@ local new = function(input)
 		aliases = {},
 		home = os.getenv("HOME") or "HOMELESS",
 		user = os.getenv("USER") or "nobody",
-		hostname = tostring(std.read_file("/etc/hostname")):gsub("\n", ""),
-		pwd = std.cwd() or "",
+		hostname = tostring(std.fs.read_file("/etc/hostname")):gsub("\n", ""),
+		pwd = std.fs.cwd() or "",
 		check_config_dirs = check_config_dirs,
 		load_config = load_config,
 		run_script = run_script,
@@ -283,7 +283,7 @@ local new = function(input)
 	mode:check_config_dirs()
 	mode:load_config()
 	mode.conf = load_shell_config()
-	std.setenv("PWD", mode.pwd)
+	std.ps.setenv("PWD", mode.pwd)
 	local prompts = os.getenv("LILUSH_PROMPT") or "user,dir"
 	if mode.input.prompt then
 		mode.input.prompt:set({

@@ -17,8 +17,14 @@ typedef struct mod_lua {
 #include "../build/luasocket/mod_lua_ssl.h"
 #include "../build/luasocket/mod_lua_url.h"
 #include "../build/luasocket/mod_lua_web.h"
-// Deviant
+// Std
+#include "../build/std/mod_lua_std.conv.h"
+#include "../build/std/mod_lua_std.fs.h"
 #include "../build/std/mod_lua_std.h"
+#include "../build/std/mod_lua_std.ps.h"
+#include "../build/std/mod_lua_std.tbl.h"
+#include "../build/std/mod_lua_std.txt.h"
+#include "../build/std/mod_lua_std.utf.h"
 // Text
 #include "../build/text/mod_lua_text.h"
 // Argparser
@@ -85,6 +91,12 @@ const mod_lua__t lua_preload[] = {
     {"ltn12",                            mod_lua_ltn12,                            &mod_lua_ltn12_SIZE                       },
     {"mime",                             mod_lua_mime,                             &mod_lua_mime_SIZE                        },
     {"std",                              mod_lua_std,                              &mod_lua_std_SIZE                         },
+    {"std.fs",                           mod_lua_std_fs,                           &mod_lua_std_fs_SIZE                      },
+    {"std.ps",                           mod_lua_std_ps,                           &mod_lua_std_ps_SIZE                      },
+    {"std.txt",                          mod_lua_std_txt,                          &mod_lua_std_txt_SIZE                     },
+    {"std.tbl",                          mod_lua_std_tbl,                          &mod_lua_std_tbl_SIZE                     },
+    {"std.conv",                         mod_lua_std_conv,                         &mod_lua_std_conv_SIZE                    },
+    {"std.utf",                          mod_lua_std_utf,                          &mod_lua_std_utf_SIZE                     },
     {"argparser",                        mod_lua_argparser,                        &mod_lua_argparser_SIZE                   },
     {"crypto",                           mod_lua_crypto,                           &mod_lua_crypto_SIZE                      },
     {"term",                             mod_lua_term,                             &mod_lua_term_SIZE                        },

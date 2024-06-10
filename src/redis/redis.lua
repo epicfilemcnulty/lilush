@@ -131,7 +131,7 @@ local close = function(self, no_keepalive)
 end
 
 local connect = function(cfg)
-	local conf = std.copy_table(config)
+	local conf = std.tbl.copy(config)
 	if type(cfg) == "string" then
 		conf = {
 			host = cfg:match("^[^:]+"),
@@ -140,7 +140,7 @@ local connect = function(cfg)
 			tcp_nodelay = true,
 		}
 	elseif type(cfg) == "table" then
-		conf = std.merge_tables(conf, cfg)
+		conf = std.tbl.merge(conf, cfg)
 	end
 	if socket_pool[conf] then
 		if #socket_pool[conf] > 0 then

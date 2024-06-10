@@ -26,19 +26,19 @@ local run = function(self)
 	local status = 0
 	if chunk then
 		term.write(tss:apply("modes.lua.sep") .. "\n")
-		local cwd = std.cwd()
-		std.setenv("LILUSH_EXEC_CWD", cwd)
-		std.setenv("LILUSH_EXEC_START", os.time())
+		local cwd = std.fs.cwd()
+		std.ps.setenv("LILUSH_EXEC_CWD", cwd)
+		std.ps.setenv("LILUSH_EXEC_START", os.time())
 		local status, err = pcall(chunk)
 		term.write(tss:apply("modes.lua.sep") .. "\n")
-		std.setenv("LILUSH_EXEC_END", os.time())
+		std.ps.setenv("LILUSH_EXEC_END", os.time())
 		if not status then
-			std.setenv("LILUSH_EXEC_STATUS", 255)
+			std.ps.setenv("LILUSH_EXEC_STATUS", 255)
 			return 255, err:match("^[^:]+:%d+:(.*)") or err
 		end
-		std.setenv("LILUSH_EXEC_STATUS", 0)
+		std.ps.setenv("LILUSH_EXEC_STATUS", 0)
 	else
-		std.setenv("LILUSH_EXEC_STATUS", 255)
+		std.ps.setenv("LILUSH_EXEC_STATUS", 255)
 		return 255, err:match("^[^:]+:%d+:(.*)") or err
 	end
 	return 0

@@ -86,9 +86,9 @@ local render_text = function(raw, rss, conf)
 	end
 	local out = tss:apply("raw", raw)
 	if wrap > 0 then
-		out = std.lines_of(out, wrap)
+		out = std.txt.lines_of(out, wrap)
 	end
-	return std.indent(out, g_indent)
+	return std.txt.indent(out, g_indent)
 end
 
 local render_markdown = function(raw, rss, conf)
@@ -184,7 +184,7 @@ local render_markdown = function(raw, rss, conf)
 			end
 			local content = v.lines
 			if wrap > 0 and codeblock_wrap then
-				content = std.lines_of(table.concat(content, "\n"), wrap, true)
+				content = std.txt.lines_of(table.concat(content, "\n"), wrap, true)
 			end
 			for _, l in ipairs(content) do
 				buf:put(tss:apply("codeblock", l), "\n")
@@ -200,7 +200,7 @@ local render_markdown = function(raw, rss, conf)
 			end
 			if wrap > 0 then
 				p = table.concat(
-					std.indent_all_lines_but_first(std.lines_of(p, wrap - v.indent, false, true), v.indent),
+					std.txt.indent_all_lines_but_first(std.txt.lines_of(p, wrap - v.indent, false, true), v.indent),
 					"\n"
 				)
 			end
@@ -212,20 +212,20 @@ local render_markdown = function(raw, rss, conf)
 					if level > 0 then
 						target = target .. ".nested"
 					end
-					p = std.indent(tss:apply("list.ul." .. target), level * 2) .. " " .. p .. "\n"
+					p = std.txt.indent(tss:apply("list.ul." .. target), level * 2) .. " " .. p .. "\n"
 				else
 					local items = tostring(ast[v.parent].items)
 					tss.__style.list.ol.w = #items + 1
 					tss.__style.list.ol.align = "left"
-					p = std.indent(tss:apply("list.ol", v.list_item .. "."), level * 2) .. " " .. p .. "\n"
+					p = std.txt.indent(tss:apply("list.ol", v.list_item .. "."), level * 2) .. " " .. p .. "\n"
 				end
 			else
-				p = std.indent(p, v.indent) .. "\n"
+				p = std.txt.indent(p, v.indent) .. "\n"
 			end
 			buf:put(p)
 		end
 	end
-	return std.indent(buf:get(), g_indent)
+	return std.txt.indent(buf:get(), g_indent)
 end
 
 -- All things djot are below =)
@@ -360,9 +360,9 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 				)
 			top_line = st
 		end
-		local content = std.lines(el.text)
+		local content = std.txt.lines(el.text)
 		if wrap > 0 and codeblock_wrap then
-			content = std.lines_of(table.concat(content, "\n"), wrap, true)
+			content = std.txt.lines_of(table.concat(content, "\n"), wrap, true)
 		end
 		out = out .. string.rep(" ", indent) .. top_line .. "\n"
 		for _, l in ipairs(content) do
@@ -393,11 +393,11 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 		if wrap > 0 then
 			if list_item_idx == 1 then
 				return table.concat(
-					std.indent_all_lines_but_first(std.lines_of(content, wrap, false, true), indent),
+					std.txt.indent_all_lines_but_first(std.txt.lines_of(content, wrap, false, true), indent),
 					"\n"
 				) .. trailing_newline
 			end
-			return table.concat(std.indent_lines(std.lines_of(content, wrap, false, true), indent), "\n")
+			return table.concat(std.txt.indent_lines(std.txt.lines_of(content, wrap, false, true), indent), "\n")
 				.. trailing_newline
 		end
 		return content .. trailing_newline
@@ -460,7 +460,7 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 				end
 			end
 		end
-		local maxes = std.calc_table_maxes(tbl_headers, tbl_data)
+		local maxes = std.tbl.calc_table_maxes(tbl_headers, tbl_data)
 		local tbl_width = 0
 		local out = ""
 		for col_name, max in pairs(maxes) do
@@ -474,10 +474,10 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 			.. string.rep(" ", indent)
 			.. tss:apply("tbl.border.v")
 		for i, header in ipairs(tbl_headers) do
-			local h_name = std.parse_pipe_table_header(header)
+			local h_name = std.tbl.parse_pipe_table_header(header)
 			out = out
 				.. " "
-				.. tss:apply("tbl.header", std.align_text(h_name, maxes[h_name], "center"))
+				.. tss:apply("tbl.header", std.txt.align_text(h_name, maxes[h_name], "center"))
 				.. " "
 				.. tss:apply("tbl.border.v")
 		end
@@ -486,10 +486,10 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 			if #row > 0 then
 				out = out .. string.rep(" ", indent) .. tss:apply("tbl.border.v")
 				for j, cell in ipairs(row) do
-					local h_name, h_align = std.parse_pipe_table_header(tbl_headers[j])
+					local h_name, h_align = std.tbl.parse_pipe_table_header(tbl_headers[j])
 					out = out
 						.. " "
-						.. tss:apply("tbl.cell", std.align_text(cell, maxes[h_name], h_align))
+						.. tss:apply("tbl.cell", std.txt.align_text(cell, maxes[h_name], h_align))
 						.. " "
 						.. tss:apply("tbl.border.v")
 				end
@@ -526,7 +526,7 @@ local render_djot = function(raw, rss, conf)
 	for i, el in ipairs(doc.children) do
 		out = out .. render_djot_element(el, tss, wrap, "doc", i)
 	end
-	return std.indent(out, g_indent)
+	return std.txt.indent(out, g_indent)
 end
 
 return {

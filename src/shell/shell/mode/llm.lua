@@ -36,7 +36,7 @@ local choose_preset = function(self, combo)
 	if not presets then
 		return false
 	end
-	local content = { title = "Choose a preset", options = std.sort_keys(presets) }
+	local content = { title = "Choose a preset", options = std.tbl.sort_keys(presets) }
 	term.switch_screen("alt", true)
 	term.hide_cursor()
 	local choice = widgets.switcher(content, theme.widgets.llm)
@@ -185,7 +185,7 @@ local run = function(self)
 		end
 		messages = llm.render_prompt_tmpl(prompt_template, self.chats[self.chat_idx], true)
 		if os.getenv("LILUSH_DEBUG") then
-			std.print(messages)
+			std.tbl.print(messages)
 		end
 	end
 	resp, err = client:complete(model, messages, sampler, self.conf.sampler.stop_conditions, uuid)
@@ -367,7 +367,7 @@ end
 
 local change_sampler = function(self, combo)
 	local user_samplers = self.store:get_hash_key("llm", "samplers.json", true)
-	local content = { title = "Choose sampler preset", options = std.sort_keys(user_samplers) }
+	local content = { title = "Choose sampler preset", options = std.tbl.sort_keys(user_samplers) }
 	term.hide_cursor()
 	term.switch_screen("alt", true)
 	local choice = widgets.switcher(content, theme.widgets.llm)
@@ -400,7 +400,7 @@ local attach_file = function(self, combo)
 	term.switch_screen("main", nil, true)
 	term.show_cursor()
 	if chosen_file then
-		local file_content = std.read_file(chosen_file)
+		local file_content = std.fs.read_file(chosen_file)
 		local file_size = #file_content / 1024
 		table.insert(self.chats[self.chat_idx], {
 			role = "user",
@@ -585,7 +585,7 @@ local show_conversation = function(self, combo)
 				local user_msg = m.content
 				if m.file then
 					user_msg = table.concat(
-						std.pipe_table(
+						std.tbl.pipe_table(
 							{ "  Attached file", "Size (KB)" },
 							{ { "`" .. m.file .. "`", string.format("%.2f", m.size) } }
 						),

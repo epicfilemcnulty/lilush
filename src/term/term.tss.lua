@@ -135,11 +135,11 @@ local apply = function(self, elements, content, position)
 				text = string.rep(" ", indent) .. text
 			end
 		elseif props.clip > 0 then
-			text = std.limit(text, props.w, props.clip)
+			text = std.txt.limit(text, props.w, props.clip)
 		end
 	else
 		if ulen > self.__window.w - position and props.clip >= 0 then
-			text = std.limit(text, self.__window.w - position, self.__window.w - position)
+			text = std.txt.limit(text, self.__window.w - position, self.__window.w - position)
 		end
 	end
 	if obj.before then
@@ -169,8 +169,8 @@ local new = function(rss)
 end
 
 local merge = function(rss_1, rss_2)
-	local merged = std.copy_table(rss_1)
-	merged = std.merge_tables(merged, rss_2)
+	local merged = std.tbl.copy(rss_1)
+	merged = std.tbl.merge(merged, rss_2)
 	return new(merged)
 end
 

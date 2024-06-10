@@ -9,7 +9,7 @@ local update = function(self)
 	local path = os.getenv("PATH")
 	if path then
 		for dir in path:gmatch("([^:]+):?") do
-			local files, err = std.list_files(dir, nil, "[fl]")
+			local files, err = std.fs.list_files(dir, nil, "[fl]")
 			if files then
 				for f, stat in pairs(files) do
 					if stat.perms:match("[75]") then

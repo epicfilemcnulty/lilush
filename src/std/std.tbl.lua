@@ -53,7 +53,8 @@ table_deep_copy = function(source_table, _cyclic_cache)
 	return result
 end
 
-local merge_tables = function(defaults, options)
+local merge_tables
+merge_tables = function(defaults, options)
 	local defaults = defaults or {}
 	if options then
 		for k, v in pairs(options) do
@@ -230,6 +231,9 @@ local tbl = {
 	calc_table_maxes = calc_table_maxes,
 	alphanumsort = alphanumsort,
 	sort_keys = sort_keys,
+	longest = longest,
+	include_keys = include_keys,
+	exclude_keys = exclude_keys,
 	sort_by_str_len = sort_by_str_len,
 	get_value_by_ref = get_value_by_ref,
 }

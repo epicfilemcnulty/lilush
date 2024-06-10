@@ -455,12 +455,12 @@ end
 
 local input_obj_external_editor = function(self)
 	local editor = os.getenv("EDITOR") or "vi"
-	local stdin = std.pipe()
-	local stdout = std.pipe()
+	local stdin = std.ps.pipe()
+	local stdout = std.ps.pipe()
 	stdin:write(self:render())
 	stdin:close_inn()
-	local pid = std.launch(editor, stdin.out, stdout.inn, nil, "-")
-	local _, status = std.wait(pid)
+	local pid = std.ps.launch(editor, stdin.out, stdout.inn, nil, "-")
+	local _, status = std.ps.wait(pid)
 	stdin:close_out()
 	stdout:close_inn()
 	local result = stdout:read() or "can't get editor output"
@@ -638,7 +638,7 @@ local new_input_obj = function(config)
 		escape_newlines = true,
 		width = win_c - 1,
 	}
-	local config = std.merge_tables(default_config, config)
+	local config = std.tbl.merge(default_config, config)
 	local input_obj = {
 		-- DATA
 		__window = { h = win_l, w = win_c },
