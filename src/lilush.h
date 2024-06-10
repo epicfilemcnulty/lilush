@@ -17,9 +17,9 @@ static const char START_MINI_SHELL[] = "local sh = require('shell')\n"
                                        "local shell = sh.new_mini() shell:run()";
 
 static const char PRELOAD_INIT[] =
-    "std = require('std')\n"
+    "local std = require('std')\n"
     "local home = os.getenv('HOME') or ''\n"
     "local lilush_modules_path = './?.lua;' .. home .. '/.local/share/lilush/packages/?.lua;' .. home .. "
     "'/.local/share/lilush/packages/?/init.lua;/usr/local/share/lilush/?.lua;/usr/local/share/lilush/?/init.lua'\n"
-    "std.setenv('LUA_PATH', lilush_modules_path)\n"
+    "std.ps.setenv('LUA_PATH', lilush_modules_path)\n"
     "package.path = lilush_modules_path\n";

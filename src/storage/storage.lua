@@ -88,7 +88,7 @@ local set_key = function(self, key, value, encode_json)
 	end
 	if self.storage_dir then
 		if key:match("/") then
-			local dirs = std.split_path_by_dir(key)
+			local dirs = std.fs.split_path_by_dir(key)
 			table.remove(dirs)
 			std.fs.mkdir(self.storage_dir .. "/" .. table.concat(dirs, "/"), nil, true)
 		end
@@ -212,7 +212,7 @@ local list_hash_keys = function(self, hash)
 	if self.storage_dir then
 		local keys = {}
 		local hash_dir = self.storage_dir .. "/" .. hash
-		local files, err = std.list_files(hash_dir)
+		local files, err = std.fs.list_files(hash_dir)
 		if files then
 			for name, v in pairs(files) do
 				table.insert(keys, name)
