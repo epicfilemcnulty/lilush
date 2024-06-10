@@ -7,6 +7,7 @@ local term = require("term")
 local input = require("term.input")
 local history = require("term.input.history")
 local completion = require("term.input.completion")
+local json = require("cjson.safe")
 local prompt = require("term.input.prompt")
 
 local shell_mode = require("shell.mode.shell")
@@ -39,7 +40,7 @@ local exit_combo = function(self, combo)
 		self.__chosen_mode = "shell"
 		return clear_combo(self)
 	end
-	if os.getenv("VIRTUAL_ENV") ~= nil then
+	if os.getenv("VIRTUAL_ENV") ~= nil and self.__mode.shell then
 		self.__mode.shell.deactivate(self.__mode.shell, "deactivate")
 		return true
 	end
@@ -48,19 +49,9 @@ local exit_combo = function(self, combo)
 end
 
 local change_mode_combo = function(self, combo)
-	local map = { ["F1"] = "shell", ["F2"] = "llm", ["F3"] = "lua" }
-	self.__chosen_mode = map[combo] or "shell"
+	self.__chosen_mode = self.__shortcuts[combo] or "shell"
 	return clear_combo(self)
 end
-
-local combos = {
-	["CTRL+d"] = exit_combo,
-	["CTRL+l"] = clear_combo,
-	["F1"] = change_mode_combo,
-	["F2"] = change_mode_combo,
-	["F3"] = change_mode_combo,
-	["F4"] = change_mode_combo,
-}
 
 local run = function(self)
 	term.set_raw_mode()
@@ -95,8 +86,8 @@ local run = function(self)
 				self.__mode[self.__chosen_mode].input.__config.c = 1
 				self.__mode[self.__chosen_mode].input:display(true)
 			elseif event == "combo" then
-				if combos[combo] then
-					if combos[combo](self, combo) then
+				if self.__ctrls[combo] then
+					if self.__ctrls[combo](self, combo) then
 						self.__mode[self.__chosen_mode].input:display(true)
 					end
 				elseif self.__mode[self.__chosen_mode].combos[combo] then
@@ -145,35 +136,68 @@ local new = function()
 			end
 		end
 	end
+	local shell_config_json = std.read_file(home .. "/.config/lilush/config.json")
+	local shell_config = json.decode(shell_config_json)
+		or {
+			chosen_mode = "shell",
+			modes = {
+				shell = {
+					shortcut = "F1",
+					path = "shell.mode.shell",
+					history = true,
+					prompt = "shell.mode.shell.prompt",
+					completion = {
+						path = "shell.completion.shell",
+						sources = {
+							"shell.completion.source.bin",
+							"shell.completion.source.builtins",
+							"shell.completion.source.cmds",
+							"shell.completion.source.env",
+							"shell.completion.source.fs",
+						},
+					},
+				},
+			},
+		}
 	local history_store = storage.new()
 	local shell = {
-		__mode = {
-			shell = shell_mode.new(input.new({
-				completion = completion.new({
-					path = "shell.completion.shell",
-					sources = {
-						bin = "shell.completion.source.bin",
-						builtins = "shell.completion.source.builtins",
-						fs = "shell.completion.source.fs",
-						env = "shell.completion.source.env",
-						cmds = "shell.completion.source.cmds",
-					},
-				}),
-				history = history.new("shell", history_store),
-				prompt = prompt.new("shell.mode.shell.prompt"),
-			})),
-			lua = lua_mode.new(
-				input.new({ history = history.new("lua", history_store), prompt = prompt.new("shell.mode.lua.prompt") })
-			),
-			llm = llm_mode.new(input.new({
-				history = history.new("llm", history_store),
-				prompt = prompt.new("shell.mode.llm.prompt"),
-			})),
+		__mode = {},
+		__shortcuts = {},
+		__ctrls = {
+			["CTRL+d"] = exit_combo,
+			["CTRL+l"] = clear_combo,
 		},
-		__chosen_mode = "shell",
+		__chosen_mode = shell_config.chosen_mode,
 		run = run,
 	}
-	-- shell.modes.shell.input.completions.source:update()
+	for name, m in pairs(shell_config.modes) do
+		local mod, pt, cmpl, hst
+		if not std.module_available(m.path) then
+			show_error_msg(29, "no such module")
+			os.exit(29)
+		end
+		if m.prompt then
+			if not std.module_available(m.prompt) then
+				show_error_msg(29, "no such module")
+				os.exit(29)
+			end
+			pt = prompt.new(m.prompt)
+		end
+		if m.completion then
+			if not std.module_available(m.completion.path) then
+				show_error_msg(29, "no such module")
+				os.exit(29)
+			end
+			cmpl = completion.new(m.completion)
+		end
+		local mod = require(m.path)
+		if m.history then
+			hst = history.new(name, history_store)
+		end
+		shell.__shortcuts[m.shortcut] = name
+		shell.__mode[name] = mod.new(input.new({ completion = cmpl, history = hst, prompt = pt }))
+		shell.__ctrls[m.shortcut] = change_mode_combo
+	end
 	return shell
 end
 

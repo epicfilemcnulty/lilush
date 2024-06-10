@@ -79,11 +79,12 @@ local new = function(config)
 		provide = provide,
 	}
 	if config.sources then
-		for name, path in pairs(config.sources) do
+		for _, path in ipairs(config.sources) do
 			if not std.module_available(path) then
 				return nil, "no such completion source: " .. path
 			end
 			local s = require(path)
+			local name = path:match("[^.]+$")
 			completion.__sources[name] = s.new()
 		end
 	end
