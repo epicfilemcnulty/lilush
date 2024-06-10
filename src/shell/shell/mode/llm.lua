@@ -6,6 +6,7 @@ local llm = require("llm")
 local std = require("std")
 local json = require("cjson.safe")
 local theme = require("shell.theme")
+local storage = require("storage")
 local text = require("text")
 local style = require("term.tss")
 
@@ -621,7 +622,8 @@ local get_saved_costs = function(self)
 	return cost
 end
 
-local new = function(input, store)
+local new = function(input)
+	local store = storage.new()
 	local conf = load_llm_config(store)
 
 	local mode = {

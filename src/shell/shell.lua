@@ -9,9 +9,9 @@ local history = require("term.input.history")
 local completion = require("term.input.completion")
 local prompt = require("term.input.prompt")
 
-local shell_mode = require("shell.modes.shell")
-local lua_mode = require("shell.modes.lua")
-local llm_mode = require("shell.modes.llm")
+local shell_mode = require("shell.mode.shell")
+local lua_mode = require("shell.mode.lua")
+local llm_mode = require("shell.mode.llm")
 
 local builtins = require("shell.builtins")
 local utils = require("shell.utils")
@@ -28,19 +28,19 @@ end
 -- the current mode handler
 local clear_combo = function(self, combo)
 	term.clear()
-	self.modes[self.mode].input.__config.l = 1
-	self.modes[self.mode].input.__config.c = 1
-	self.modes[self.mode].input:flush()
+	self.__mode[self.__chosen_mode].input.__config.l = 1
+	self.__mode[self.__chosen_mode].input.__config.c = 1
+	self.__mode[self.__chosen_mode].input:flush()
 	return true
 end
 
 local exit_combo = function(self, combo)
-	if self.mode ~= "shell" then
-		self.mode = "shell"
+	if self.__chosen_mode ~= "shell" then
+		self.__chosen_mode = "shell"
 		return clear_combo(self)
 	end
 	if os.getenv("VIRTUAL_ENV") ~= nil then
-		self.modes.shell.deactivate(self.modes.shell, "deactivate")
+		self.__mode.shell.deactivate(self.__mode.shell, "deactivate")
 		return true
 	end
 	term.set_sane_mode()
@@ -49,7 +49,7 @@ end
 
 local change_mode_combo = function(self, combo)
 	local map = { ["F1"] = "shell", ["F2"] = "llm", ["F3"] = "lua" }
-	self.mode = map[combo]
+	self.__chosen_mode = map[combo] or "shell"
 	return clear_combo(self)
 end
 
@@ -59,6 +59,7 @@ local combos = {
 	["F1"] = change_mode_combo,
 	["F2"] = change_mode_combo,
 	["F3"] = change_mode_combo,
+	["F4"] = change_mode_combo,
 }
 
 local run = function(self)
@@ -70,9 +71,9 @@ local run = function(self)
 	end
 	term.enable_kkbp()
 	term.clear()
-	self.modes[self.mode].input:display(true)
+	self.__mode[self.__chosen_mode].input:display(true)
 	while true do
-		local event, combo = self.modes[self.mode].input:event()
+		local event, combo = self.__mode[self.__chosen_mode].input:event()
 		if event then
 			if event == "execute" then
 				term.set_sane_mode()
@@ -80,27 +81,27 @@ local run = function(self)
 				local cwd = std.cwd()
 				std.setenv("LILUSH_EXEC_CWD", cwd)
 				std.setenv("LILUSH_EXEC_START", os.time())
-				local status, err = self.modes[self.mode]:run()
+				local status, err = self.__mode[self.__chosen_mode]:run()
 				if status ~= 0 then
 					show_error_message(status, err)
 				end
 				std.setenv("LILUSH_EXEC_END", os.time())
 				std.setenv("LILUSH_EXEC_STATUS", tostring(status))
 				io.flush()
-				self.modes[self.mode].input:flush()
+				self.__mode[self.__chosen_mode].input:flush()
 				term.set_raw_mode(true)
 				local l, c = term.cursor_position()
-				self.modes[self.mode].input.__config.l = l
-				self.modes[self.mode].input.__config.c = 1
-				self.modes[self.mode].input:display(true)
+				self.__mode[self.__chosen_mode].input.__config.l = l
+				self.__mode[self.__chosen_mode].input.__config.c = 1
+				self.__mode[self.__chosen_mode].input:display(true)
 			elseif event == "combo" then
 				if combos[combo] then
 					if combos[combo](self, combo) then
-						self.modes[self.mode].input:display(true)
+						self.__mode[self.__chosen_mode].input:display(true)
 					end
-				elseif self.modes[self.mode].combos[combo] then
-					if self.modes[self.mode].combos[combo](self.modes[self.mode], combo) then
-						self.modes[self.mode].input:display(true)
+				elseif self.__mode[self.__chosen_mode].combos[combo] then
+					if self.__mode[self.__chosen_mode].combos[combo](self.__mode[self.__chosen_mode], combo) then
+						self.__mode[self.__chosen_mode].input:display(true)
 					end
 				end
 			end
@@ -110,8 +111,8 @@ end
 
 local run_once = function(self)
 	local cmd = table.concat(arg, " ") or ""
-	self.modes.shell.input.buffer = cmd
-	local status, err = self.modes.shell:run()
+	self.__mode.shell.input.buffer = cmd
+	local status, err = self.__mode.shell:run()
 	if err then
 		print(err)
 	end
@@ -145,35 +146,31 @@ local new = function()
 		end
 	end
 	local history_store = storage.new()
-	local llm_store = storage.new()
 	local shell = {
-		modes = {
+		__mode = {
 			shell = shell_mode.new(input.new({
 				completion = completion.new({
 					path = "shell.completion.shell",
 					sources = {
-						bin = "shell.completion.source.shell.bin",
-						builtins = "shell.completion.source.shell.builtins",
-						fs = "shell.completion.source.shell.fs",
-						env = "shell.completion.source.shell.env",
-						cmds = "shell.completion.source.shell.cmds",
+						bin = "shell.completion.source.bin",
+						builtins = "shell.completion.source.builtins",
+						fs = "shell.completion.source.fs",
+						env = "shell.completion.source.env",
+						cmds = "shell.completion.source.cmds",
 					},
 				}),
 				history = history.new("shell", history_store),
-				prompt = prompt.new("shell.prompts.shell"),
+				prompt = prompt.new("shell.mode.shell.prompt"),
 			})),
 			lua = lua_mode.new(
-				input.new({ history = history.new("lua", history_store), prompt = prompt.new("shell.prompts.lua") })
+				input.new({ history = history.new("lua", history_store), prompt = prompt.new("shell.mode.lua.prompt") })
 			),
-			llm = llm_mode.new(
-				input.new({
-					history = history.new("llm", history_store),
-					prompt = prompt.new("shell.prompts.llm"),
-				}),
-				llm_store
-			),
+			llm = llm_mode.new(input.new({
+				history = history.new("llm", history_store),
+				prompt = prompt.new("shell.mode.llm.prompt"),
+			})),
 		},
-		mode = "shell",
+		__chosen_mode = "shell",
 		run = run,
 	}
 	-- shell.modes.shell.input.completions.source:update()
@@ -182,8 +179,8 @@ end
 
 local new_mini = function()
 	local shell = {
-		modes = { shell = shell_mode.new(input.new({})) },
-		mode = "shell",
+		__mode = { shell = shell_mode.new(input.new({})) },
+		__chosen_mode = "shell",
 		run = run_once,
 	}
 	return shell

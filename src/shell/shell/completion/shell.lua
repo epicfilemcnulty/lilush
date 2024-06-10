@@ -1,0 +1,162 @@
+-- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: GPL-3.0-or-later
+
+local std = require("std")
+local style = require("term.tss")
+local utils = require("shell.utils")
+
+local rss = {
+	fg = 247,
+	builtin = { fg = 31 },
+	bin = { fg = 247 },
+	env = { s = "bold" },
+	history = { fg = 246, s = "italic" },
+	snippet = { fg = 247, s = "bold" },
+}
+
+local tss = style.new(rss)
+
+local search = function(self, input, history)
+	self:flush()
+	local cmd, args = utils.parse_cmdline(input)
+	if #args == 0 then
+		if cmd and not cmd:match("^%.") then
+			self.__candidates = self.__sources["builtins"]:search(cmd)
+			local builtins_count = #self.__candidates
+			local candidates = self.__sources["bin"]:search(cmd)
+			for _, c in ipairs(candidates) do
+				table.insert(self.__candidates, c)
+			end
+			setmetatable(self.__meta, {
+				__index = function(table, key)
+					local metadata = {
+						source = "bin",
+						replace_prompt = false,
+						exec_on_prom = false,
+					}
+					if key <= builtins_count then
+						metadata.source = "builtin"
+					end
+					return metadata
+				end,
+			})
+		end
+		if std.escape_magic_chars(cmd):match("^%%%./") then
+			self.__candidates = self.__sources["fs"]:search(cmd, nil, "[75]")
+			table.sort(self.__candidates, function(a, b)
+				if a:match("/$") and not b:match("/$") then
+					return false
+				elseif b:match("/$") and not a:match("/$") then
+					return true
+				end
+				return a < b
+			end)
+			local mt = {
+				__index = function(t, k)
+					return { source = "fs" }
+				end,
+			}
+			setmetatable(self.__meta, mt)
+			return self:available()
+		end
+	end
+	if #args > 0 then
+		local last_arg = args[#args]
+		if cmd:match("^[zx]$") then
+			local mt = {
+				__index = function(t, k)
+					return { source = "history", replace_prompt = "cd", exec_on_prom = true }
+				end,
+			}
+			if cmd == "z" then
+				self.__candidates = history.dir_search(history, args)
+				setmetatable(self.__meta, mt)
+			else
+				self.__candidates = history.search(history, args)
+				mt = {
+					__index = function(t, k)
+						return { source = "history", replace_prompt = "", exec_on_prom = true, trim_promotion = true }
+					end,
+				}
+				setmetatable(self.__meta, mt)
+			end
+			return self:available()
+		end
+		if cmd == "zx" then
+			self.__candidates = utils.zx_complete(args)
+			setmetatable(self.__meta, {
+				__index = function(table, key)
+					return { source = "snippet", replace_prompt = "zx", exec_on_prom = true }
+				end,
+			})
+			return self:available()
+		end
+		if cmd == "cd" then
+			self.__candidates = self.__sources["fs"]:search(args[1], "[dl]")
+			local mt = {
+				__index = function(t, k)
+					return { source = "fs" }
+				end,
+			}
+			setmetatable(self.__meta, mt)
+			return self:available()
+		end
+		if cmd == "setenv" or cmd == "unsetenv" then
+			self.__candidates = self.__sources["env"]:search(last_arg)
+			local mt = {
+				__index = function(t, k)
+					return { source = "env" }
+				end,
+			}
+			setmetatable(self.__meta, mt)
+			return self:available()
+		end
+		if self.__sources["cmds"].list[cmd] then
+			self.__candidates = self.__sources["cmds"]:search(cmd, args)
+			local mt = {
+				__index = function(t, k)
+					return { source = "cmds" }
+				end,
+			}
+			setmetatable(self.__meta, mt)
+			return self:available()
+		end
+		if std.escape_magic_chars(last_arg):match("^%%%${") then -- because of the escaping we need to use this ugly pattern
+			self.__candidates = self.__sources["env"]:search(last_arg)
+			local mt = {
+				__index = function(t, k)
+					return { source = "env" }
+				end,
+			}
+			setmetatable(self.__meta, mt)
+			return self:available()
+		end
+		--[[if last_arg:match("^~/") then
+			last_arg = last_arg:gsub("^~", os.getenv("HOME"))
+		end]]
+		self.__candidates = self.__sources["fs"]:search(last_arg)
+		local mt = {
+			__index = function(t, k)
+				return { source = "fs" }
+			end,
+		}
+		setmetatable(self.__meta, mt)
+	end
+	return self:available()
+end
+
+local get = function(self, promoted)
+	if #self.__candidates > 0 then
+		if self.__chosen <= #self.__candidates then
+			local variant = self.__candidates[self.__chosen]
+			if promoted then
+				return variant
+			end
+			local metadata = self.__meta[self.__chosen]
+			return tss:apply(metadata.source, variant)
+		end
+	end
+	return ""
+end
+
+return { search = search, get = get }
