@@ -325,10 +325,10 @@ local settings = function(config, title, rss, l, c)
 				elseif type(objs[chosen]) == "string" or type(objs[chosen]) == "number" then
 					local m = std.longest(keys)
 					local val_indent = tss.__style.option.value.indent or 0
-					term.go(l + 1 + idx, c + m + 4 + val_indent)
 					term.clear_line()
 					term.show_cursor()
 					local buf = input.new({ l = l + 1 + idx, c = c + m + 4 + val_indent, 20 })
+					buf:display()
 					while true do
 						local event, combo = buf:event()
 						if event == "execute" then
