@@ -220,6 +220,16 @@ local modes_default = {
 	},
 }
 
+local completion_default = {
+	fg = 247,
+	builtin = { fg = 31 },
+	fs_exe = { fg = "red" },
+	bin = { fg = 247, s = "bold" },
+	env = { s = "bold" },
+	history = { fg = 246, s = "italic" },
+	snippet = { fg = 247, s = "bold" },
+}
+
 local load_user_theme = function()
 	local data_store = storage.new()
 	local widgets = data_store:get_hash_key("theme", "widgets.json", true) or {}
@@ -236,6 +246,9 @@ local load_user_theme = function()
 
 	local modes = data_store:get_hash_key("theme", "modes.json", true) or {}
 	std.tbl.merge(modes_default, modes)
+
+	local completion = data_store:get_hash_key("theme", "completion.json", true) or {}
+	std.tbl.merge(completion_default, completion)
 	data_store:close(true)
 	local theme = {
 		widgets = widgets_default,
@@ -243,6 +256,7 @@ local load_user_theme = function()
 		builtins = builtins_default,
 		prompts = prompts_default,
 		modes = modes_default,
+		completion = completion_default,
 	}
 	return theme
 end

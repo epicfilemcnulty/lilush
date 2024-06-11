@@ -4,17 +4,9 @@
 local std = require("std")
 local style = require("term.tss")
 local utils = require("shell.utils")
+local theme = require("shell.theme")
 
-local rss = {
-	fg = 247,
-	builtin = { fg = 31 },
-	bin = { fg = 247 },
-	env = { s = "bold" },
-	history = { fg = 246, s = "italic" },
-	snippet = { fg = 247, s = "bold" },
-}
-
-local tss = style.new(rss)
+local tss = style.new(theme.completion)
 
 local search = function(self, input, history)
 	self:flush()
@@ -29,11 +21,7 @@ local search = function(self, input, history)
 			end
 			setmetatable(self.__meta, {
 				__index = function(table, key)
-					local metadata = {
-						source = "bin",
-						replace_prompt = false,
-						exec_on_prom = false,
-					}
+					local metadata = { source = "bin" }
 					if key <= builtins_count then
 						metadata.source = "builtin"
 					end
@@ -53,7 +41,7 @@ local search = function(self, input, history)
 			end)
 			local mt = {
 				__index = function(t, k)
-					return { source = "fs" }
+					return { source = "fs_exe" }
 				end,
 			}
 			setmetatable(self.__meta, mt)
@@ -131,9 +119,6 @@ local search = function(self, input, history)
 			setmetatable(self.__meta, mt)
 			return self:available()
 		end
-		--[[if last_arg:match("^~/") then
-			last_arg = last_arg:gsub("^~", os.getenv("HOME"))
-		end]]
 		self.__candidates = self.__sources["fs"]:search(last_arg)
 		local mt = {
 			__index = function(t, k)
