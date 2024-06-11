@@ -223,7 +223,7 @@ local modes_default = {
 local completion_default = {
 	fg = 247,
 	builtin = { fg = 31 },
-	fs_exe = { fg = "red" },
+	fs_exe = { fg = { 180, 142, 173 } },
 	bin = { fg = 247, s = "bold" },
 	env = { s = "bold" },
 	history = { fg = 246, s = "italic" },
