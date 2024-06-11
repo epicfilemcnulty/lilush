@@ -54,7 +54,7 @@ end
 --
 local function wrap(sock, cfg)
 	local c = cfg or {}
-	c = std.merge_tables(c, config)
+	c = std.tbl.merge(c, config)
 
 	local ctx, msg = newcontext(c)
 	local s, msg = core.create(ctx)
