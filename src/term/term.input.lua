@@ -304,7 +304,9 @@ end
 local input_obj_left = function(self)
 	if self.cursor > 0 then
 		if self.completion then
-			term.clear_line()
+			if self.position + self.cursor - 1 == std.utf.len(self.buffer) then
+				term.clear_line()
+			end
 		end
 		self.cursor = self.cursor - 1
 		term.move("left")
@@ -649,7 +651,7 @@ local new_input_obj = function(config)
 		-- DATA
 		__window = { h = win_l, w = win_c },
 		__config = config,
-		__tab = { quick_press = tonumber(os.getenv("LILUSH_QUICK_PRESS")) or 0.07 },
+		__tab = { quick_press = tonumber(os.getenv("LILUSH_QUICK_PRESS")) or 0.1 },
 		buffer = "",
 		cursor = 0,
 		position = 1,
