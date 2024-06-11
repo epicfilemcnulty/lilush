@@ -194,6 +194,7 @@ local fs = {
 	chdir = core.chdir,
 	non_empty_dir = non_empty_dir,
 	symlink = symlink,
+	readlink = readlink,
 	remove = remove,
 	file_exists = file_exists,
 	list_files = list_files,
