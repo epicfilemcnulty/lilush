@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
-local utils = require("shell.utils")
 
 local git_subcommands = {
 	["status"] = true,
@@ -60,7 +59,7 @@ local kubectl_completions = function(self, args)
 			end
 		end
 	end
-	utils.sort_by_smaller_size(candidates)
+	std.tbl.sort_by_str_len(candidates)
 	return candidates
 end
 
@@ -84,7 +83,7 @@ local ssh_profile_completions = function(self, args)
 			end
 		end
 	end
-	utils.sort_by_smaller_size(candidates)
+	std.tbl.sort_by_str_len(candidates)
 	return candidates
 end
 
@@ -105,7 +104,7 @@ local ssh_completions = function(self, args)
 			end
 		end
 	end
-	utils.sort_by_smaller_size(candidates)
+	std.tbl.sort_by_str_len(candidates)
 	return candidates
 end
 
@@ -117,7 +116,7 @@ local git_completions = function(self, args)
 			table.insert(candidates, cmd:sub(#arg + 1))
 		end
 	end
-	utils.sort_by_smaller_size(candidates)
+	std.tbl.sort_by_str_len(candidates)
 	return candidates
 end
 
@@ -129,7 +128,7 @@ local docker_completions = function(self, args)
 			table.insert(candidates, cmd:sub(#arg + 1))
 		end
 	end
-	utils.sort_by_smaller_size(candidates)
+	std.tbl.sort_by_str_len(candidates)
 	return candidates
 end
 

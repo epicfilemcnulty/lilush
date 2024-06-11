@@ -477,7 +477,7 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 			local h_name = std.tbl.parse_pipe_table_header(header)
 			out = out
 				.. " "
-				.. tss:apply("tbl.header", std.txt.align_text(h_name, maxes[h_name], "center"))
+				.. tss:apply("tbl.header", std.txt.align(h_name, maxes[h_name], "center"))
 				.. " "
 				.. tss:apply("tbl.border.v")
 		end
@@ -489,7 +489,7 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 					local h_name, h_align = std.tbl.parse_pipe_table_header(tbl_headers[j])
 					out = out
 						.. " "
-						.. tss:apply("tbl.cell", std.txt.align_text(cell, maxes[h_name], h_align))
+						.. tss:apply("tbl.cell", std.txt.align(cell, maxes[h_name], h_align))
 						.. " "
 						.. tss:apply("tbl.border.v")
 				end

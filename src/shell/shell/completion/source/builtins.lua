@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
-local utils = require("shell.utils")
 
 local update = function(self, aliases)
 	local aliases = aliases or {}
@@ -20,7 +19,7 @@ local search = function(self, cmd)
 			table.insert(candidates, name:sub(#cmd + 1) .. " ")
 		end
 	end
-	utils.sort_by_smaller_size(candidates)
+	std.tbl.sort_by_str_len(candidates)
 	return candidates
 end
 

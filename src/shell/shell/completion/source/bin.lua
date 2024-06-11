@@ -28,7 +28,7 @@ local search = function(self, cmd)
 			table.insert(candidates, name:sub(#cmd + 1) .. " ")
 		end
 	end
-	utils.sort_by_smaller_size(candidates)
+	std.tbl.sort_by_str_len(candidates)
 	return candidates
 end
 

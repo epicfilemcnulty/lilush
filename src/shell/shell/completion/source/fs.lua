@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
-local utils = require("shell.utils")
 
 local filesystem = function(self, arg, filter, perms)
 	local filter = filter or "[fdl]" -- by default we match dirs, regular files and links
@@ -47,9 +46,9 @@ local filesystem = function(self, arg, filter, perms)
 			end
 		end
 	end
-	candidates = utils.sort_by_smaller_size(dirs)
-	links = utils.sort_by_smaller_size(links)
-	files = utils.sort_by_smaller_size(files)
+	candidates = std.tbl.sort_by_str_len(dirs)
+	links = std.tbl.sort_by_str_len(links)
+	files = std.tbl.sort_by_str_len(files)
 	for _, v in ipairs(files) do
 		table.insert(candidates, v)
 	end

@@ -2,6 +2,7 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local buffer = require("string.buffer")
 local utf = require("std.utf")
+local txt = require("std.txt")
 
 local render = function(t, indent)
 	local t = t or "nil"
@@ -199,7 +200,7 @@ local pipe_table = function(headers, tbl)
 	for i, header in ipairs(headers) do
 		local h_name, h_align = parse_pipe_table_header(header)
 		-- We want headers themselves to be centrally aligned
-		h_line = h_line .. " " .. align_text(h_name, maxes[h_name], "center") .. " |"
+		h_line = h_line .. " " .. txt.align(h_name, maxes[h_name], "center") .. " |"
 		if h_align == "center" then
 			s_line = s_line .. ":" .. string.rep("-", maxes[h_name]) .. ":|"
 		elseif h_align == "right" then
@@ -214,7 +215,7 @@ local pipe_table = function(headers, tbl)
 		local line = "|"
 		for j, col in ipairs(row) do
 			local h_name, h_align = parse_pipe_table_header(headers[j])
-			line = line .. " " .. align_text(col, maxes[h_name], h_align) .. " |"
+			line = line .. " " .. txt.align(col, maxes[h_name], h_align) .. " |"
 		end
 		lines[i + 2] = line
 	end

@@ -234,25 +234,10 @@ run_pipeline = function(pipeline, stdout, builtins, extra)
 	return 0
 end
 
-local sort_by_smaller_size = function(tbl)
-	if tbl then
-		table.sort(tbl, function(a, b)
-			if std.utf.len(a) < std.utf.len(b) then
-				return true
-			elseif std.utf.len(a) == std.utf.len(b) then
-				return tostring(a) < tostring(b)
-			end
-			return false
-		end)
-	end
-	return tbl
-end
-
 return {
 	dir_history_complete = dir_history_complete,
 	zx_complete = zx_complete,
 	parse_pipeline = parse_pipeline,
 	parse_cmdline = parse_cmdline,
 	run_pipeline = run_pipeline,
-	sort_by_smaller_size = sort_by_smaller_size,
 }
