@@ -542,6 +542,12 @@ local input_obj_newline = function(self)
 end
 
 local input_obj_execute = function(self)
+	if self.completion and self.completion:available() then
+		local metadata = self.completion.__meta[self.completion.__chosen]
+		if metadata and metadata.exec_on_prom then
+			return self:promote_completion()
+		end
+	end
 	return "execute"
 end
 

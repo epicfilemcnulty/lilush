@@ -235,7 +235,6 @@ run_pipeline = function(pipeline, stdout, builtins, extra)
 end
 
 return {
-	dir_history_complete = dir_history_complete,
 	zx_complete = zx_complete,
 	parse_pipeline = parse_pipeline,
 	parse_cmdline = parse_cmdline,

@@ -290,16 +290,6 @@ local mkdir = function(cmd, args)
 	return 0
 end
 
-local jump_dir = function(cmd, args)
-	local variants = utils.dir_history_complete(args)
-	if variants and variants[1] then
-		local home = os.getenv("HOME") or ""
-		local dir = variants[1]:gsub("^(%s+)", ""):gsub("^~", home)
-		return change_dir("cd", { dir })
-	end
-	errmsg("no match")
-end
-
 local upper_dir = function(cmd, args)
 	local _, count = cmd:gsub("%.", "%1")
 	local path = string.rep("../", count - 1)
@@ -1405,7 +1395,6 @@ local builtins = {
 	["cd"] = change_dir,
 	["mkdir"] = mkdir,
 	["%.%.+"] = upper_dir,
-	["z"] = jump_dir,
 	["zx"] = zx,
 	["rm"] = file_remove,
 	["rmrf"] = file_remove,
