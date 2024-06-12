@@ -389,7 +389,7 @@ local input_obj_backspace = function(self)
 		if self.completion then
 			term.clear_line()
 		end
-		self.buffer = std.utf.sub(self.buffer, 1, std.utf.len(self.buffer) - 1)
+		self.buffer = std.utf.sub(self.buffer, 1, buf_len - 1)
 		term.write("\b \b")
 		self.cursor = self.cursor - 1
 		return false
@@ -607,10 +607,8 @@ local input_obj_event = function(self)
 		event = 1
 	end
 	if cp and not mods and not event then
-		for s in cp:gmatch(".") do
-			self:add(s)
-		end
-		return nil
+		self.buffer = self.buffer .. cp
+		return self:end_of_line()
 	end
 	if cp and event ~= 3 then
 		if mods <= 2 and std.utf.len(cp) < 2 then
@@ -655,6 +653,7 @@ local new_input_obj = function(config)
 		buffer = "",
 		cursor = 0,
 		position = 1,
+		-- History, Completion & Prompt objects (can be nils)
 		history = config.history,
 		completion = config.completion,
 		prompt = config.prompt,
