@@ -4,7 +4,8 @@ local buffer = require("string.buffer")
 local utf = require("std.utf")
 local txt = require("std.txt")
 
-local render = function(t, indent)
+local render
+render = function(t, indent)
 	local t = t or "nil"
 	if type(t) ~= "table" then
 		return tostring(t)
@@ -17,7 +18,7 @@ local render = function(t, indent)
 	for k, v in pairs(t) do
 		formatting = string.rep("  ", indent) .. k .. " = "
 		if type(v) == "table" then
-			buf:put(formatting .. "{\n", render_table(v, indent + 1), string.rep(" ", indent + indent), "},\n")
+			buf:put(formatting .. "{\n", render(v, indent + 1), string.rep(" ", indent + indent), "},\n")
 		elseif type(v) == "string" then
 			buf:put(formatting, '"', v, '",\n')
 		else
@@ -31,7 +32,7 @@ local render = function(t, indent)
 end
 
 local print_tbl = function(t)
-	print(render_table(t))
+	print(render(t))
 end
 
 local table_deep_copy
