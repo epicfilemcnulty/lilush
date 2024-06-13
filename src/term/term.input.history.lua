@@ -4,7 +4,7 @@ local std = require("std")
 local json = require("cjson.safe")
 
 local history_add = function(self, entry)
-	if #entry > 0 and not entry:match("^ ") then
+	if #entry > 0 and not entry:match("^ ") and not entry:match("^%.%.+") then
 		local env = std.environ()
 		local start_ts = tonumber(env["LILUSH_EXEC_START"]) or os.time()
 		local end_ts = tonumber(env["LILUSH_EXEC_END"]) or os.time()
