@@ -25,8 +25,8 @@ local render = function(self, content, indent)
 	elseif mode == "djot" then
 		out = text.render_djot(content, rss, conf)
 	else
-		local opts = { raw = {}, simple = { global_indent = 2, wrap = 80 } }
-		out = text.render_text(content, opts[mode], conf) .. "\r\n"
+		rss = { global_indent = 0, wrap = 120 }
+		out = text.render_text(content, rss) .. "\r\n"
 	end
 	return out
 end
