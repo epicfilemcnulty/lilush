@@ -602,6 +602,10 @@ local show_conversation = function(self, combo)
 			end
 		end
 		term.write("\r\n")
+		local y, x = term.window_size()
+		local l, c = term.cursor_position()
+		self.input.__config.l = l
+		self.input.__config.c = 1
 		return true
 	end
 end
