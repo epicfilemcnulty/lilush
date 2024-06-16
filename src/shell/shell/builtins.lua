@@ -11,7 +11,8 @@ local theme = require("shell.theme")
 local text = require("text")
 local argparser = require("argparser")
 local buffer = require("string.buffer")
-local tss_gen = require("term.tss")
+local style = require("term.tss")
+local input = require("term.input")
 
 local set_term_title = function(title)
 	local term_title_prefix = os.getenv("LILUSH_TERM_TITLE_PREFIX") or ""
@@ -42,7 +43,7 @@ end
 ]]
 local render_dir
 render_dir = function(path, pattern, indent, args)
-	local tss = tss_gen.new(theme)
+	local tss = style.new(theme)
 	local indent = indent or 0
 	local all_files, err = std.fs.list_files(path, pattern, ".", args.long)
 	if not all_files then
@@ -373,6 +374,103 @@ local file_remove = function(cmd, args)
 	return 0
 end
 
+local pager = {}
+pager.new = function(filename, render_mode)
+	local display = function(self)
+		term.clear()
+		local count = 0
+		while count < self.__window.capacity do
+			term.go(2 + count, self.__window.indent)
+			if self.content.lines[self.current_top_line + count] then
+				term.write(self.content.lines[self.current_top_line + count])
+			end
+			count = count + 1
+		end
+	end
+	local display_status_line = function(self)
+		local status_line = "File: " .. self.history[#self.history] .. ", Lines: " .. #self.content.lines
+		local y, x = term.window_size()
+		term.go(y, 1)
+		term.clear_line()
+		term.write(term.style("inverted") .. status_line .. term.style("reset"))
+	end
+	local load_content = function(self, filename)
+		if filename then
+			local content, err = std.fs.read_file(filename)
+			if err then
+				return nil, err
+			end
+			if self.render_mode == "raw" then
+				local rendered = text.render_text(content, {}, { wrap = self.wrap })
+				local lines = std.txt.lines(rendered)
+				self.content = { raw = content, rendered = rendered, lines = lines }
+				return true
+			end
+			if self.render_mode == "djot" then
+				local rendered = text.render_djot(content, theme.renderer.kat, { wrap = self.wrap })
+				local lines = std.txt.lines(rendered)
+				self.content = { raw = content, rendered = rendered, lines = lines }
+				return true
+			end
+			if self.render_mode == "markdown" then
+				local rendered = text.render_markdown(content, theme.renderer.kat, { wrap = self.wrap })
+				local lines = std.txt.lines(rendered)
+				self.content = { raw = content, rendered = rendered, lines = lines }
+				return true
+			end
+		end
+		self.content = { raw = "", rendered = "", lines = {} }
+		return true
+	end
+	local page = function(self)
+		repeat
+			self:display()
+			self:display_status_line()
+			local cp = input.simple_get()
+			if cp then
+				if self.mode == "normal" then
+					if cp == "DOWN" or cp == " " then
+						if self.current_top_line + self.__window.capacity < #self.content.lines then
+							self.current_top_line = self.current_top_line + 1
+						end
+						self:display()
+						self:display_status_line()
+					end
+					if cp == "UP" then
+						if self.current_top_line > 1 then
+							self.current_top_line = self.current_top_line - 1
+							self:display()
+							self:display_status_line()
+						end
+					end
+					if cp == "q" then
+						cp = "exit"
+					end
+				end
+			end
+		until cp == "exit"
+	end
+	local wrap = 120
+	local render_mode = render_mode or "djot"
+	local y, x = term.window_size()
+	local pager = {
+		__window = { x = x, y = y, capacity = y - 2, indent = 2 },
+		search_pattern = "",
+		current_top_line = 1,
+		cursor_line = 1,
+		render_mode = render_mode,
+		mode = "normal",
+		wrap = wrap,
+		history = { filename },
+		content = {},
+		display = display,
+		display_status_line = display_status_line,
+		load_content = load_content,
+		page = page,
+	}
+	pager:load_content(filename)
+	return pager
+end
 --[[ 
     CAT
 ]]
@@ -395,12 +493,7 @@ local cat_help = [[
 local cat = function(cmd, args, extra)
 	local extra = extra or {}
 	local parser = argparser.new({
-		markdown = { kind = "bool", note = "Force markdown rendering mode" },
 		raw = { kind = "bool", note = "Force raw rendering mode" },
-		simple = { kind = "bool", note = "Force simple rendering mode" },
-		djot = { kind = "bool", short = "j", note = "Force djot rendering mode" },
-		wrap = { kind = "bool", note = "Whether to wrap image" },
-		dimensions = { kind = "str", default = "80x40", note = "wrapping dimensions for images" },
 		links = { kind = "bool", note = "Show link's url" },
 		pathname = { kind = "file", idx = 1 },
 	}, cat_help)
@@ -413,56 +506,33 @@ local cat = function(cmd, args, extra)
 		errmsg(err)
 		return 127
 	end
-	local txt, err = std.fs.read_file(args.pathname)
-	if not txt then
-		errmsg(err)
-		return 127
-	end
 	local mime = web.mime_type(args.pathname)
 	if mime:match("^image") then
 		local l, c = term.cursor_position()
-		if args.wrap then
-			local pid = std.ps.launch(
-				"kitten",
-				nil,
-				nil,
-				nil,
-				"icat",
-				"-z",
-				"-1",
-				"--align=left",
-				"--place",
-				args.dimensions .. "@1x" .. tostring(l),
-				args.pathname
-			)
-			std.ps.wait(pid)
-			term.move("down", 10)
-		else
-			local pid = std.ps.launch("kitten", nil, nil, nil, "icat", args.pathname)
-			std.ps.wait(pid)
-		end
-		return 0
-	end
-	if args.raw then
-		term.write(text.render_text(txt))
+		local pid = std.ps.launch("xdg-open", nil, nil, nil, args.pathname)
+		std.ps.wait(pid)
 		return 0
 	end
 	if args.links then
 		extra.hide_links = false
 	end
-	if args.simple then
-		term.write("\n" .. text.render_text(txt, { global_indent = 2, wrap = 80 }, extra) .. "\n")
+	local render_mode = "raw"
+	if mime:match("djot") then
+		render_mode = "djot"
+	elseif mime:match("markdown") then
+		render_mode = "markdown"
+	end
+	if not args.raw then
+		term.set_raw_mode(true)
+		local pager = pager.new(args.pathname, render_mode)
+		pager:page()
 		return 0
 	end
-	if args.djot or mime:match("djot") then
-		term.write("\n" .. text.render_djot(txt, theme.renderer.kat, extra) .. "\n")
+	if args.raw then
+		local txt = std.fs.read_file(args.pathname) or ""
+		term.write("\n" .. text.render_text(txt, {}, extra) .. "\n")
 		return 0
 	end
-	if args.markdown or mime:match("markdown") then
-		term.write("\n" .. text.render_markdown(txt, theme.renderer.kat, extra) .. "\n")
-		return 0
-	end
-	term.write("\n" .. text.render_text(txt, { global_indent = 2, wrap = 80 }, extra) .. "\n")
 	return 0
 end
 
@@ -502,7 +572,7 @@ end
 local list_env = function(cmd, args)
 	local arg = args[1] or ".*" -- for now let's just hardcode the first arg
 	local env = std.environ()
-	local tss = tss_gen.new(theme)
+	local tss = style.new(theme)
 	local matched = std.tbl.include_keys(std.tbl.sort_keys(env), arg)
 	tss.__style.builtins.envlist.var.w = std.tbl.longest(matched)
 
@@ -549,7 +619,7 @@ end
     DIG
 ]]
 local render_dns_record = function(records)
-	local tss = tss_gen.new(theme)
+	local tss = style.new(theme)
 	local out = ""
 	for i, rec in ipairs(records) do
 		local content = rec[2]
@@ -580,7 +650,7 @@ local dig_help = [[
   DNS lookup tool.
 ]]
 local dig = function(cmd, args)
-	local tss = tss_gen.new(theme)
+	local tss = style.new(theme)
 	local parser = argparser.new({
 		cache = { kind = "bool" },
 		tcp = { kind = "bool" },
@@ -881,7 +951,7 @@ local netstat_help = [[
   Tool to lookup network connections information.
 ]]
 local render_netstat = function(cmd, args)
-	local tss = tss_gen.new(theme)
+	local tss = style.new(theme)
 	local parser = argparser.new({
 		listen = { kind = "bool" },
 		source = { kind = "str", default = ".*", idx = 1 },
@@ -1024,7 +1094,7 @@ local history_help = [[
   See commands history.
 ]]
 local history = function(cmd, args, extra)
-	local tss = tss_gen.new(theme)
+	local tss = style.new(theme)
 	local parser = argparser.new({
 		short = { kind = "bool" },
 		time = { kind = "bool" },
