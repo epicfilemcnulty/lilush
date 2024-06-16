@@ -67,8 +67,8 @@ local run = function(self)
 		local event, combo = self.__mode[self.__chosen_mode].input:event()
 		if event then
 			if event == "execute" then
-				term.set_sane_mode()
 				term.write("\r\n")
+				term.set_sane_mode()
 				local cwd = std.fs.cwd()
 				std.ps.setenv("LILUSH_EXEC_CWD", cwd)
 				std.ps.setenv("LILUSH_EXEC_START", os.time())

@@ -526,6 +526,7 @@ local cat = function(cmd, args, extra)
 		term.set_raw_mode(true)
 		local pager = pager.new(args.pathname, render_mode)
 		pager:page()
+		term.set_sane_mode()
 		return 0
 	end
 	if args.raw then
