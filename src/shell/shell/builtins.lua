@@ -508,9 +508,10 @@ local cat = function(cmd, args, extra)
 	end
 	local mime = web.mime_type(args.pathname)
 	if mime:match("^image") then
-		local l, c = term.cursor_position()
 		local pid = std.ps.launch("xdg-open", nil, nil, nil, args.pathname)
-		std.ps.wait(pid)
+		if pid then
+			std.ps.wait(pid)
+		end
 		return 0
 	end
 	if args.links then
