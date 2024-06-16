@@ -507,7 +507,7 @@ local cat = function(cmd, args, extra)
 		return 127
 	end
 	local mime = web.mime_type(args.pathname)
-	if not mime:match("^text") then
+	if not mime:match("^text") and not std.txt.is_text(args.pathname) then
 		local pid = std.ps.launch("xdg-open", nil, nil, nil, args.pathname)
 		return 0
 	end
