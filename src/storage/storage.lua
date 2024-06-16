@@ -293,6 +293,74 @@ local get_set_range = function(self, set_name, start, stop)
 	return nil, "all backends are disabled"
 end
 
+local add_simple_set_member = function(self, set_name, member)
+	if self.redis then
+		local key_path = self.redis_common .. set_name .. self.redis_unique
+		local ok, err = self.redis:cmd("SADD", key_path, member)
+		if err then
+			return nil, "can't set the key: " .. tostring(err)
+		end
+		return true
+	end
+	if self.storage_dir then
+		local set_dir = self.storage_dir .. "/" .. set_name
+		if not std.fs.dir_exists(set_dir) then
+			std.fs.mkdir(set_dir, nil, true)
+		end
+		local members = std.fs.read_file(set_dir .. "/members.json") or "{}"
+		members = json.decode(members) or {}
+		members[member] = true
+		std.fs.write_file(set_dir .. "/members.json", json.encode(members))
+		return true
+	end
+	return nil, "all backends are disabled"
+end
+
+local remove_simple_set_member = function(self, set_name, member)
+	if self.redis then
+		local key_path = self.redis_common .. set_name .. self.redis_unique
+		local ok, err = self.redis:cmd("SREM", key_path, member)
+		if err then
+			return nil, "can't remove the key: " .. tostring(err)
+		end
+		return true
+	elseif self.storage_dir then
+		local set_dir = self.storage_dir .. "/" .. set_name
+		if not std.fs.dir_exists(set_dir) then
+			std.fs.mkdir(set_dir, nil, true)
+		end
+		local members = std.fs.read_file(set_dir .. "/members.json") or "{}"
+		members = json.decode(members) or {}
+		members[member] = nil
+		std.fs.write_file(set_dir .. "/members.json", json.encode(members))
+		return true
+	end
+	return nil, "all backends are disabled"
+end
+
+local get_simple_set_members = function(self, set_name)
+	if self.redis then
+		local key_path = self.redis_common .. set_name .. self.redis_unique
+		local members, err = self.redis:cmd("SMEMBERS", key_path, member)
+		if members and #members > 0 then
+			return members
+		end
+		if self.policy == "break" then
+			return nil, "can't get hash keys: " .. tostring(err)
+		end
+	end
+	if self.storage_dir then
+		local set_dir = self.storage_dir .. "/" .. set_name
+		if not std.fs.dir_exists(set_dir) then
+			std.fs.mkdir(set_dir, nil, true)
+		end
+		local members = std.fs.read_file(set_dir .. "/members.json") or "{}"
+		members = json.decode(members) or {}
+		return members
+	end
+	return nil, "all backends are disabled"
+end
+
 local close = function(self, no_keepalive)
 	if self.redis then
 		self.redis:close(no_keepalive)
@@ -333,6 +401,9 @@ local new = function(options)
 		list_hash_keys = list_hash_keys,
 		add_set_member = add_set_member,
 		get_set_range = get_set_range,
+		add_simple_set_member = add_simple_set_member,
+		remove_simple_set_member = remove_simple_set_member,
+		get_simple_set_members = get_simple_set_members,
 		close = close,
 	}
 	return obj
