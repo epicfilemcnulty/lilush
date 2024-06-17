@@ -238,11 +238,15 @@ run_pipeline = function(pipeline, stdout, builtins, extra)
 	return 0
 end
 
+--[[ 
+        Pager methods below
+]]
+
 local pager_next_render_mode = function(self)
 	local modes = { "raw", "djot", "markdown" }
 	local idx = 0
 	for i, mode in ipairs(modes) do
-		if mode == self.render_mode then
+		if mode == self.__config.render_mode then
 			idx = i + 1
 			break
 		end
@@ -256,7 +260,7 @@ end
 
 local pager_set_render_mode = function(self, mode)
 	local mode = mode or self.__config.render_mode
-	self.render_mode = mode
+	self.__config.render_mode = mode
 	local rss = theme.renderer.kat
 	local conf = { global_indent = 0, wrap = self.__config.wrap, mode = mode, hide_links = self.__config.hide_links }
 	if mode == "raw" then
@@ -271,13 +275,13 @@ local pager_display_line_nums = function(self)
 		return
 	end
 	local total_lines = #self.content.lines
-	local lines_to_display = total_lines - self.top_line + 1
+	local lines_to_display = total_lines - self.__state.top_line + 1
 	if lines_to_display > self.__window.capacity then
 		lines_to_display = self.__window.capacity
 	end
 	for i = 1, lines_to_display do
 		term.go(2 + i - 1, 1)
-		term.write(term.color(246) .. self.top_line + i - 1 .. term.style("reset"))
+		term.write(term.color(246) .. self.__state.top_line + i - 1 .. term.style("reset"))
 	end
 end
 
@@ -290,8 +294,8 @@ local pager_display = function(self)
 	end
 	while count < self.__window.capacity do
 		term.go(2 + count, indent)
-		if self.content.lines[self.top_line + count] then
-			term.write(self.content.lines[self.top_line + count])
+		if self.content.lines[self.__state.top_line + count] then
+			term.write(self.content.lines[self.__state.top_line + count])
 		end
 		count = count + 1
 	end
@@ -307,7 +311,7 @@ local pager_display_status_line = function(self)
 	local file = self.history[#self.history]
 	local total_lines = #self.content.lines
 	local kb_size = string.format("%.2f KB", #self.content.raw / 1024)
-	local position_pct = ((self.top_line + self.__window.capacity) / total_lines) * 100
+	local position_pct = ((self.__state.top_line + self.__window.capacity) / total_lines) * 100
 	if position_pct > 100 then
 		position_pct = 100.00
 	end
@@ -321,7 +325,7 @@ local pager_display_status_line = function(self)
 		.. ", at "
 		.. position
 
-	local bottom_status = self.mode
+	local bottom_status = self.__state.mode
 	local y, x = term.window_size()
 	term.go(1, 1)
 	term.clear_line()
@@ -365,33 +369,79 @@ local pager_toggle_status_line = function(self)
 end
 
 local pager_line_up = function(self)
-	if self.top_line > 1 then
-		self.top_line = self.top_line - 1
+	if self.__state.top_line > 1 then
+		self.__state.top_line = self.__state.top_line - 1
 		self:display()
 	end
 end
 
 local pager_line_down = function(self)
-	if self.top_line + self.__window.capacity < #self.content.lines then
-		self.top_line = self.top_line + 1
+	if self.__state.top_line + self.__window.capacity < #self.content.lines then
+		self.__state.top_line = self.__state.top_line + 1
 		self:display()
 	end
 end
 
 local pager_page_up = function(self)
-	self.top_line = self.top_line - self.__window.capacity
-	if self.top_line < 1 then
-		self.top_line = 1
+	self.__state.top_line = self.__state.top_line - self.__window.capacity
+	if self.__state.top_line < 1 then
+		self.__state.top_line = 1
 	end
 	self:display()
 end
 
 local pager_page_down = function(self)
-	self.top_line = self.top_line + self.__window.capacity
-	if self.top_line > #self.content.lines - self.__window.capacity then
-		self.top_line = #self.content.lines - self.__window.capacity
+	self.__state.top_line = self.__state.top_line + self.__window.capacity
+	if self.__state.top_line > #self.content.lines - self.__window.capacity then
+		self.__state.top_line = #self.content.lines - self.__window.capacity
 	end
 	self:display()
+end
+
+local pager_top_line = function(self)
+	self.__state.top_line = 1
+	self:display()
+end
+
+local pager_bottom_line = function(self)
+	local position = 1
+	if #self.content.lines > self.__window.capacity then
+		position = #self.content.lines - self.__window.capacity
+	end
+	self.__state.top_line = position
+	self:display()
+end
+
+local pager_change_indent = function(self, combo)
+	if combo == "CTRL+RIGHT" then
+		self.__config.indent = self.__config.indent + 1
+		self:display()
+	end
+	if combo == "CTRL+LEFT" then
+		if self.__config.indent > 0 then
+			self.__config.indent = self.__config.indent - 1
+			self:display()
+		end
+	end
+end
+
+local pager_change_wrap = function(self, combo)
+	if combo == "ALT+RIGHT" then
+		self.__config.wrap = self.__config.wrap + 5
+		if self.__config.wrap > self.__window.x - 10 then
+			self.__config.wrap = self.__window.x - 10
+		end
+		self:set_render_mode(self.__config.render_mode)
+		self:display()
+	end
+	if combo == "ALT+LEFT" then
+		self.__config.wrap = self.__config.wrap - 5
+		if self.__config.wrap <= 40 then
+			self.__config.wrap = 40
+		end
+		self:set_render_mode(self.__config.render_mode)
+		self:display()
+	end
 end
 
 local pager_page = function(self)
@@ -402,68 +452,12 @@ local pager_page = function(self)
 		self:display()
 		local cp = input.simple_get()
 		if cp then
-			if self.mode == "SCROLL" then
-				if cp == "DOWN" or cp == " " or cp == "j" then
-					self:line_down()
-				end
-				if cp == "UP" or cp == "k" then
-					self:line_up()
-				end
-				if cp == "CTRL+r" then
-					self:next_render_mode()
-				end
+			if self.__state.mode == "SCROLL" then
 				if cp == "q" then
 					cp = "exit"
 				end
-				if cp == "l" then
-					self:toggle_line_nums()
-				end
-				if cp == "s" then
-					self:toggle_status_line()
-				end
-				if cp == "g" or cp == "HOME" then
-					self.top_line = 1
-					self:display()
-				end
-				if cp == "G" or cp == "END" then
-					local position = 1
-					if #self.content.lines > self.__window.capacity then
-						position = #self.content.lines - self.__window.capacity
-					end
-					self.top_line = position
-					self:display()
-				end
-				if cp == "CTRL+RIGHT" then
-					self.__config.indent = self.__config.indent + 1
-					self:display()
-				end
-				if cp == "ALT+RIGHT" then
-					self.__config.wrap = self.__config.wrap + 5
-					if self.__config.wrap > self.__window.x - 10 then
-						self.__config.wrap = self.__window.x - 10
-					end
-					self:set_render_mode(self.render_mode)
-					self:display()
-				end
-				if cp == "CTRL+LEFT" then
-					if self.__config.indent > 0 then
-						self.__config.indent = self.__config.indent - 1
-						self:display()
-					end
-				end
-				if cp == "ALT+LEFT" then
-					self.__config.wrap = self.__config.wrap - 5
-					if self.__config.wrap <= 40 then
-						self.__config.wrap = 40
-					end
-					self:set_render_mode(self.render_mode)
-					self:display()
-				end
-				if cp == "PAGE_UP" then
-					self:page_up()
-				end
-				if cp == "PAGE_DOWN" then
-					self:page_down()
+				if self.__ctrls[cp] then
+					self[self.__ctrls[cp]](self, cp)
 				end
 			end
 		end
@@ -490,13 +484,28 @@ local pager_new = function(config)
 	local pager = {
 		__window = { x = x, y = y, capacity = y - 2 },
 		__config = default_config,
+		__state = { mode = "SCROLL", top_line = 1, cursor_line = 1, search_pattern = "" },
 		history = {},
-		search_pattern = "",
-		top_line = 1,
-		cursor_line = 1,
-		render_mode = render_mode,
-		mode = "SCROLL",
 		content = {},
+		__ctrls = {
+			["PAGE_UP"] = "page_up",
+			["PAGE_DOWN"] = "page_down",
+			["UP"] = "line_up",
+			["k"] = "line_up",
+			["DOWN"] = "line_down",
+			["j"] = "line_down",
+			["CTRL+RIGHT"] = "change_indent",
+			["CTRL+LEFT"] = "change_indent",
+			["ALT+RIGHT"] = "change_wrap",
+			["ALT+LEFT"] = "change_wrap",
+			["CTRL+r"] = "next_render_mode",
+			["HOME"] = "top_line",
+			["g"] = "top_line",
+			["END"] = "bottom_line",
+			["G"] = "bottom_line",
+			["s"] = "toggle_status_line",
+			["l"] = "toggle_line_nums",
+		},
 		-- METHODS
 		display = pager_display,
 		display_line_nums = pager_display_line_nums,
@@ -506,10 +515,14 @@ local pager_new = function(config)
 		set_render_mode = pager_set_render_mode,
 		line_up = pager_line_up,
 		line_down = pager_line_down,
+		top_line = pager_top_line,
+		bottom_line = pager_bottom_line,
 		page_up = pager_page_up,
 		page_down = pager_page_down,
 		toggle_line_nums = pager_toggle_line_nums,
 		toggle_status_line = pager_toggle_status_line,
+		change_indent = pager_change_indent,
+		change_wrap = pager_change_wrap,
 		page = pager_page,
 		exit = pager_exit,
 	}

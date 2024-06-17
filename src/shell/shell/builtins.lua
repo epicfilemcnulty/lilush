@@ -389,6 +389,7 @@ local cat = function(cmd, args)
 	local parser = argparser.new({
 		raw = { kind = "bool", note = "Force raw rendering mode (no pager, no word wraps)" },
 		page = { kind = "bool", note = "Force using pager even on one screen documents" },
+		indent = { kind = "num", default = 0, note = "Indentation" },
 		links = { kind = "bool", note = "Show link's url" },
 		pathname = { kind = "file", idx = 1 },
 	}, cat_help)
@@ -428,8 +429,12 @@ local cat = function(cmd, args)
 	if not args.raw then
 		term.set_raw_mode(true)
 		term.hide_cursor()
-		local pager =
-			utils.pager({ exit_on_one_page = not args.page, render_mode = render_mode, hide_links = not args.links })
+		local pager = utils.pager({
+			exit_on_one_page = not args.page,
+			indent = args.indent,
+			render_mode = render_mode,
+			hide_links = not args.links,
+		})
 		pager:load_content(args.pathname)
 		pager:set_render_mode()
 		pager:page()
