@@ -529,8 +529,24 @@ local render_djot = function(raw, rss, conf)
 	return std.txt.indent(out, g_indent)
 end
 
+local render = function(raw, rss, conf)
+	local conf = conf or {}
+	local mode = "raw"
+	if conf.mode then
+		mode = conf.mode
+	end
+	if mode == "markdown" then
+		return render_markdown(raw, rss, conf)
+	end
+	if mode == "djot" then
+		return render_djot(raw, rss, conf)
+	end
+	return render_text(raw, rss, conf)
+end
+
 return {
 	render_text = render_text,
 	render_markdown = render_markdown,
 	render_djot = render_djot,
+	render = render,
 }

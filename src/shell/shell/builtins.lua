@@ -394,21 +394,12 @@ pager.new = function(filename, render_mode)
 	local set_render_mode = function(self, mode)
 		local mode = mode or "raw"
 		self.render_mode = mode
+		local rss = theme.renderer.kat
+		local conf = { global_indent = 0, wrap = self.__config.wrap, mode = mode }
 		if mode == "raw" then
-			self.content.rendered = text.render_text(
-				self.content.raw,
-				{},
-				{ global_indent = 0, wrap = self.__config.wrap }
-			)
+			rss = {}
 		end
-		if mode == "djot" then
-			self.content.rendered =
-				text.render_djot(self.content.raw, theme.renderer.kat, { global_indent = 0, wrap = self.__config.wrap })
-		end
-		if mode == "markdown" then
-			self.content.rendered =
-				text.render_djot(self.content.raw, theme.renderer.kat, { global_indent = 0, wrap = self.__config.wrap })
-		end
+		self.content.rendered = text.render(self.content.raw, rss, conf)
 		self.content.lines = std.txt.lines(self.content.rendered)
 	end
 	local display_line_nums = function(self)
@@ -428,7 +419,7 @@ pager.new = function(filename, render_mode)
 	local display = function(self)
 		term.clear()
 		local count = 0
-		local indent = self.__config.indent
+		local indent = self.__config.indent + 1
 		if self.__config.line_nums then
 			indent = indent + 6
 		end
@@ -491,13 +482,13 @@ pager.new = function(filename, render_mode)
 			local cp = input.simple_get()
 			if cp then
 				if self.mode == "SCROLL" then
-					if cp == "DOWN" or cp == " " then
+					if cp == "DOWN" or cp == " " or cp == "j" then
 						if self.top_line + self.__window.capacity < #self.content.lines then
 							self.top_line = self.top_line + 1
 						end
 						self:display()
 					end
-					if cp == "UP" then
+					if cp == "UP" or cp == "k" then
 						if self.top_line > 1 then
 							self.top_line = self.top_line - 1
 							self:display()
@@ -588,7 +579,7 @@ pager.new = function(filename, render_mode)
 	end
 	local pager = {
 		__window = { x = x, y = y, capacity = y - 2 },
-		__config = { line_nums = false, indent = 0, status_line = false, wrap = wrap },
+		__config = { line_nums = false, indent = 2, status_line = false, wrap = wrap },
 		history = { filename },
 		search_pattern = "",
 		top_line = 1,
@@ -618,20 +609,11 @@ local cat_help = [[
   Show file contents. In Kitty terminal *kat*
   can also show images.
 
-## Rendering modes
-
-| Mode       | Description |
-|------------|-------------|
-| *raw*      | No monkey business, file shown as is. |
-| *simple*   | Indent and line wrapping |
-| *markdown* | Poor man's markdown renderer |
-| *djot*     | Middle class man's djot renderer |
-
 ]]
 local cat = function(cmd, args, extra)
 	local extra = extra or {}
 	local parser = argparser.new({
-		raw = { kind = "bool", note = "Force raw rendering mode" },
+		raw = { kind = "bool", note = "Force raw rendering mode (no pager, no word wraps)" },
 		links = { kind = "bool", note = "Show link's url" },
 		pathname = { kind = "file", idx = 1 },
 	}, cat_help)
