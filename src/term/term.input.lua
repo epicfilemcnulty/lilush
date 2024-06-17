@@ -649,7 +649,7 @@ local new_input_obj = function(config)
 		-- DATA
 		__window = { h = win_l, w = win_c },
 		__config = config,
-		__tab = { quick_press = tonumber(os.getenv("LILUSH_QUICK_PRESS")) or 0.07 },
+		__tab = { quick_press = tonumber(os.getenv("LILUSH_QUICK_PRESS")) or 0.093 },
 		buffer = "",
 		cursor = 0,
 		position = 1,

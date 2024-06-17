@@ -376,23 +376,98 @@ end
 
 local pager = {}
 pager.new = function(filename, render_mode)
+	local change_render_mode = function(self)
+		local modes = { "raw", "djot", "markdown" }
+		local idx = 0
+		for i, mode in ipairs(modes) do
+			if mode == self.render_mode then
+				idx = i + 1
+				break
+			end
+		end
+		if idx > #modes or idx == 0 then
+			idx = 1
+		end
+		self:set_render_mode(modes[idx])
+		self:display()
+	end
+	local set_render_mode = function(self, mode)
+		local mode = mode or "raw"
+		self.render_mode = mode
+		if mode == "raw" then
+			self.content.rendered = text.render_text(
+				self.content.raw,
+				{},
+				{ global_indent = 0, wrap = self.__config.wrap }
+			)
+		end
+		if mode == "djot" then
+			self.content.rendered =
+				text.render_djot(self.content.raw, theme.renderer.kat, { global_indent = 0, wrap = self.__config.wrap })
+		end
+		if mode == "markdown" then
+			self.content.rendered =
+				text.render_djot(self.content.raw, theme.renderer.kat, { global_indent = 0, wrap = self.__config.wrap })
+		end
+		self.content.lines = std.txt.lines(self.content.rendered)
+	end
+	local display_line_nums = function(self)
+		if not self.__config.line_nums then
+			return
+		end
+		local total_lines = #self.content.lines
+		local lines_to_display = total_lines - self.top_line + 1
+		if lines_to_display > self.__window.capacity then
+			lines_to_display = self.__window.capacity
+		end
+		for i = 1, lines_to_display do
+			term.go(2 + i - 1, 1)
+			term.write(term.color(246) .. self.top_line + i - 1 .. term.style("reset"))
+		end
+	end
 	local display = function(self)
 		term.clear()
 		local count = 0
+		local indent = self.__config.indent
+		if self.__config.line_nums then
+			indent = indent + 6
+		end
 		while count < self.__window.capacity do
-			term.go(2 + count, self.__window.indent)
-			if self.content.lines[self.current_top_line + count] then
-				term.write(self.content.lines[self.current_top_line + count])
+			term.go(2 + count, indent)
+			if self.content.lines[self.top_line + count] then
+				term.write(self.content.lines[self.top_line + count])
 			end
 			count = count + 1
 		end
+		if self.__config.line_nums then
+			self:display_line_nums()
+		end
+		if self.__config.status_line then
+			self:display_status_line()
+		end
 	end
 	local display_status_line = function(self)
-		local status_line = "File: " .. self.history[#self.history] .. ", Lines: " .. #self.content.lines
+		local file = self.history[#self.history]
+		local total_lines = #self.content.lines
+		local kb_size = string.format("%.2f KB", #self.content.raw / 1024)
+		local position = string.format("%.2f", ((self.top_line + self.__window.capacity) / total_lines) * 100) .. "%"
+		local top_status = "File: "
+			.. file
+			.. ", Total lines: "
+			.. total_lines
+			.. ", Size: "
+			.. kb_size
+			.. ", at "
+			.. position
+
+		local bottom_status = self.mode
 		local y, x = term.window_size()
+		term.go(1, 1)
+		term.clear_line()
+		term.write(term.style("inverted") .. top_status .. term.style("reset"))
 		term.go(y, 1)
 		term.clear_line()
-		term.write(term.style("inverted") .. status_line .. term.style("reset"))
+		term.write(term.style("inverted") .. bottom_status .. term.style("reset"))
 	end
 	local load_content = function(self, filename)
 		if filename then
@@ -400,24 +475,8 @@ pager.new = function(filename, render_mode)
 			if err then
 				return nil, err
 			end
-			if self.render_mode == "raw" then
-				local rendered = text.render_text(content, {}, { wrap = self.wrap })
-				local lines = std.txt.lines(rendered)
-				self.content = { raw = content, rendered = rendered, lines = lines }
-				return true
-			end
-			if self.render_mode == "djot" then
-				local rendered = text.render_djot(content, theme.renderer.kat, { wrap = self.wrap })
-				local lines = std.txt.lines(rendered)
-				self.content = { raw = content, rendered = rendered, lines = lines }
-				return true
-			end
-			if self.render_mode == "markdown" then
-				local rendered = text.render_markdown(content, theme.renderer.kat, { wrap = self.wrap })
-				local lines = std.txt.lines(rendered)
-				self.content = { raw = content, rendered = rendered, lines = lines }
-				return true
-			end
+			self.content = { raw = content }
+			return true
 		end
 		self.content = { raw = "", rendered = "", lines = {} }
 		return true
@@ -425,50 +484,125 @@ pager.new = function(filename, render_mode)
 	local page = function(self)
 		repeat
 			self:display()
-			self:display_status_line()
 			local cp = input.simple_get()
 			if cp then
-				if self.mode == "normal" then
+				if self.mode == "SCROLL" then
 					if cp == "DOWN" or cp == " " then
-						if self.current_top_line + self.__window.capacity < #self.content.lines then
-							self.current_top_line = self.current_top_line + 1
+						if self.top_line + self.__window.capacity < #self.content.lines then
+							self.top_line = self.top_line + 1
 						end
 						self:display()
-						self:display_status_line()
 					end
 					if cp == "UP" then
-						if self.current_top_line > 1 then
-							self.current_top_line = self.current_top_line - 1
+						if self.top_line > 1 then
+							self.top_line = self.top_line - 1
 							self:display()
-							self:display_status_line()
 						end
+					end
+					if cp == "CTRL+r" then
+						self:change_render_mode()
 					end
 					if cp == "q" then
 						cp = "exit"
 					end
+					if cp == "l" then
+						self.__config.line_nums = not self.__config.line_nums
+						self:display_line_nums()
+					end
+					if cp == "s" then
+						self.__config.status_line = not self.__config.status_line
+						self:display()
+					end
+					if cp == "g" or cp == "HOME" then
+						self.top_line = 1
+						self:display()
+					end
+					if cp == "G" or cp == "END" then
+						local position = 1
+						if #self.content.lines > self.__window.capacity then
+							position = #self.content.lines - self.__window.capacity
+						end
+						self.top_line = position
+						self:display()
+					end
+					if cp == "CTRL+RIGHT" then
+						self.__config.indent = self.__config.indent + 1
+						self:display()
+					end
+					if cp == "ALT+RIGHT" then
+						self.__config.wrap = self.__config.wrap + 5
+						if self.__config.wrap > self.__window.x - 10 then
+							self.__config.wrap = self.__window.x - 10
+						end
+						self:set_render_mode(self.render_mode)
+						self:display()
+					end
+					if cp == "CTRL+LEFT" then
+						if self.__config.indent > 0 then
+							self.__config.indent = self.__config.indent - 1
+							self:display()
+						end
+					end
+					if cp == "ALT+LEFT" then
+						self.__config.wrap = self.__config.wrap - 5
+						if self.__config.wrap <= 40 then
+							self.__config.wrap = 40
+						end
+						self:set_render_mode(self.render_mode)
+						self:display()
+					end
+					if cp == "PAGE_UP" then
+						self.top_line = self.top_line - 15
+						if self.top_line < 1 then
+							self.top_line = 1
+						end
+						self:display()
+					end
+					if cp == "PAGE_DOWN" then
+						self.top_line = self.top_line + 15
+						if self.top_line > #self.content.lines - self.__window.capacity then
+							self.top_line = #self.content.lines - self.__window.capacity
+						end
+						self:display()
+					end
 				end
 			end
 		until cp == "exit"
+		self.__config.status_line = false
+		self:display()
+		local position = #self.content.lines + 2
+		if position > self.__window.y then
+			position = self.__window.y
+		end
+		term.go(position, 1)
 	end
-	local wrap = 120
-	local render_mode = render_mode or "djot"
+	local render_mode = render_mode or "raw"
 	local y, x = term.window_size()
+	local wrap = 120
+	if x < 130 then
+		wrap = x - 10 -- reserved for line numbers
+	end
 	local pager = {
-		__window = { x = x, y = y, capacity = y - 2, indent = 2 },
+		__window = { x = x, y = y, capacity = y - 2 },
+		__config = { line_nums = false, indent = 0, status_line = false, wrap = wrap },
+		history = { filename },
 		search_pattern = "",
-		current_top_line = 1,
+		top_line = 1,
 		cursor_line = 1,
 		render_mode = render_mode,
-		mode = "normal",
-		wrap = wrap,
-		history = { filename },
+		mode = "SCROLL",
 		content = {},
+		-- METHODS
 		display = display,
+		display_line_nums = display_line_nums,
 		display_status_line = display_status_line,
 		load_content = load_content,
+		change_render_mode = change_render_mode,
+		set_render_mode = set_render_mode,
 		page = page,
 	}
 	pager:load_content(filename)
+	pager:set_render_mode(render_mode)
 	return pager
 end
 --[[ 
@@ -507,7 +641,20 @@ local cat = function(cmd, args, extra)
 		return 127
 	end
 	local mime = web.mime_type(args.pathname)
-	if not mime:match("^text") and not std.txt.is_text(args.pathname) then
+	local source_code = {
+		h = true,
+		c = true,
+		cpp = true,
+		lua = true,
+		sh = true,
+		go = true,
+		rs = true,
+		bash = true,
+		lsh = true,
+		tf = true,
+	}
+	local extension = args.pathname:match("%.(.+)$")
+	if not mime:match("^text") and not source_code[extension] and not std.txt.is_ascii_printable(args.pathname) then
 		local pid = std.ps.launch("xdg-open", nil, nil, nil, args.pathname)
 		return 0
 	end
@@ -522,14 +669,16 @@ local cat = function(cmd, args, extra)
 	end
 	if not args.raw then
 		term.set_raw_mode(true)
+		term.hide_cursor()
 		local pager = pager.new(args.pathname, render_mode)
 		pager:page()
+		term.show_cursor()
 		term.set_sane_mode()
 		return 0
 	end
 	if args.raw then
 		local txt = std.fs.read_file(args.pathname) or ""
-		term.write("\n" .. text.render_text(txt, {}, extra) .. "\n")
+		term.write("\n" .. text.render_text(txt, {}, { global_indent = 0, wrap = -1 }) .. "\n")
 		return 0
 	end
 	return 0

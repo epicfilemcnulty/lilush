@@ -3,14 +3,17 @@
 local buffer = require("string.buffer")
 local utf = require("std.utf")
 
-local is_text = function(filename)
+local is_ascii_printable = function(filename)
 	local f = io.open(filename)
 	if f then
-		local start = f:read(32)
+		local start = f:read(512)
 		f:close()
 		for c in start:gmatch(".") do
-			if not c:match(utf.patterns.glob) then
-				return false
+			local b = string.byte(c)
+			if b < 32 or b > 126 then
+				if b ~= 13 and b ~= 10 then
+					return false
+				end
 			end
 		end
 		return true
@@ -259,6 +262,6 @@ local txt = {
 	find_all_positions = find_all_positions,
 	template = template,
 	split_by = split_by,
-	is_text = is_text,
+	is_ascii_printable = is_ascii_printable,
 }
 return txt
