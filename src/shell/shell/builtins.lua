@@ -450,7 +450,11 @@ pager.new = function(filename, render_mode)
 		local file = self.history[#self.history]
 		local total_lines = #self.content.lines
 		local kb_size = string.format("%.2f KB", #self.content.raw / 1024)
-		local position = string.format("%.2f", ((self.top_line + self.__window.capacity) / total_lines) * 100) .. "%"
+		local position_pct = ((self.top_line + self.__window.capacity) / total_lines) * 100
+		if position_pct > 100 then
+			position_pct = 100.00
+		end
+		local position = string.format("%.2f", position_pct) .. "%"
 		local top_status = "File: "
 			.. file
 			.. ", Total lines: "
