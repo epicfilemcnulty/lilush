@@ -378,6 +378,22 @@ local pager_line_down = function(self)
 	end
 end
 
+local pager_page_up = function(self)
+	self.top_line = self.top_line - self.__window.capacity
+	if self.top_line < 1 then
+		self.top_line = 1
+	end
+	self:display()
+end
+
+local pager_page_down = function(self)
+	self.top_line = self.top_line + self.__window.capacity
+	if self.top_line > #self.content.lines - self.__window.capacity then
+		self.top_line = #self.content.lines - self.__window.capacity
+	end
+	self:display()
+end
+
 local pager_page = function(self)
 	if #self.content.lines < self.__window.capacity and self.__config.exit_on_one_page then
 		return self:exit()
@@ -444,18 +460,10 @@ local pager_page = function(self)
 					self:display()
 				end
 				if cp == "PAGE_UP" then
-					self.top_line = self.top_line - 15
-					if self.top_line < 1 then
-						self.top_line = 1
-					end
-					self:display()
+					self:page_up()
 				end
 				if cp == "PAGE_DOWN" then
-					self.top_line = self.top_line + 15
-					if self.top_line > #self.content.lines - self.__window.capacity then
-						self.top_line = #self.content.lines - self.__window.capacity
-					end
-					self:display()
+					self:page_down()
 				end
 			end
 		end
@@ -498,6 +506,8 @@ local pager_new = function(config)
 		set_render_mode = pager_set_render_mode,
 		line_up = pager_line_up,
 		line_down = pager_line_down,
+		page_up = pager_page_up,
+		page_down = pager_page_down,
 		toggle_line_nums = pager_toggle_line_nums,
 		toggle_status_line = pager_toggle_status_line,
 		page = pager_page,
