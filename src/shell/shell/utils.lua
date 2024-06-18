@@ -271,9 +271,6 @@ local pager_set_render_mode = function(self, mode)
 end
 
 local pager_display_line_nums = function(self)
-	if not self.__config.line_nums then
-		return
-	end
 	local total_lines = #self.content.lines
 	local lines_to_display = total_lines - self.__state.top_line + 1
 	if lines_to_display > self.__window.capacity then
@@ -281,7 +278,12 @@ local pager_display_line_nums = function(self)
 	end
 	for i = 1, lines_to_display do
 		term.go(2 + i - 1, 1)
-		term.write(term.color(246) .. self.__state.top_line + i - 1 .. term.style("reset"))
+		local line_num = self.__state.top_line + i - 1
+		if line_num == self.__state.cursor_line then
+			term.write(term.color(246) .. term.style("inverted") .. line_num .. term.style("reset"))
+		else
+			term.write(term.color(246) .. line_num .. term.style("reset"))
+		end
 	end
 end
 
@@ -294,8 +296,13 @@ local pager_display = function(self)
 	end
 	while count < self.__window.capacity do
 		term.go(2 + count, indent)
-		if self.content.lines[self.__state.top_line + count] then
-			term.write(self.content.lines[self.__state.top_line + count])
+		local idx = self.__state.top_line + count
+		local line = self.content.lines[idx]
+		if idx == self.__state.cursor_line and line then
+			line = line:gsub(self.__state.search_pattern, term.style("inverted") .. "%1" .. term.style("reset"))
+		end
+		if line then
+			term.write(line)
 		end
 		count = count + 1
 	end
@@ -325,7 +332,7 @@ local pager_display_status_line = function(self)
 		.. ", at "
 		.. position
 
-	local bottom_status = self.__state.mode
+	local bottom_status = "PATTERN: " .. self.__state.search_pattern
 	local y, x = term.window_size()
 	term.go(1, 1)
 	term.clear_line()
@@ -350,12 +357,22 @@ end
 
 local pager_exit = function(self)
 	self.__config.status_line = false
-	self:display()
-	local position = #self.content.lines + 2
-	if position > self.__window.y then
-		position = self.__window.y
+	if self.__state.alt_screen then
+		term.switch_screen("main", nil, true)
 	end
-	term.go(position, 1)
+	term.go(self.__window.l, 1)
+	local till = self.__window.capacity
+	if self.__state.top_line > 1 then
+		till = self.__state.top_line + self.__window.capacity
+	end
+	if till > #self.content.lines then
+		till = #self.content.lines
+	end
+	-- Probably should add safety guardrails,
+	-- if total_lines > 100kb or something...
+	for i = 1, till do
+		term.write(self.content.lines[i] .. "\r\n")
+	end
 end
 
 local pager_toggle_line_nums = function(self)
@@ -444,10 +461,68 @@ local pager_change_wrap = function(self, combo)
 	end
 end
 
+local pager_search = function(self, combo)
+	local pattern = ""
+	if combo == "/" then
+		local buf = input.new({ l = self.__window.y, c = 9 })
+		term.go(self.__window.y, 1)
+		term.write("SEARCH: ")
+		buf:display()
+		repeat
+			local event, combo = buf:event()
+		until event == "execute" or event == "exit"
+		pattern = buf:render()
+		if pattern == "" then
+			self.__state.search_idx = 0
+			self.__state.cursor_line = 0
+			self.__state.search_pattern = ""
+			return true
+		end
+	elseif combo:match("[nb]") then
+		if self.__state.search_pattern == "" then
+			return true
+		end
+		pattern = self.__state.search_pattern
+	end
+	self.__state.search_pattern = pattern
+	if combo == "n" or combo == "/" then
+		local start = self.__state.top_line
+		if combo == "n" then
+			start = self.__state.search_idx + 1
+		end
+		for idx = start, #self.content.lines do
+			if self.content.lines[idx]:match(pattern) then
+				self.__state.search_idx = idx
+				self.__state.cursor_line = idx
+				break
+			end
+		end
+	elseif combo == "b" then
+		for idx = self.__state.search_idx - 1, 1, -1 do
+			if self.content.lines[idx]:match(pattern) then
+				self.__state.search_idx = idx
+				self.__state.cursor_line = idx
+				break
+			end
+		end
+	end
+	if self.__state.search_idx > 0 then
+		self.__state.top_line = self.__state.search_idx
+		if self.__state.top_line > 2 then
+			self.__state.top_line = self.__state.top_line - 2
+		end
+		self:display()
+		return true
+	end
+	self.__state.search_idx = 0
+end
+
 local pager_page = function(self)
 	if #self.content.lines < self.__window.capacity and self.__config.exit_on_one_page then
 		return self:exit()
 	end
+	term.switch_screen("alt", true)
+	self.__state.alt_screen = true
 	repeat
 		self:display()
 		local cp = input.simple_get()
@@ -467,6 +542,7 @@ end
 
 local pager_new = function(config)
 	local y, x = term.window_size()
+	local l, c = term.cursor_position()
 	local wrap = 120
 	if x < 130 then
 		wrap = x - 10 -- reserved for line numbers
@@ -482,9 +558,16 @@ local pager_new = function(config)
 	}
 	std.tbl.merge(default_config, config)
 	local pager = {
-		__window = { x = x, y = y, capacity = y - 2 },
+		__window = { x = x, y = y, capacity = y - 2, l = l, c = c },
 		__config = default_config,
-		__state = { mode = "SCROLL", top_line = 1, cursor_line = 1, search_pattern = "" },
+		__state = {
+			mode = "SCROLL",
+			top_line = 1,
+			cursor_line = 0,
+			search_idx = 0,
+			search_pattern = "",
+			alt_screen = false,
+		},
 		history = {},
 		content = {},
 		__ctrls = {
@@ -505,6 +588,9 @@ local pager_new = function(config)
 			["G"] = "bottom_line",
 			["s"] = "toggle_status_line",
 			["l"] = "toggle_line_nums",
+			["/"] = "search",
+			["n"] = "search",
+			["b"] = "search",
 		},
 		-- METHODS
 		display = pager_display,
@@ -523,6 +609,7 @@ local pager_new = function(config)
 		toggle_status_line = pager_toggle_status_line,
 		change_indent = pager_change_indent,
 		change_wrap = pager_change_wrap,
+		search = pager_search,
 		page = pager_page,
 		exit = pager_exit,
 	}
