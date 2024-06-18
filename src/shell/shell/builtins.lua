@@ -390,6 +390,7 @@ local cat = function(cmd, args)
 		raw = { kind = "bool", note = "Force raw rendering mode (no pager, no word wraps)" },
 		page = { kind = "bool", note = "Force using pager even on one screen documents" },
 		indent = { kind = "num", default = 0, note = "Indentation" },
+		wrap = { kind = "bool", note = "Wrap text even in raw mode" },
 		links = { kind = "bool", note = "Show link's url" },
 		pathname = { kind = "file", idx = 1 },
 	}, cat_help)
@@ -434,6 +435,7 @@ local cat = function(cmd, args)
 			indent = args.indent,
 			render_mode = render_mode,
 			hide_links = not args.links,
+			wrap_in_raw = args.wrap,
 		})
 		pager:load_content(args.pathname)
 		pager:set_render_mode()

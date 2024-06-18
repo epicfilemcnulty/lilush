@@ -264,6 +264,9 @@ local pager_set_render_mode = function(self, mode)
 	local rss = theme.renderer.kat
 	local conf = { global_indent = 0, wrap = self.__config.wrap, mode = mode, hide_links = self.__config.hide_links }
 	if mode == "raw" then
+		if not self.__config.wrap_in_raw then
+			conf.wrap = 0
+		end
 		rss = {}
 	end
 	self.content.rendered = text.render(self.content.raw, rss, conf)
@@ -554,6 +557,7 @@ local pager_new = function(config)
 		status_line = false,
 		indent = 0,
 		wrap = wrap,
+		wrap_in_raw = false,
 		hide_links = false,
 	}
 	std.tbl.merge(default_config, config)
