@@ -418,7 +418,9 @@ local cat = function(cmd, args)
 	}
 	local extension = args.pathname:match("%.(.+)$")
 	if not mime:match("^text") and not source_code[extension] and not std.txt.is_ascii_printable(args.pathname) then
-		local pid = std.ps.launch("xdg-open", nil, nil, nil, args.pathname)
+		local out = std.ps.pipe()
+		local pid = std.ps.launch("xdg-open", nil, out.inn, out.inn, args.pathname)
+		out = nil
 		return 0
 	end
 	local render_mode = "raw"

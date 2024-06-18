@@ -118,7 +118,7 @@ local function lines(raw)
 	return lines
 end
 
-local exec_simple = function(cmd)
+local exec_simple = function(cmd, nowait)
 	local args = {}
 	for arg in cmd:gmatch("%S+") do
 		table.insert(args, arg)
@@ -136,8 +136,12 @@ local exec_simple = function(cmd)
 	local err_lines = lines(err)
 	stdout:close_out()
 	stderr:close_out()
-	local _, code = waitpid(pid)
-
+	local dummy, code
+	if nowait then
+		dummy, code = waitpid(pid)
+	else
+		code = wait(pid)
+	end
 	return {
 		status = code or 255,
 		stdout = out_lines,
