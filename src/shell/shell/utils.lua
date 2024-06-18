@@ -465,6 +465,18 @@ local pager_change_wrap = function(self, combo)
 	end
 end
 
+local pager_goto_line = function(self, line_num)
+	local line_num = line_num or 0
+	if line_num > 0 and line_num <= #self.content.lines then
+		self.__state.top_line = line_num - 2
+		self.__state.cursor_line = line_num
+		if self.__state.top_line < 1 then
+			self.__state.top_line = 1
+		end
+		self:display()
+	end
+end
+
 local pager_search = function(self, combo)
 	local pattern = ""
 	if combo == "/" then
@@ -528,6 +540,7 @@ local pager_page = function(self)
 	end
 	term.switch_screen("alt", true)
 	self.__state.alt_screen = true
+	local buf = ""
 	repeat
 		self:display()
 		local cp = input.simple_get()
@@ -537,6 +550,14 @@ local pager_page = function(self)
 			end
 			if self.__ctrls[cp] then
 				self[self.__ctrls[cp]](self, cp)
+			else
+				if cp:match("[0-9]") then
+					buf = buf .. cp
+				end
+				if cp == "ENTER" and tonumber(buf) then
+					self:goto_line(tonumber(buf))
+					buf = ""
+				end
 			end
 		end
 	until cp == "exit"
@@ -578,7 +599,9 @@ local pager_new = function(config)
 		content = {},
 		__ctrls = {
 			["PAGE_UP"] = "page_up",
+			["K"] = "page_up",
 			["PAGE_DOWN"] = "page_down",
+			["J"] = "page_down",
 			["UP"] = "line_up",
 			["k"] = "line_up",
 			["DOWN"] = "line_down",
@@ -612,6 +635,7 @@ local pager_new = function(config)
 		bottom_line = pager_bottom_line,
 		page_up = pager_page_up,
 		page_down = pager_page_down,
+		goto_line = pager_goto_line,
 		toggle_line_nums = pager_toggle_line_nums,
 		toggle_status_line = pager_toggle_status_line,
 		change_indent = pager_change_indent,
