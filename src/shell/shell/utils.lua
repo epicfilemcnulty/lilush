@@ -583,6 +583,7 @@ local pager_new = function(config)
 			["k"] = "line_up",
 			["DOWN"] = "line_down",
 			["j"] = "line_down",
+			[" "] = "line_down",
 			["CTRL+RIGHT"] = "change_indent",
 			["CTRL+LEFT"] = "change_indent",
 			["ALT+RIGHT"] = "change_wrap",
