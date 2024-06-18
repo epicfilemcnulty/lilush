@@ -9,6 +9,7 @@ local text = require("text")
 local term = require("term")
 local theme = require("shell.theme")
 local input = require("term.input")
+local history = require("term.input.history")
 
 local zx_complete = function(args)
 	local candidates = {}
@@ -302,7 +303,7 @@ local pager_display = function(self)
 		local idx = self.__state.top_line + count
 		local line = self.content.lines[idx]
 		if idx == self.__state.cursor_line and line then
-			line = line:gsub(self.__state.search_pattern, term.style("inverted") .. "%1" .. term.style("reset"))
+			line = line:gsub(self.__search.pattern, term.style("inverted") .. "%1" .. term.style("reset"))
 		end
 		if line then
 			term.write(line)
@@ -318,7 +319,7 @@ local pager_display = function(self)
 end
 
 local pager_display_status_line = function(self)
-	local file = self.history[#self.history]
+	local file = self.__state.history[#self.__state.history]
 	local total_lines = #self.content.lines
 	local kb_size = string.format("%.2f KB", #self.content.raw / 1024)
 	local position_pct = ((self.__state.top_line + self.__window.capacity) / total_lines) * 100
@@ -335,7 +336,7 @@ local pager_display_status_line = function(self)
 		.. ", at "
 		.. position
 
-	local bottom_status = "PATTERN: " .. self.__state.search_pattern
+	local bottom_status = "PATTERN: " .. self.__search.pattern
 	local y, x = term.window_size()
 	term.go(1, 1)
 	term.clear_line()
@@ -352,7 +353,7 @@ local pager_load_content = function(self, filename)
 			return nil, err
 		end
 		self.content = { raw = content }
-		table.insert(self.history, filename)
+		table.insert(self.__state.history, filename)
 		return true
 	end
 	return nil
@@ -467,7 +468,7 @@ end
 local pager_search = function(self, combo)
 	local pattern = ""
 	if combo == "/" then
-		local buf = input.new({ l = self.__window.y, c = 9 })
+		local buf = input.new({ history = self.__search.history, l = self.__window.y, c = 9 })
 		term.go(self.__window.y, 1)
 		term.write("SEARCH: ")
 		buf:display()
@@ -476,48 +477,49 @@ local pager_search = function(self, combo)
 		until event == "execute" or event == "exit"
 		pattern = buf:render()
 		if pattern == "" then
-			self.__state.search_idx = 0
+			self.__search.idx = 0
 			self.__state.cursor_line = 0
-			self.__state.search_pattern = ""
+			self.__search.pattern = ""
 			return true
 		end
+		self.__search.history:add(pattern)
 	elseif combo:match("[nb]") then
-		if self.__state.search_pattern == "" then
+		if self.__search.pattern == "" then
 			return true
 		end
-		pattern = self.__state.search_pattern
+		pattern = self.__search.pattern
 	end
-	self.__state.search_pattern = pattern
+	self.__search.pattern = pattern
 	if combo == "n" or combo == "/" then
 		local start = self.__state.top_line
 		if combo == "n" then
-			start = self.__state.search_idx + 1
+			start = self.__search.idx + 1
 		end
 		for idx = start, #self.content.lines do
 			if self.content.lines[idx]:match(pattern) then
-				self.__state.search_idx = idx
+				self.__search.idx = idx
 				self.__state.cursor_line = idx
 				break
 			end
 		end
 	elseif combo == "b" then
-		for idx = self.__state.search_idx - 1, 1, -1 do
+		for idx = self.__search.idx - 1, 1, -1 do
 			if self.content.lines[idx]:match(pattern) then
-				self.__state.search_idx = idx
+				self.__search.idx = idx
 				self.__state.cursor_line = idx
 				break
 			end
 		end
 	end
-	if self.__state.search_idx > 0 then
-		self.__state.top_line = self.__state.search_idx
+	if self.__search.idx > 0 then
+		self.__state.top_line = self.__search.idx
 		if self.__state.top_line > 2 then
 			self.__state.top_line = self.__state.top_line - 2
 		end
 		self:display()
 		return true
 	end
-	self.__state.search_idx = 0
+	self.__search.idx = 0
 end
 
 local pager_page = function(self)
@@ -530,13 +532,11 @@ local pager_page = function(self)
 		self:display()
 		local cp = input.simple_get()
 		if cp then
-			if self.__state.mode == "SCROLL" then
-				if cp == "q" then
-					cp = "exit"
-				end
-				if self.__ctrls[cp] then
-					self[self.__ctrls[cp]](self, cp)
-				end
+			if cp == "q" then
+				cp = "exit"
+			end
+			if self.__ctrls[cp] then
+				self[self.__ctrls[cp]](self, cp)
 			end
 		end
 	until cp == "exit"
@@ -565,14 +565,16 @@ local pager_new = function(config)
 		__window = { x = x, y = y, capacity = y - 2, l = l, c = c },
 		__config = default_config,
 		__state = {
-			mode = "SCROLL",
 			top_line = 1,
 			cursor_line = 0,
-			search_idx = 0,
-			search_pattern = "",
 			alt_screen = false,
+			history = {},
 		},
-		history = {},
+		__search = {
+			idx = 0,
+			pattern = "",
+			history = history.new(),
+		},
 		content = {},
 		__ctrls = {
 			["PAGE_UP"] = "page_up",
