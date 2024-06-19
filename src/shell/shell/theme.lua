@@ -147,7 +147,21 @@ local builtins_default = {
 		time = { fg = 102, before = "[", after = "]" },
 		duration = {},
 		status = {},
-		cmd = { indent = 1, ok = { fg = 249 }, fail = { fg = 59, style = "dim" } },
+		cmd = { indent = 1, ok = { fg = 249 }, fail = { fg = 59, s = "dim" } },
+	},
+	pager = {
+		line_num = { fg = 60, selected = { bg = 186, s = "bold,italic" } },
+		search_match = { fg = 60, bg = 186, s = "italic,bold" },
+		status_line = {
+			filename = { fg = 65, after = " ※ " },
+			total_lines = { fg = 66, after = " ※ " },
+			size = { fg = 67, after = " ※ " },
+			position = { fg = 67, after = " ※ " },
+			search = {
+				fg = 64,
+				pattern = { s = "inverted" },
+			},
+		},
 	},
 }
 

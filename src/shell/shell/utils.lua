@@ -8,6 +8,7 @@ local storage = require("storage")
 local text = require("text")
 local term = require("term")
 local theme = require("shell.theme")
+local style = require("term.tss")
 local input = require("term.input")
 local history = require("term.input.history")
 
@@ -283,10 +284,11 @@ local pager_display_line_nums = function(self)
 	for i = 1, lines_to_display do
 		term.go(2 + i - 1, 1)
 		local line_num = self.__state.top_line + i - 1
+		local tss = style.new(theme.builtins.pager)
 		if line_num == self.__state.cursor_line then
-			term.write(term.color(246) .. term.style("inverted") .. line_num .. term.style("reset"))
+			term.write(tss:apply("line_num.selected", line_num))
 		else
-			term.write(term.color(246) .. line_num .. term.style("reset"))
+			term.write(tss:apply("line_num", line_num))
 		end
 	end
 end
@@ -302,8 +304,9 @@ local pager_display = function(self)
 		term.go(2 + count, indent)
 		local idx = self.__state.top_line + count
 		local line = self.content.lines[idx]
-		if idx == self.__state.cursor_line and line then
-			line = line:gsub(self.__search.pattern, term.style("inverted") .. "%1" .. term.style("reset"))
+		if idx == self.__state.cursor_line and self.__search.pattern ~= "" and line then
+			local tss = style.new(theme.builtins.pager)
+			line = line:gsub(self.__search.pattern, tss:apply("search_match", "%1"))
 		end
 		if line then
 			term.write(line)
@@ -326,24 +329,21 @@ local pager_display_status_line = function(self)
 	if position_pct > 100 then
 		position_pct = 100.00
 	end
+	local tss = style.new(theme.builtins.pager)
 	local position = string.format("%.2f", position_pct) .. "%"
-	local top_status = "File: "
-		.. file
-		.. ", Total lines: "
-		.. total_lines
-		.. ", Size: "
-		.. kb_size
-		.. ", at "
-		.. position
+	local top_status = tss:apply("status_line.filename", file)
+		.. tss:apply("status_line.total_lines", total_lines .. " lines")
+		.. tss:apply("status_line.size", kb_size)
 
-	local bottom_status = "PATTERN: " .. self.__search.pattern
+	local bottom_status = tss:apply("status_line.position", position)
+		.. tss:apply("status_line.search.pattern", self.__search.pattern)
 	local y, x = term.window_size()
 	term.go(1, 1)
 	term.clear_line()
-	term.write(term.style("inverted") .. top_status .. term.style("reset"))
+	term.write(top_status)
 	term.go(y, 1)
 	term.clear_line()
-	term.write(term.style("inverted") .. bottom_status .. term.style("reset"))
+	term.write(bottom_status)
 end
 
 local pager_load_content = function(self, filename)
@@ -482,7 +482,8 @@ local pager_search = function(self, combo)
 	if combo == "/" then
 		local buf = input.new({ history = self.__search.history, l = self.__window.y, c = 9 })
 		term.go(self.__window.y, 1)
-		term.write("SEARCH: ")
+		local tss = style.new(theme.builtins.pager)
+		term.write(tss:apply("status_line.search", "SEARCH: "))
 		buf:display()
 		repeat
 			local event, combo = buf:event()
@@ -553,9 +554,10 @@ local pager_page = function(self)
 			else
 				if cp:match("[0-9]") then
 					buf = buf .. cp
-				end
-				if cp == "ENTER" and tonumber(buf) then
+				elseif cp == "ENTER" and tonumber(buf) then
 					self:goto_line(tonumber(buf))
+					buf = ""
+				else
 					buf = ""
 				end
 			end
