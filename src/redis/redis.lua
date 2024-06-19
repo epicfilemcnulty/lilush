@@ -122,11 +122,11 @@ local read = function(self)
 end
 
 local close = function(self, no_keepalive)
-	if no_keepalive or #socket_pool[self.cfg] > socket_pool_size then
+	if no_keepalive or #socket_pool[self.idx] > socket_pool_size then
 		self.s:close()
 		return true
 	end
-	table.insert(socket_pool[self.cfg], self.s)
+	table.insert(socket_pool[self.idx], self.s)
 	return true
 end
 
@@ -142,19 +142,21 @@ local connect = function(cfg)
 	elseif type(cfg) == "table" then
 		conf = std.tbl.merge(conf, cfg)
 	end
-	if socket_pool[conf] then
-		if #socket_pool[conf] > 0 then
-			local client = table.remove(socket_pool[conf], 1)
+	local conf_str_key = conf.host .. ":" .. conf.port .. "/" .. conf.db
+
+	if socket_pool[conf_str_key] then
+		if #socket_pool[conf_str_key] > 0 then
+			local client = table.remove(socket_pool[conf_str_key], 1)
 			if client:send("PING\r\n") then
 				local r = client:receive()
 				if r and r == "+PONG" then
-					return { s = client, cmd = redis_command, close = close, read = read, cfg = conf }
+					return { s = client, cmd = redis_command, close = close, read = read, idx = conf_str_key }
 				end
 			end
 			client:close()
 		end
 	else
-		socket_pool[conf] = {}
+		socket_pool[conf_str_key] = {}
 	end
 
 	local client = socket.tcp()
@@ -164,7 +166,7 @@ local connect = function(cfg)
 	local ok, err = client:connect(conf.host, conf.port)
 	if ok then
 		client:setoption("tcp-nodelay", conf.tcp_nodelay)
-		local obj = { s = client, cmd = redis_command, close = close, read = read, cfg = conf }
+		local obj = { s = client, cmd = redis_command, close = close, read = read, idx = conf_str_key }
 		obj:cmd("select", conf.db)
 		return obj
 	end
