@@ -3,7 +3,7 @@
 local buffer = require("string.buffer")
 local utf = require("std.utf")
 
-local is_ascii_printable = function(filename)
+local ascii_printable = function(filename)
 	local f = io.open(filename)
 	if f then
 		local start = f:read(512)
@@ -21,12 +21,12 @@ local is_ascii_printable = function(filename)
 	return false
 end
 
-local is_valid_utf = function(filename)
+local valid_utf = function(filename)
 	local f = io.open(filename)
 	if f then
 		local start = f:read(512)
 		f:close()
-		return std.utf.valid(start)
+		return utf.valid(start)
 	end
 	return false
 end
@@ -272,7 +272,7 @@ local txt = {
 	find_all_positions = find_all_positions,
 	template = template,
 	split_by = split_by,
-	is_ascii_printable = is_ascii_printable,
-	is_valid_utf = is_valid_utf,
+	ascii_printable = ascii_printable,
+	valid_utf = valid_utf,
 }
 return txt
