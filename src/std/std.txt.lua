@@ -21,6 +21,16 @@ local is_ascii_printable = function(filename)
 	return false
 end
 
+local is_valid_utf = function(filename)
+	local f = io.open(filename)
+	if f then
+		local start = f:read(512)
+		f:close()
+		return std.utf.valid(start)
+	end
+	return false
+end
+
 local function lines(raw)
 	local raw = raw or ""
 	local lines = {}
@@ -263,5 +273,6 @@ local txt = {
 	template = template,
 	split_by = split_by,
 	is_ascii_printable = is_ascii_printable,
+	is_valid_utf = is_valid_utf,
 }
 return txt

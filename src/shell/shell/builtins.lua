@@ -404,20 +404,7 @@ local cat = function(cmd, args)
 		return 127
 	end
 	local mime = web.mime_type(args.pathname)
-	local source_code = {
-		h = true,
-		c = true,
-		cpp = true,
-		lua = true,
-		sh = true,
-		go = true,
-		rs = true,
-		bash = true,
-		lsh = true,
-		tf = true,
-	}
-	local extension = args.pathname:match("%.(.+)$")
-	if not mime:match("^text") and not source_code[extension] and not std.txt.is_ascii_printable(args.pathname) then
+	if not mime:match("^text") and not std.txt.valid_utf(args.pathname) then
 		local out = std.ps.pipe()
 		local pid = std.ps.launch("xdg-open", nil, out.inn, out.inn, args.pathname)
 		out = nil
