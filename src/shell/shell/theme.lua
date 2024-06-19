@@ -161,6 +161,7 @@ local builtins_default = {
 				fg = 64,
 				pattern = { s = "inverted" },
 			},
+			render_mode = { fg = 143, after = " ※ " },
 		},
 	},
 }

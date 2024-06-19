@@ -336,6 +336,7 @@ local pager_display_status_line = function(self)
 		.. tss:apply("status_line.size", kb_size)
 
 	local bottom_status = tss:apply("status_line.position", position)
+		.. tss:apply("status_line.render_mode", self.__config.render_mode)
 		.. tss:apply("status_line.search.pattern", self.__search.pattern)
 	local y, x = term.window_size()
 	term.go(1, 1)
