@@ -73,6 +73,8 @@ local load_model = function(self, options)
 		model_alias = options.model_alias,
 		lora_dir = options.lora_dir,
 		context_length = options.context_length,
+		cache_size = options.cache_size,
+		dynamic = options.dynamic,
 	}
 	local resp, err = web.request(
 		self.api_url .. "/load",

@@ -426,7 +426,13 @@ local load_model = function(self, combo)
 		return true
 	end
 	local alias = model_dir:match("([^/]+)/?$")
-	local model_conf = { model_type = "exl2", context_length = 0, model_alias = alias, model_dir = model_dir }
+	local model_conf = {
+		model_type = "exl2",
+		context_length = 0,
+		model_alias = alias,
+		model_dir = model_dir,
+		dynamic = false,
+	}
 	widgets.settings(model_conf, "Set model options", theme.widgets.llm, 3, 5)
 	local client = llm.new(model_conf.model_type)
 	term.clear()
