@@ -6,12 +6,14 @@
 compiled LuaJIT interpreter that comes bundled with a curated collection
 of custom modules and libraries for
 
-- file system operations
-- terminal I/O with UTF-8 support & terminal widgets
-- process manipulation
-- JSON, XML, markdown and [djot](https://djot.net/) processing
-- TCP/UDP networking with SSL support; HTTP(S) client, HTTP/1.1 server
-- other useful stuff too =)
+* file system operations
+* terminal I/O with UTF-8 support & terminal widgets
+* process manipulation
+* JSON, markdown and [djot](https://djot.net/) processing/rendering
+* TCP/UDP networking with SSL support; HTTP(S) client, HTTP(S)/1.1 server
+* Redis protocol support
+* Embedded [WireGuard](https://www.wireguard.com/embedding/) support
+* other useful stuff too =)
 
 For networking, *lilush* includes
 [Luasocket](https://github.com/lunarmodules/luasocket) library,
@@ -34,7 +36,6 @@ and more.
 
 ## Status
 
-Currently it’s very much alpha pre-release state, so beware and use at
-your own risk.
+Currently it’s in beta state, so beware and use at your own risk.
 
 [^1]: Well, not yet. And it really depends. But still.
