@@ -360,6 +360,15 @@ local pager_load_content = function(self, filename)
 	return nil
 end
 
+local pager_set_content = function(self, content)
+	if content then
+		self.content = { raw = content }
+		table.insert(self.__state.history, "stdin")
+		return true
+	end
+	return nil
+end
+
 local pager_exit = function(self)
 	self.__config.status_line = false
 	if self.__state.alt_screen then
@@ -382,7 +391,7 @@ end
 
 local pager_toggle_line_nums = function(self)
 	self.__config.line_nums = not self.__config.line_nums
-	self:display_line_nums()
+	self:display()
 end
 
 local pager_toggle_status_line = function(self)
@@ -543,8 +552,8 @@ local pager_page = function(self)
 	term.switch_screen("alt", true)
 	self.__state.alt_screen = true
 	local buf = ""
+	self:display()
 	repeat
-		self:display()
 		local cp = input.simple_get()
 		if cp then
 			if cp == "q" then
@@ -630,6 +639,7 @@ local pager_new = function(config)
 		display_line_nums = pager_display_line_nums,
 		display_status_line = pager_display_status_line,
 		load_content = pager_load_content,
+		set_content = pager_set_content,
 		next_render_mode = pager_next_render_mode,
 		set_render_mode = pager_set_render_mode,
 		line_up = pager_line_up,
