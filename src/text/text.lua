@@ -74,6 +74,7 @@ local default_formatted_rss = {
 }
 
 local render_text = function(raw, rss, conf)
+	local raw = raw or ""
 	local tss = style.merge(default_plain_rss, rss)
 	local conf = conf or {}
 	local wrap = tss.__style.wrap or 0
@@ -523,6 +524,9 @@ local render_djot = function(raw, rss, conf)
 	end
 	local doc = djot.parse(raw) or { children = {} }
 	local out = ""
+	if not doc or not doc.children then
+		return ""
+	end
 	for i, el in ipairs(doc.children) do
 		out = out .. render_djot_element(el, tss, wrap, "doc", i)
 	end
