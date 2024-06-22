@@ -7,13 +7,15 @@
 local std = require("std")
 local socket = require("socket")
 
-local redis_url = os.getenv("REDIS_URL") or "127.0.0.1:6379/0"
-local config = {
-	host = redis_url:match("^[^:]+"),
-	port = tonumber(redis_url:match("^[^:]+:(%d+)")) or 6379,
-	db = tonumber(redis_url:match("^[^:]+:%d+/(%d%d?)")) or 0,
-	tcp_nodelay = true,
-}
+local config_from_string = function(url)
+    local url = url or "127.0.0.1:6379/0"
+	return {
+		host = url:match("^[^:]+"),
+		port = tonumber(url:match("^[^:]+:(%d+)")) or 6379,
+		db = tonumber(url:match("^[^:]+:%d+/(%d%d?)")) or 0,
+		tcp_nodelay = true,
+	}
+end
 
 -- To re-use redis connections we just put a connected socket into this table
 -- with `redis:close()` method. `redis.connect` first tries to use a socket from
@@ -130,18 +132,8 @@ local close = function(self, no_keepalive)
 	return true
 end
 
-local connect = function(cfg)
-	local conf = std.tbl.copy(config)
-	if type(cfg) == "string" then
-		conf = {
-			host = cfg:match("^[^:]+"),
-			port = tonumber(cfg:match("^[^:]+:(%d+)")) or 6379,
-			db = tonumber(cfg:match("^[^:]+:%d+/(%d%d?)")) or 0,
-			tcp_nodelay = true,
-		}
-	elseif type(cfg) == "table" then
-		conf = std.tbl.merge(conf, cfg)
-	end
+local connect = function(url)
+	local conf = config_from_string(url)
 	local conf_str_key = conf.host .. ":" .. conf.port .. "/" .. conf.db
 
 	if socket_pool[conf_str_key] then

@@ -7,13 +7,7 @@ local redis = require("redis")
 local crypto = require("crypto")
 
 local init_redis_store = function(redis_url)
-	local redis_url = redis_url or ""
-	local cfg = {
-		host = redis_url:match("^[^:]+"),
-		port = tonumber(redis_url:match("^[^:]+:(%d+)")) or 6379,
-		db = tonumber(redis_url:match("^[^:]+:%d+/(%d%d?)")) or 0,
-	}
-	local red, err = redis.connect(cfg)
+	local red, err = redis.connect(redis_url)
 	if err then
 		return nil, "can't connect to redis: " .. tostring(err)
 	end
