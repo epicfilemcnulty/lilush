@@ -405,9 +405,7 @@ local cat = function(cmd, args)
 	end
 	local mime = web.mime_type(args.pathname)
 	if not mime:match("^text") and not std.txt.valid_utf(args.pathname) then
-		local out = std.ps.pipe()
-		local pid = std.ps.launch("xdg-open", nil, out.inn, out.inn, args.pathname)
-		out = nil
+		std.ps.exec("xdg-open", args.pathname)
 		return 0
 	end
 	local render_mode = "raw"
