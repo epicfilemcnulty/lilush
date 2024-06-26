@@ -30,32 +30,36 @@ local docker_subcommands = {
 }
 
 local ktl_subcommands = {
-	["profile"] = true,
+	["describe"] = true,
+	["port-forward"] = true,
 	["get"] = true,
 	["delete"] = true,
 	["apply"] = true,
 	["logs"] = true,
 }
 
+local kubectl_profile_completions = function(self, args)
+	local candidates = {}
+	if args[1] then
+		local home = os.getenv("HOME") or ""
+		local profiles = std.fs.list_files(home .. "/.kube/cfgs")
+		local p = args[1] or ""
+		for profile, _ in pairs(profiles) do
+			if profile:match("^" .. std.escape_magic_chars(p)) then
+				table.insert(candidates, profile:sub(#p + 1))
+			end
+		end
+	end
+	std.tbl.sort_by_str_len(candidates)
+	return candidates
+end
+
 local kubectl_completions = function(self, args)
 	local candidates = {}
-	if #args > 0 then
-		if #args == 1 then
-			for cmd, _ in pairs(ktl_subcommands) do
-				if cmd:match("^" .. std.escape_magic_chars(args[1])) then
-					table.insert(candidates, cmd:sub(#args[1] + 1))
-				end
-			end
-			return candidates
-		end
-		if args[2] and args[1] == "profile" then
-			local home = os.getenv("HOME") or ""
-			local profiles = std.fs.list_files(home .. "/.kube/cfgs")
-			local p = args[2] or ""
-			for profile, _ in pairs(profiles) do
-				if profile:match("^" .. std.escape_magic_chars(p)) then
-					table.insert(candidates, profile:sub(#p + 1))
-				end
+	if #args == 1 then
+		for cmd, _ in pairs(ktl_subcommands) do
+			if cmd:match("^" .. std.escape_magic_chars(args[1])) then
+				table.insert(candidates, cmd:sub(#args[1] + 1))
 			end
 		end
 	end
@@ -138,6 +142,9 @@ local list = {
 	end,
 	["ktl"] = function(self, args)
 		return kubectl_completions(self, args)
+	end,
+	["ktl.profile"] = function(self, args)
+		return kubectl_profile_completions(self, args)
 	end,
 	["docker"] = function(self, args)
 		return docker_completions(self, args)

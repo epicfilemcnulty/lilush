@@ -640,6 +640,26 @@ end
 --[[ 
     KTL
 ]]
+local ktl_profile = function(cmd, args)
+	if args[1] then
+		local home = os.getenv("HOME") or ""
+		std.ps.setenv("KUBECONFIG", home .. "/.kube/cfgs/" .. args[1])
+		-- We check if there is a `~/.kube/config` file and it is a symlink.
+		-- If it is, we remove it and create a new one. If it's not a symlink
+		-- we leave it intact.
+		local target = std.fs.readlink(home .. "/.kube/config")
+		if target then
+			std.fs.remove(home .. "/.kube/config")
+		end
+		if not std.fs.file_exists(home .. "/.kube/config") then
+			std.fs.symlink(home .. "/.kube/cfgs/" .. args[1], home .. "/.kube/config")
+		end
+		return 0
+	end
+	errmsg("no profile specified")
+	return 255
+end
+
 local ktl = function(cmd, args)
 	local namespace
 	for i, arg in ipairs(args) do
@@ -650,26 +670,6 @@ local ktl = function(cmd, args)
 				break
 			end
 		end
-	end
-
-	if args[1] and args[1] == "profile" then
-		if args[2] then
-			local home = os.getenv("HOME") or ""
-			std.ps.setenv("KUBECONFIG", home .. "/.kube/cfgs/" .. args[2])
-			-- We check if there is a `~/.kube/config` file and it is a symlink.
-			-- If it is, we remove it and create a new one. If it's not a symlink
-			-- we leave it intact.
-			local target = std.fs.readlink(home .. "/.kube/config")
-			if target then
-				std.fs.remove(home .. "/.kube/config")
-			end
-			if not std.fs.file_exists(home .. "/.kube/config") then
-				std.fs.symlink(home .. "/.kube/cfgs/" .. args[2], home .. "/.kube/config")
-			end
-			return 0
-		end
-		errmsg("no profile specified")
-		return 255
 	end
 	if not namespace then
 		namespace = os.getenv("KTL_NAMESPACE") or "kube-system"
@@ -756,16 +756,15 @@ local aws_region = function(cmd, args)
 		for region in regions:gmatch("([%w-]+),?") do
 			table.insert(content.options, region)
 		end
-		local l, c = term.cursor_position()
-		term.switch_screen("alt")
 		term.set_raw_mode()
 		term.hide_cursor()
+		local l, c = term.cursor_position()
+		term.switch_screen("alt", true)
 		local region = widgets.switcher(content, theme.widgets.aws)
+		term.switch_screen("main", nil, true)
+		term.go(l, c)
 		term.show_cursor()
 		term.set_sane_mode()
-		term.switch_screen("main")
-		term.go(l, c)
-		term.move("column")
 		if region ~= "" then
 			std.ps.setenv("AWS_REGION", region)
 		end
@@ -1384,6 +1383,7 @@ local builtins = {
 	["ssh.profile"] = ssh_profile,
 	["aws.region"] = aws_region,
 	["aws.profile"] = aws_profile,
+	["ktl.profile"] = ktl_profile,
 	["ktl"] = ktl,
 	["dig"] = dig,
 	["digg"] = dig,

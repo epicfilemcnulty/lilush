@@ -51,6 +51,7 @@ local new = function()
 			["ssh.profile"] = true,
 			["aws.region"] = true,
 			["aws.profile"] = true,
+			["ktl.profile"] = true,
 			ktl = true,
 			dig = true,
 			digg = true,
