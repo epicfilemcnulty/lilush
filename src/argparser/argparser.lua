@@ -79,12 +79,14 @@ local validate_arg = function(self, name, arg)
 		end
 	end
 	if kind == "file" then
-		if not std.fs.file_exists(arg) then
+		local stat = std.fs.stat(arg)
+		if not stat or not stat.mode:match("[fl]") then
 			return nil, "`" .. arg .. "`{.file} file does not exist"
 		end
 	end
 	if kind == "dir" then
-		if not std.fs.dir_exists(arg) then
+		local stat = std.fs.stat(arg)
+		if not stat or not stat.mode:match("[dl]") then
 			return nil, "`" .. arg .. "`{.dir} directory does not exist"
 		end
 	end
