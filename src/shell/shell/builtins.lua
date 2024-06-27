@@ -445,10 +445,22 @@ local exec = function(cmd, args)
 end
 
 local notify = function(cmd, args)
-	local args = args or {}
-	local time = args[1] or ""
+	local parser = argparser.new({
+		pause = { kind = "str", default = "0", note = "Notify after the pause of: 5s, 1m, 3h" },
+		title = { kind = "str", default = "", note = "Title" },
+		message = { kind = "str", idx = 1, multi = true },
+	}, "# notify ")
+	local args, err, help = parser:parse(args)
+	if err then
+		if help then
+			helpmsg(err)
+			return 0
+		end
+		errmsg(err)
+		return 127
+	end
 	local seconds = 0
-	for duration, unit in time:gmatch("(%d+)(%w?)") do
+	for duration, unit in args.pause:gmatch("(%d+)(%w?)") do
 		local d = tonumber(duration) or 0
 		if unit:match("[hH]") then
 			seconds = seconds + d * 3600
@@ -458,13 +470,11 @@ local notify = function(cmd, args)
 			seconds = seconds + d
 		end
 	end
-	table.remove(args, 1)
-	local title = table.remove(args, 1) or "reminder!"
-	local msg = table.concat(args, " ")
+	local msg = table.concat(args.message, " ")
 	local pid = std.ps.fork()
 	if pid and pid == 0 then
 		std.sleep(seconds)
-		term.kitty_notify(title, msg)
+		term.kitty_notify(args.title, msg)
 		os.exit(0)
 	end
 	return 0
