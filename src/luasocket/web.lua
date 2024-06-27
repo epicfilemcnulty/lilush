@@ -18,7 +18,6 @@ local mime_types = {
 	["text/css"] = { css = true },
 	["text/plain"] = {
 		txt = true,
-		lua = true,
 		c = true,
 		cpp = true,
 		rs = true,
@@ -59,6 +58,7 @@ local mime_types = {
 	["application/atom+xml"] = { atom = true },
 	["application/rss+xml"] = { rss = true },
 	["application/json"] = { json = true },
+	["application/lua"] = { lua = true },
 	["application/pdf"] = { pdf = true },
 	["application/zip"] = { zip = true },
 	["application/x-tar"] = { tar = true },
