@@ -19,7 +19,7 @@ local check_config_dirs = function(self)
 end
 
 -- Top Level Builtins
-local tlb = { rehash = true, alias = true, unalias = true, run_script = true, activate = true, deactivate = true }
+local tlb = { rehash = true, alias = true, unalias = true, run_script = true, pyvenv = true }
 
 local load_shell_config = function()
 	local settings = {
@@ -139,7 +139,6 @@ end
 
 local python_env = function(self, cmd, args)
 	local args = args or {}
-	local cmd = cmd or "activate"
 	local deactivate = function()
 		local virtual_env = os.getenv("VIRTUAL_ENV")
 		if virtual_env then
@@ -151,46 +150,46 @@ local python_env = function(self, cmd, args)
 			self:rehash()
 		end
 	end
-	if cmd == "activate" then
-		local base_dir = self.conf.python.venvs_dir
-		local virtual_env = args[1] or ""
-		if virtual_env == "" and base_dir then
-			local files = std.fs.list_files(base_dir, nil, "d") or {}
-			local venvs = {}
-			for f, s in pairs(files) do
-				table.insert(venvs, f)
-			end
-			venvs = std.tbl.alphanumsort(venvs)
-			term.set_raw_mode()
-			local l, c = term.cursor_position()
-			local content = { title = "Choose a python venv", options = venvs }
-			term.switch_screen("alt", true)
-			term.hide_cursor()
-			local choice = widgets.switcher(content, theme.widgets.python)
-			term.switch_screen("main", nil, true)
-			term.show_cursor()
-			term.go(l, c)
-			virtual_env = base_dir .. "/" .. choice
-		end
-		if not virtual_env:match("^/") then
-			virtual_env = std.fs.cwd() .. "/" .. virtual_env
-		end
-		virtual_env = virtual_env:gsub("/$", "")
-		local python_path = virtual_env .. "/bin"
-		if std.fs.dir_exists(python_path) and python_path ~= "/bin" then
-			if os.getenv("VIRTUAL_ENV") ~= nil then
-				deactivate()
-			end
-			std.ps.setenv("VIRTUAL_ENV", virtual_env)
-			local path = os.getenv("PATH") or ""
-			self.old_path = path
-			std.ps.setenv("PATH", python_path .. ":" .. path)
-			self:rehash()
-			local prompt = os.getenv("LILUSH_PROMPT") or ""
-			std.ps.setenv("LILUSH_PROMPT", "python," .. prompt)
-		end
-	else
+	if args[1] and args[1] == "exit" or args[1] == "deactivate" then
 		deactivate()
+		return 0
+	end
+	local base_dir = self.conf.python.venvs_dir
+	local virtual_env = args[1] or ""
+	if virtual_env == "" and base_dir then
+		local files = std.fs.list_files(base_dir, nil, "d") or {}
+		local venvs = {}
+		for f, s in pairs(files) do
+			table.insert(venvs, f)
+		end
+		venvs = std.tbl.alphanumsort(venvs)
+		term.set_raw_mode()
+		local l, c = term.cursor_position()
+		local content = { title = "Choose a python venv", options = venvs }
+		term.switch_screen("alt", true)
+		term.hide_cursor()
+		local choice = widgets.switcher(content, theme.widgets.python)
+		term.switch_screen("main", nil, true)
+		term.show_cursor()
+		term.go(l, c)
+		virtual_env = base_dir .. "/" .. choice
+	end
+	if not virtual_env:match("^/") then
+		virtual_env = std.fs.cwd() .. "/" .. virtual_env
+	end
+	virtual_env = virtual_env:gsub("/$", "")
+	local python_path = virtual_env .. "/bin"
+	if std.fs.dir_exists(python_path) and python_path ~= "/bin" then
+		if os.getenv("VIRTUAL_ENV") ~= nil then
+			deactivate()
+		end
+		std.ps.setenv("VIRTUAL_ENV", virtual_env)
+		local path = os.getenv("PATH") or ""
+		self.old_path = path
+		std.ps.setenv("PATH", python_path .. ":" .. path)
+		self:rehash()
+		local prompt = os.getenv("LILUSH_PROMPT") or ""
+		std.ps.setenv("LILUSH_PROMPT", "python," .. prompt)
 	end
 	return 0
 end
@@ -274,8 +273,7 @@ local new = function(input)
 		run = run,
 		replace_aliases = replace_aliases,
 		rehash = rehash,
-		activate = python_env,
-		deactivate = python_env,
+		pyvenv = python_env,
 		alias = alias,
 		unalias = alias,
 	}

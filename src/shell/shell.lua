@@ -41,7 +41,7 @@ local exit_combo = function(self, combo)
 		return clear_combo(self)
 	end
 	if os.getenv("VIRTUAL_ENV") ~= nil and self.__mode.shell then
-		self.__mode.shell.deactivate(self.__mode.shell, "deactivate")
+		self.__mode.shell.pyvenv(self.__mode.shell, "pyvenv", { "exit" })
 		return true
 	end
 	term.set_sane_mode()
