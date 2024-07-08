@@ -404,7 +404,12 @@ local cat = function(cmd, args)
 		return 127
 	end
 	local mime = web.mime_type(args.pathname)
+	if mime:match("^image") then
+		std.ps.exec("xdg-open", args.pathname)
+		return 0
+	end
 	if not mime:match("^text") and not std.txt.valid_utf(args.pathname) then
+		term.set_sane_mode()
 		std.ps.exec("xdg-open", args.pathname)
 		return 0
 	end

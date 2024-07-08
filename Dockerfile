@@ -1,4 +1,4 @@
-FROM alpine:3.19 as builder
+FROM alpine:3.19 AS builder
 LABEL maintainer="vlad@deviant.guru"
 
 ARG WOLFSSL_TAG=v5.6.6-stable

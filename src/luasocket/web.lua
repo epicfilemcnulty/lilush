@@ -40,6 +40,7 @@ local mime_types = {
 
 	["image/gif"] = { gif = true },
 	["image/png"] = { png = true },
+	["image/heic"] = { heic = true, HEIC = true },
 	["image/jpeg"] = { jpg = true, jpeg = true },
 	["image/tiff"] = { tif = true, tiff = true },
 	["image/x-icon"] = { ico = true },
