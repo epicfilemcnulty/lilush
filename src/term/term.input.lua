@@ -636,6 +636,11 @@ local input_obj_event = function(self)
 	return nil
 end
 
+local input_obj_resize = function(self)
+	local win_l, win_c = term.window_size()
+	self.__window = { h = win_l, w = win_c }
+end
+
 local new_input_obj = function(config)
 	local win_l, win_c = term.window_size()
 	local default_config = {
@@ -647,7 +652,7 @@ local new_input_obj = function(config)
 	local config = std.tbl.merge(default_config, config)
 	local input_obj = {
 		-- DATA
-		__window = { h = win_l, w = win_c },
+    	__window = { h = win_l, w = win_c },
 		__config = config,
 		__tab = { quick_press = tonumber(os.getenv("LILUSH_QUICK_PRESS")) or 0.093 },
 		buffer = "",
@@ -667,6 +672,7 @@ local new_input_obj = function(config)
 		display = input_obj_display,
 		render = input_obj_render,
 		flush = input_obj_flush,
+        resize = input_obj_resize,
 		event = input_obj_event,
 		esc = input_obj_escape,
 		tab = input_obj_tab,
@@ -700,9 +706,10 @@ local new_input_obj = function(config)
 		previous_space = { "CTRL+b", "CTRL+LEFT" },
 		newline = { "SHIFT+ENTER" },
 		external_editor = { "ALT+ENTER" },
-		clear = { "CTRL+c" },
+		clear = { "CTRL+u" },
 	}
 	input_obj.__ctrls = ctrls
+    input_obj:resize()
 	return input_obj
 end
 
