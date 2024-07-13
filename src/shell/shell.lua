@@ -65,9 +65,10 @@ local run = function(self)
 	self.__mode[self.__chosen_mode].input:display(true)
 	while true do
 		if term.resized() then
-			self.__mode[self.__chosen_mode].input:resize()
-			term.clear()
-			self.__mode[self.__chosen_mode].input:display(true)
+			if self.__mode[self.__chosen_mode].input:resize() then
+				term.clear_line(2)
+				self.__mode[self.__chosen_mode].input:display(true)
+			end
 		end
 		local event, combo = self.__mode[self.__chosen_mode].input:event()
 		if event then

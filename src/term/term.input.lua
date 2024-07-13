@@ -638,8 +638,12 @@ end
 
 local input_obj_resize = function(self)
 	local win_l, win_c = term.window_size()
-	self.__window = { h = win_l, w = win_c }
-	self.__config.width = win_c - 1
+	if win_c ~= self.__window.w then
+		self.__window = { h = win_l, w = win_c }
+		self.__config.width = win_c - 1
+		return true
+	end
+	return false
 end
 
 local new_input_obj = function(config)
