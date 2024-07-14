@@ -129,7 +129,12 @@ local load_llm_config = function(store)
 			},
 			Claude = {
 				selected = "claude-3-haiku-20240307",
-				options = { "claude-3-haiku-20240307", "claude-3-sonnet-20240229", "claude-3-opus-20240229" },
+				options = {
+					"claude-3-haiku-20240307",
+					"claude-3-sonnet-20240229",
+					"claude-3-5-sonnet-20240620",
+					"claude-3-opus-20240229",
+				},
 			},
 			exl2 = {},
 			llamacpp = {},

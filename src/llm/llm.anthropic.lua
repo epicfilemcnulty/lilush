@@ -13,6 +13,7 @@ local std = require("std")
 local pricing_per_1k_tokens = {
 	["claude-3-opus-20240229"] = { input = 0.015, output = 0.075 },
 	["claude-3-sonnet-20240229"] = { input = 0.003, output = 0.015 },
+	["claude-3-5-sonnet-20240620"] = { input = 0.003, output = 0.015 },
 	["claude-3-haiku-20240307"] = { input = 0.00025, output = 0.00125 },
 	["mistral-small-latest"] = { input = 0.002, output = 0.006 },
 	["mistral-medium-latest"] = { input = 0.0027, output = 0.0081 },
