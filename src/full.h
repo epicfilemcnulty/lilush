@@ -25,6 +25,7 @@ typedef struct mod_lua {
 #include "../build/std/mod_lua_std.tbl.h"
 #include "../build/std/mod_lua_std.txt.h"
 #include "../build/std/mod_lua_std.utf.h"
+#include "../build/std/mod_lua_std.mime.h"
 // Text
 #include "../build/text/mod_lua_text.h"
 // Argparser
@@ -96,6 +97,7 @@ const mod_lua__t lua_preload[] = {
     {"std.txt",                          mod_lua_std_txt,                          &mod_lua_std_txt_SIZE                     },
     {"std.tbl",                          mod_lua_std_tbl,                          &mod_lua_std_tbl_SIZE                     },
     {"std.conv",                         mod_lua_std_conv,                         &mod_lua_std_conv_SIZE                    },
+    {"std.mime",                         mod_lua_std_mime,                         &mod_lua_std_mime_SIZE                    },
     {"std.utf",                          mod_lua_std_utf,                          &mod_lua_std_utf_SIZE                     },
     {"argparser",                        mod_lua_argparser,                        &mod_lua_argparser_SIZE                   },
     {"crypto",                           mod_lua_crypto,                           &mod_lua_crypto_SIZE                      },

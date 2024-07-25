@@ -403,9 +403,13 @@ local cat = function(cmd, args)
 		errmsg(err)
 		return 127
 	end
-	local mime = web.mime_type(args.pathname)
+	local mime = std.mime.type(args.pathname)
 	if mime:match("^image") then
-		std.ps.exec("xdg-open", args.pathname)
+		std.ps.exec("swayhide", "imv-wayland", args.pathname)
+		return 0
+	end
+	if mime == "application/pdf" then
+		std.ps.exec("swayhide", "zathura", args.pathname)
 		return 0
 	end
 	if not mime:match("^text") and not std.txt.valid_utf(args.pathname) then
