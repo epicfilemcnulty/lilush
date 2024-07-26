@@ -77,11 +77,23 @@ end
 
 local mime_default_app = function(m_type)
 	local m_type = m_type or ""
-	local resp = ps.exec_simple("xdg-mime query default " .. m_type)
-	if resp and resp.stdout then
-		return resp.stdout[1]
+	local home = os.getenv("HOME") or ""
+	local mime_apps_xdg_system = fs.read_file("/etc/xdg/mimeapps.list") or ""
+	local mime_apps_usr_share = fs.read_file("/usr/share/applications/mimeapps.list") or ""
+	local mime_apps_usr_local = fs.read_file("/usr/local/share/applications/mimeapps.list") or ""
+	local mime_apps_user = fs.read_file(home .. "/.config/mimeapps.list") or ""
+	m_type = m_type:gsub("[+%%%.%$[%]%(%)-]", "%%%1")
+	local app = mime_apps_user:match(m_type .. "=(.-);")
+	if not app then
+		app = mime_apps_usr_local:match(m_type .. "=(.-);") or ""
 	end
-	return ""
+	if not app then
+		app = mime_apps_usr_share:match(m_type .. "=(.-);") or ""
+	end
+	if not app then
+		app = mime_apps_xdg_system:match(m_type .. "=(.-);") or ""
+	end
+	return app
 end
 
 local mime_info = function(filename)

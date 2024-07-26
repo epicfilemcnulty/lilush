@@ -405,20 +405,12 @@ local cat = function(cmd, args)
 	end
 	local mime_info = std.mime.info(args.pathname)
 	local swallow_cmd = os.getenv("LILUSH_SWALLOW_CMD")
-	if mime_info.type:match("^image") and mime_info.cmdline then
+	if (mime_info.type:match("^image") or mime_info.type == "application/pdf") and mime_info.cmdline then
+		local cmdline = { mime_info.cmdline:match("^%S+"), args.pathname }
 		if swallow_cmd then
-			std.ps.exec(swallow_cmd, mime_info.cmdline:match("^%S+"), args.pathname)
-		else
-			std.ps.exec(mime_info.cmdline:match("^%S+"), args.pathname)
+			table.insert(cmdline, 1, swallow_cmd)
 		end
-		return 0
-	end
-	if mime_info.type == "application/pdf" and mime_info.cmdline then
-		if swallow_cmd then
-			std.ps.exec(swallow_cmd, mime_info.cmdline:match("^%S+"), args.pathname)
-		else
-			std.ps.exec(mime_info.cmdline:match("^%S+"), args.pathname)
-		end
+		std.ps.exec(swallow_cmd, mime_info.cmdline:match("^%S+"), args.pathname)
 		return 0
 	end
 	if not mime_info.type:match("^text") and not std.txt.valid_utf(args.pathname) then
