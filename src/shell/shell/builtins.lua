@@ -403,24 +403,33 @@ local cat = function(cmd, args)
 		errmsg(err)
 		return 127
 	end
-	local mime = std.mime.type(args.pathname)
-	if mime:match("^image") then
-		std.ps.exec("swayhide", "imv-wayland", args.pathname)
+	local mime_info = std.mime.info(args.pathname)
+	local swallow_cmd = os.getenv("LILUSH_SWALLOW_CMD")
+	if mime_info.type:match("^image") and mime_info.cmdline then
+		if swallow_cmd then
+			std.ps.exec(swallow_cmd, mime_info.cmdline:match("^%S+"), args.pathname)
+		else
+			std.ps.exec(mime_info.cmdline:match("^%S+"), args.pathname)
+		end
 		return 0
 	end
-	if mime == "application/pdf" then
-		std.ps.exec("swayhide", "zathura", args.pathname)
+	if mime_info.type == "application/pdf" and mime_info.cmdline then
+		if swallow_cmd then
+			std.ps.exec(swallow_cmd, mime_info.cmdline:match("^%S+"), args.pathname)
+		else
+			std.ps.exec(mime_info.cmdline:match("^%S+"), args.pathname)
+		end
 		return 0
 	end
-	if not mime:match("^text") and not std.txt.valid_utf(args.pathname) then
+	if not mime_info.type:match("^text") and not std.txt.valid_utf(args.pathname) then
 		term.set_sane_mode()
 		std.ps.exec("xdg-open", args.pathname)
 		return 0
 	end
 	local render_mode = "raw"
-	if mime:match("djot") then
+	if mime_info.type:match("djot") then
 		render_mode = "djot"
-	elseif mime:match("markdown") then
+	elseif mime_info.type:match("markdown") then
 		render_mode = "markdown"
 	end
 	if not args.raw then

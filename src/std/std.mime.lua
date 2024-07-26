@@ -1,6 +1,9 @@
 -- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 
+local ps = require("std.ps")
+local fs = require("std.fs")
+
 local mime_types = {
 	["text/html"] = { html = true, htm = true, shtml = true },
 	["text/css"] = { css = true },
@@ -72,4 +75,35 @@ local mime_type = function(filename)
 	return "application/octet-stream"
 end
 
-return { type = mime_type }
+local mime_default_app = function(m_type)
+	local m_type = m_type or ""
+	local resp = ps.exec_simple("xdg-mime query default " .. m_type)
+	if resp and resp.stdout then
+		return resp.stdout[1]
+	end
+	return ""
+end
+
+local mime_info = function(filename)
+	local m_type = mime_type(filename)
+	local default_app = mime_default_app(m_type)
+	local info = {
+		type = m_type,
+		default_app = default_app,
+	}
+	local home = os.getenv("HOME") or ""
+	local content
+	if fs.file_exists(home .. "/.local/share/applications/" .. default_app) then
+		content = fs.read_file(home .. "/.local/share/applications/" .. default_app)
+	elseif fs.file_exists("/usr/local/share/applications/" .. default_app) then
+		content = fs.read_file("/usr/local/share/applications/" .. default_app)
+	elseif fs.file_exists("/usr/share/applications/" .. default_app) then
+		content = fs.read_file("/usr/share/applications/" .. default_app)
+	end
+	if content then
+		info.cmdline = content:match("\nExec=(.-)\n") or ""
+	end
+	return info
+end
+
+return { type = mime_type, application = mime_default_app, info = mime_info }
