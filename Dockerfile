@@ -1,7 +1,7 @@
-FROM alpine:3.19 AS builder
+FROM alpine:3.20 AS builder
 LABEL maintainer="vlad@deviant.guru"
 
-ARG WOLFSSL_TAG=v5.6.6-stable
+ARG WOLFSSL_TAG=v5.7.2-stable
 ARG LUAJIT_TAG=v2.1
 
 RUN apk add --no-cache git alpine-sdk ca-certificates bash clang autoconf automake libtool util-linux linux-headers dumb-init

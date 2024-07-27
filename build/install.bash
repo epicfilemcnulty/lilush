@@ -1,7 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-wolfssl_tag="v5.6.6-stable"
+wolfssl_tag="v5.7.2-stable"
+luajit_tag="v2.1"
 
 cd /src
 
@@ -17,7 +18,7 @@ make && make install
 cd /src
 git clone https://github.com/LuaJIT/LuaJIT
 cd LuaJIT
-git checkout v2.1
+git checkout ${luajit_tag}
 make XCFLAGS="-DLUAJIT_DISABLE_FFI -DLUAJIT_ENABLE_LUA52COMPAT"
 make install
 
