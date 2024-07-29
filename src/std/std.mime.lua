@@ -83,15 +83,15 @@ local mime_default_app = function(m_type)
 	local mime_apps_usr_local = fs.read_file("/usr/local/share/applications/mimeapps.list") or ""
 	local mime_apps_user = fs.read_file(home .. "/.config/mimeapps.list") or ""
 	m_type = m_type:gsub("[+%%%.%$[%]%(%)-]", "%%%1")
-	local app = mime_apps_user:match(m_type .. "=(.-);")
+	local app = mime_apps_user:match("\n" .. m_type .. "=(.-);?\n")
 	if not app then
-		app = mime_apps_usr_local:match(m_type .. "=(.-);") or ""
+		app = mime_apps_usr_local:match("\n" .. m_type .. "=(.-);?\n") or ""
 	end
 	if not app then
-		app = mime_apps_usr_share:match(m_type .. "=(.-);") or ""
+		app = mime_apps_usr_share:match("\n" .. m_type .. "=(.-);?\n") or ""
 	end
 	if not app then
-		app = mime_apps_xdg_system:match(m_type .. "=(.-);") or ""
+		app = mime_apps_xdg_system:match("\n" .. m_type .. "=(.-);?\n") or ""
 	end
 	return app
 end
