@@ -62,7 +62,6 @@ local renderer_default = {
 			border = { fg = 59, s = "dim" },
 		},
 		thematic_break = { fg = 137 },
-		div = { bg = 17 },
 		class = {
 			tbl = { fg = 136 },
 			str = { fg = 144 },
@@ -72,7 +71,8 @@ local renderer_default = {
 			file = { fg = 152 },
 			dir = { fg = 153 },
 			link = { lcl = { s = "not_underlined" } },
-			div = { s = "italic" },
+			user = { indent = 2, s = "italic" },
+			assistant = { indent = 6 },
 		},
 	},
 	llm_sys_prompt = {

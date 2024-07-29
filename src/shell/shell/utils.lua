@@ -360,10 +360,11 @@ local pager_load_content = function(self, filename)
 	return nil
 end
 
-local pager_set_content = function(self, content)
+local pager_set_content = function(self, content, name)
+	local name = name or "stdin"
 	if content then
 		self.content = { raw = content }
-		table.insert(self.__state.history, "stdin")
+		table.insert(self.__state.history, name)
 		return true
 	end
 	return nil

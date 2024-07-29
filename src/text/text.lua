@@ -96,6 +96,9 @@ local render_markdown = function(raw, rss, conf)
 	local tss = style.merge(default_formatted_rss, rss)
 	local conf = conf or {}
 
+	local raw = raw or ""
+	raw = raw:gsub("\t", "    ")
+
 	local ast = markdown.ast(raw)
 	local buf = buffer.new()
 
@@ -522,6 +525,10 @@ local render_djot = function(raw, rss, conf)
 	if conf.hide_links ~= nil then
 		tss.__style.hide_links = conf.hide_links
 	end
+
+	local raw = raw or ""
+	raw = raw:gsub("\t", "    ")
+
 	local doc = djot.parse(raw) or { children = {} }
 	local out = ""
 	if not doc or not doc.children then

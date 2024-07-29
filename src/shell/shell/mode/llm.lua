@@ -9,26 +9,51 @@ local theme = require("shell.theme")
 local storage = require("storage")
 local text = require("text")
 local style = require("term.tss")
+local utils = require("shell.utils")
 
-local render = function(self, content, indent)
-	local rss = theme.renderer.kat
-	local mode = self.conf.renderer.mode.selected
-	local out
-	local conf = {
-		global_indent = indent,
-		wrap = self.conf.renderer.wrap,
-		codeblock_wrap = self.conf.renderer.codeblock_wrap,
-		hide_links = self.conf.renderer.hide_links,
-	}
-	if mode == "markdown" then
-		out = text.render_markdown(content, rss, conf)
-	elseif mode == "djot" then
-		out = text.render_djot(content, rss, conf)
-	else
-		rss = { global_indent = 0, wrap = 120 }
-		out = text.render_text(content, rss) .. "\r\n"
+local render = function(self)
+	local tss = style.new(theme)
+	local msg_count = #self.chats[self.chat_idx]
+	local content = ""
+	if msg_count > 0 then
+		for i, m in ipairs(self.chats[self.chat_idx]) do
+			if m.role == "system" then
+				content = "::: sys_prompt\n\n" .. m.content .. "\n:::\n\n"
+			elseif m.role == "user" then
+				local user_msg = m.content
+				if m.file then
+					user_msg = table.concat(
+						std.tbl.pipe_table(
+							{ "  Attached file", "Size (KB)" },
+							{ { "`" .. m.file .. "`", string.format("%.2f", m.size) } }
+						),
+						"\n"
+					)
+					if self.conf.attach_as_codeblock and m.content then
+						local query = m.content:match("^```\n.*\n```\n\n(.*)$") or ""
+						user_msg = user_msg .. "\n\n" .. query
+					end
+				end
+				content = content .. "::: user\n\n" .. user_msg .. "\n:::\n\n"
+			elseif m.role == "assistant" then
+				content = content .. "::: assistant\n\n" .. m.content .. "\n:::\n\n"
+			end
+		end
 	end
-	return out
+	term.set_raw_mode(true)
+	term.hide_cursor()
+	local pager = utils.pager({
+		exit_on_one_page = true,
+		indent = 0,
+		render_mode = "djot",
+		hide_links = false,
+		wrap_in_raw = false,
+	})
+	pager:set_content(content, self.chats_meta[self.chat_idx].model)
+	pager:set_render_mode()
+	pager:bottom_line()
+	pager:page()
+	term.show_cursor()
 end
 
 local choose_preset = function(self, combo)
@@ -43,7 +68,7 @@ local choose_preset = function(self, combo)
 	term.switch_screen("main", nil, true)
 	term.show_cursor()
 	if choice == "" then
-		self:show_conversation()
+		self:render()
 		return true
 	end
 	local preset = presets[choice]
@@ -210,7 +235,6 @@ local run = function(self)
 			model = resp.model,
 			rate = self.rate,
 		})
-		term.write("\n" .. self:render(text, self.conf.renderer.indent) .. "\r\n")
 		self.input.prompt:set({
 			ctx = self.chats_meta[self.chat_idx].ctx,
 			total_cost = self.total_cost,
@@ -224,6 +248,7 @@ local run = function(self)
 		if price ~= 0 then
 			self.store:incr_hash_key("llm/costs", resp.backend, price)
 		end
+		self:render()
 	else
 		return 255, err
 	end
@@ -352,7 +377,7 @@ local settings = function(self, combo)
 	term.clear()
 	term.go(1, 1)
 	term.show_cursor()
-	self:show_conversation()
+	self:render()
 	return true
 end
 
@@ -366,7 +391,7 @@ local change_renderer = function(self, combo)
 	if choice ~= "" then
 		self.conf.renderer.mode.selected = choice
 	end
-	self:show_conversation()
+	self:render()
 	return true
 end
 
@@ -415,7 +440,7 @@ local attach_file = function(self, combo)
 		})
 		self.attachment = true
 	end
-	self:show_conversation()
+	self:render()
 	return true
 end
 
@@ -427,7 +452,7 @@ local load_model = function(self, combo)
 	if not model_dir then
 		term.switch_screen("main", nil, true)
 		term.show_cursor()
-		self:show_conversation()
+		self:render()
 		return true
 	end
 	local alias = model_dir:match("([^/]+)/?$")
@@ -452,7 +477,7 @@ local load_model = function(self, combo)
 	end
 	term.switch_screen("main", nil, true)
 	term.show_cursor()
-	self:show_conversation()
+	self:render()
 	return true
 end
 
@@ -460,7 +485,7 @@ local unload_model = function(self, combo)
 	local client = llm.new(self.conf.backend.selected)
 	local models = client:models()
 	if not models then
-		self:show_conversation()
+		self:render()
 		return true
 	end
 	term.switch_screen("alt", true)
@@ -469,7 +494,7 @@ local unload_model = function(self, combo)
 	if choice == "" then
 		term.switch_screen("main", nil, true)
 		term.show_cursor()
-		self:show_conversation()
+		self:render()
 		return true
 	end
 	term.clear()
@@ -484,7 +509,7 @@ local unload_model = function(self, combo)
 	end
 	term.switch_screen("main", nil, true)
 	term.show_cursor()
-	self:show_conversation()
+	self:render()
 	return true
 end
 
@@ -503,7 +528,7 @@ local load_conversation = function(self, combo)
 	term.switch_screen("main", nil, true)
 	term.show_cursor()
 	if choice == "" then
-		self:show_conversation()
+		self:render()
 		return true
 	end
 	local chat, err = self.store:get_hash_key("llm/chats", choice, true)
@@ -522,7 +547,7 @@ local load_conversation = function(self, combo)
 		self.conf.attach_as_codeblock = chat.attach_as_codeblock
 		self.conf.backend.selected = chat.backend
 		self:sync_conf()
-		self:show_conversation()
+		self:render()
 		self.input.prompt:set({
 			ctx = self.chats_meta[self.chat_idx].ctx,
 			model = self.chats_meta[self.chat_idx].model,
@@ -582,45 +607,6 @@ local adjust_tokens = function(self, combo)
 	return true
 end
 
-local show_conversation = function(self, combo)
-	local tss = style.new(theme)
-	local msg_count = #self.chats[self.chat_idx]
-	term.clear()
-	term.go(1, 1)
-	if msg_count > 0 then
-		for i, m in ipairs(self.chats[self.chat_idx]) do
-			if m.role == "system" then
-				local sys_prompt = "```System_Prompt\n\n" .. m.content .. "\n```"
-				term.write(text.render_djot(sys_prompt, theme.renderer.llm_sys_prompt) .. "\n")
-			elseif m.role == "user" then
-				local user_msg = m.content
-				if m.file then
-					user_msg = table.concat(
-						std.tbl.pipe_table(
-							{ "  Attached file", "Size (KB)" },
-							{ { "`" .. m.file .. "`", string.format("%.2f", m.size) } }
-						),
-						"\n"
-					)
-					if self.conf.attach_as_codeblock and m.content then
-						local query = m.content:match("^```\n.*\n```\n\n(.*)$") or ""
-						user_msg = user_msg .. "\n\n" .. query
-					end
-				end
-				term.write("\r\n" .. self:render("::: user\n" .. user_msg .. "\n:::\n", self.conf.renderer.user_indent))
-			elseif m.role == "assistant" then
-				term.write("\r\n" .. self:render(m.content, self.conf.renderer.llm_indent))
-			end
-		end
-		term.write("\r\n")
-		local y, x = term.window_size()
-		local l, c = term.cursor_position()
-		self.input.__config.l = l
-		self.input.__config.c = 1
-		return true
-	end
-end
-
 local get_system_prompt = function(self)
 	local sys_prompt = self.conf.sys_prompt[self.conf.sys_prompt.selected] or ""
 	return sys_prompt
@@ -655,11 +641,10 @@ local new = function(input)
 			["ALT+RIGHT"] = adjust_tokens,
 			["CTRL+s"] = settings,
 			["CTRL+o"] = load_conversation,
-			["CTRL+r"] = show_conversation,
+			["CTRL+r"] = render,
 			["CTRL+p"] = choose_preset,
 		},
 		store = store,
-		show_conversation = show_conversation,
 		get_system_prompt = get_system_prompt,
 		sync_meta = sync_meta,
 		sync_conf = sync_conf,
