@@ -33,7 +33,7 @@
 int window_been_resized = 0;
 int window_x = 0;
 int window_y = 0;
-int in_raw_mode = 2;
+int in_raw_mode = 0;
 
 static void sig_handler(int sig) {
   if (SIGWINCH == sig) {
@@ -49,10 +49,6 @@ static void sig_handler(int sig) {
 }
 
 int set_raw_mode(lua_State *L) {
-  if (in_raw_mode == 1) {
-    lua_pushboolean(L, 1);
-    return 1;
-  }
   if (!isatty(STDIN_FILENO)) {
     RETURN_CUSTOM_ERR(L, "not attached to tty");
   }
@@ -81,11 +77,6 @@ int set_raw_mode(lua_State *L) {
 }
 
 int set_sane_mode(lua_State *L) {
-
-  if (in_raw_mode == 0) {
-    lua_pushboolean(L, 1);
-    return 1;
-  }
 
   if (!isatty(STDIN_FILENO)) {
     RETURN_CUSTOM_ERR(L, "not attached to tty");
@@ -131,10 +122,16 @@ int resized(lua_State *L) {
   return 1;
 }
 
+int raw_mode(lua_State *L) {
+  lua_pushboolean(L, in_raw_mode);
+  return 1;
+}
+
 static luaL_Reg funcs[] = {{"set_raw_mode", set_raw_mode},
                            {"set_sane_mode", set_sane_mode},
                            {"get_window_size", get_window_size},
                            {"resized", resized},
+                           {"raw_mode", raw_mode},
                            {NULL, NULL}};
 
 int luaopen_term_core(lua_State *L) {

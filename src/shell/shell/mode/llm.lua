@@ -40,7 +40,9 @@ local render = function(self)
 			end
 		end
 	end
-	term.set_raw_mode(true)
+	if not term.raw_mode() then
+		term.set_raw_mode(true)
+	end
 	term.hide_cursor()
 	local pager = utils.pager({
 		exit_on_one_page = true,

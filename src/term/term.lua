@@ -290,6 +290,7 @@ local _M = {
 	set_raw_mode = set_raw_mode,
 	set_sane_mode = set_sane_mode,
 	resized = core.resized,
+	raw_mode = core.raw_mode,
 	window_size = core.get_window_size,
 	switch_screen = switch_screen,
 	has_kkbp = has_kkbp,
