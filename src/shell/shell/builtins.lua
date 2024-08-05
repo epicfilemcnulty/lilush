@@ -1059,6 +1059,46 @@ local history = function(cmd, args, extra)
 	return 0
 end
 
+local wg_help = [[
+: wg
+
+  CLI tool to work with wireguard devices.
+]]
+local wg = function(cmd, args)
+	local tss = style.new(theme)
+	local parser = argparser.new({
+		some = { kind = "bool" },
+	}, wg_help)
+	local args, err, help = parser:parse(args)
+	if err then
+		if help then
+			helpmsg(err)
+			return 0
+		end
+		errmsg(err)
+		return 127
+	end
+	local wg_info = utils.wg_info()
+	for net, info in pairs(wg_info) do
+		term.write(
+			tss:apply("builtins.wg.net.name", net) .. tss:apply("builtins.wg.net.pub_key", info.pub_key) .. "\n\n"
+		)
+		for pub_key, peer in pairs(info.peers) do
+			local endpoint = "dynamic"
+			if peer.endpoint and peer.endpoint.ip and peer.endpoint.port then
+				endpoint = peer.endpoint.ip .. ":" .. peer.endpoint.port
+			end
+			term.write(
+				tss:apply("builtins.wg.endpoint.name", endpoint)
+					.. tss:apply("builtins.wg.endpoint.pub_key", pub_key)
+					.. "\n"
+			)
+			term.write(tss:apply("builtins.wg.endpoint.nets", table.concat(peer.nets, ", ")) .. "\n")
+		end
+		term.write("\n")
+	end
+end
+
 local ps_help = [[
 # _ps_ provides a snapshot of currently running processes
 
@@ -1408,6 +1448,7 @@ local builtins = {
 	["dig"] = dig,
 	["digg"] = dig,
 	["ps"] = kinda_ps,
+	["wg"] = wg,
 }
 
 local dont_fork = { z = true, cd = true, setenv = true, export = true, unsetenv = true, ktl = true }

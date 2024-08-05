@@ -149,6 +149,23 @@ local builtins_default = {
 		status = {},
 		cmd = { indent = 1, ok = { fg = 249 }, fail = { fg = 59, s = "dim" } },
 	},
+	wg = {
+		net = {
+			name = { fg = 107, s = "bold", after = " " },
+			pub_key = { fg = 102, s = "italic" },
+		},
+		endpoint = {
+			indent = 4,
+			name = { fg = 101, s = "bold", after = " " },
+			pub_key = { indent = 0, fg = 102, s = "italic" },
+			nets = {
+				indent = 1,
+				before = "    ⇐--⇒",
+				s = "dim,bold",
+				fg = 103,
+			},
+		},
+	},
 	pager = {
 		line_num = { fg = 60, selected = { bg = 186, s = "bold,italic" } },
 		search_match = { fg = 60, bg = 186, s = "italic,bold" },

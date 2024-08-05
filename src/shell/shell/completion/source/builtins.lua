@@ -43,6 +43,7 @@ local new = function()
 			unsetenv = true,
 			zx = true,
 			ls = true,
+			wg = true,
 			rm = true,
 			rmrf = true,
 			envlist = true,

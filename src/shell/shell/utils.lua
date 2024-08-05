@@ -11,6 +11,7 @@ local theme = require("shell.theme")
 local style = require("term.tss")
 local input = require("term.input")
 local history = require("term.input.history")
+local wg = require("wireguard")
 
 local zx_complete = function(args)
 	local candidates = {}
@@ -26,7 +27,7 @@ local zx_complete = function(args)
 			table.insert(candidates, snippet)
 		end
 	end
-	candidates = std.tbl.alphanumsort(candidates)
+	candidates = std.tbl.sort_by_str_len(candidates)
 	for i, c in ipairs(candidates) do
 		candidates[i] = " " .. c
 	end
@@ -661,10 +662,37 @@ local pager_new = function(config)
 	return pager
 end
 
+local wg_parse_network = function(name)
+	local network = wg.get_device(name)
+	if not network then
+		return nil
+	end
+	local peers = {}
+	for i, peer in ipairs(network.peers) do
+		local peer_nets = {}
+		for _, net in ipairs(peer.allowed_ips) do
+			table.insert(peer_nets, net.ip .. "/" .. tostring(net.cidr))
+		end
+		peers[peer.public_key] = { nets = peer_nets, endpoint = peer.endpoint }
+	end
+	return { name = network.name, pub_key = network.public_key, peers = peers }
+end
+
+local wg_info = function()
+	local wg_networks = wg.list_devices() or {}
+	local info = {}
+	for _, name in ipairs(wg_networks) do
+		info[name] = wg_parse_network(name)
+	end
+	return info
+end
+
 return {
 	zx_complete = zx_complete,
 	parse_pipeline = parse_pipeline,
 	parse_cmdline = parse_cmdline,
 	run_pipeline = run_pipeline,
+	wg_info = wg_info,
+	wg_parse_network = wg_parse_network,
 	pager = pager_new,
 }
