@@ -673,7 +673,13 @@ local wg_parse_network = function(name)
 		for _, net in ipairs(peer.allowed_ips) do
 			table.insert(peer_nets, net.ip .. "/" .. tostring(net.cidr))
 		end
-		peers[peer.public_key] = { nets = peer_nets, endpoint = peer.endpoint }
+		peers[peer.public_key] = {
+			bytes = { rx = peer.rx_bytes, tx = peer.tx_bytes },
+			last_handshake = peer.last_handshake_time_sec,
+			keepalive = peer.persistent_keepalive_interval,
+			nets = peer_nets,
+			endpoint = peer.endpoint,
+		}
 	end
 	return { name = network.name, pub_key = network.public_key, peers = peers }
 end
