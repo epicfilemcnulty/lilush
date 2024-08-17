@@ -410,12 +410,17 @@ local cat = function(cmd, args)
 		if swallow_cmd then
 			table.insert(cmdline, 1, swallow_cmd)
 		end
-		std.ps.exec(swallow_cmd, mime_info.cmdline:match("^%S+"), args.pathname)
+		term.set_sane_mode()
+		std.ps.exec(table.unpack(cmdline))
 		return 0
 	end
 	if not mime_info.type:match("^text") and not std.txt.valid_utf(args.pathname) then
+		local cmdline = { "xdg-open", args.pathname }
+		if swallow_cmd then
+			table.insert(cmdline, 1, swallow_cmd)
+		end
 		term.set_sane_mode()
-		std.ps.exec("xdg-open", args.pathname)
+		std.ps.exec(table.unpack(cmdline))
 		return 0
 	end
 	local render_mode = "raw"

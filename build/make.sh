@@ -58,7 +58,7 @@ do_install () {
     fi
 }
 
-builtins=(netstat dig digg files_matching envlist kat)
+builtins=(netstat dig digg files_matching envlist kat wg)
 
 create_symlinks () {
     cd /bin/
