@@ -3,9 +3,10 @@ LABEL maintainer="vlad@deviant.guru"
 
 ARG WOLFSSL_TAG=v5.7.2-stable
 ARG LUAJIT_TAG=v2.1
+ARG ARCH=x86_64
 
 RUN apk add --no-cache git alpine-sdk ca-certificates bash clang autoconf automake libtool util-linux linux-headers dumb-init
-RUN mkdir /src && cd /src && git clone --depth 1 -b ${WOLFSSL_TAG} https://github.com/wolfSSL/wolfssl.git && cd wolfssl && ./autogen.sh && ./configure --build=x86_64 --host=x86_64 --enable-curve25519 --enable-ed25519 --disable-oldtls --enable-tls13 --enable-static --enable-sni --enable-altcertchains && make && make install
+RUN mkdir /src && cd /src && git clone --depth 1 -b ${WOLFSSL_TAG} https://github.com/wolfSSL/wolfssl.git && cd wolfssl && ./autogen.sh && ./configure --build=${ARCH} --host=${ARCH} --enable-curve25519 --enable-ed25519 --disable-oldtls --enable-tls13 --enable-static --enable-sni --enable-altcertchains && make && make install
 RUN cd /src && git clone https://github.com/LuaJIT/LuaJIT && cd LuaJIT && git checkout ${LUAJIT_TAG} && make XCFLAGS="-DLUAJIT_DISABLE_FFI -DLUAJIT_ENABLE_LUA52COMPAT" && make install
 COPY src /src/lilush/src
 COPY build /src/lilush/build
