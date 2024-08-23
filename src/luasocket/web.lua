@@ -1,6 +1,5 @@
 -- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
-
 local std = require("std")
 local url = require("socket.url")
 local http = require("socket.http")
@@ -185,6 +184,10 @@ _M.log = function(msg, level)
 		msg = std.tbl.merge(log_msg_base, msg)
 		local log_json = json.encode(msg)
 		print(log_json)
+		-- Not flushing immediately probably would've been
+		-- better for high load, but in that case you'd better disable
+		-- access log entirely.
+		io.flush()
 	end
 end
 
@@ -351,7 +354,7 @@ local function process_request(client, handle, count)
 		return nil, "failed to send response: " .. err
 	end
 
-	if _M.server_config.access_log.enabled and host ~= _M.server_config.metrics_host then
+	if _M.server_config.access_log.enabled and not host:match("^" .. _M.server_config.metrics_host) then
 		local elapsed_time = os.clock() - start_time
 		local log_msg = {
 			vhost = host,
