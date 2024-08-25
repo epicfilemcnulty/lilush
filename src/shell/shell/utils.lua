@@ -140,9 +140,33 @@ parse_pipeline = function(input, with_inlines)
 	local input = input or ""
 	-- `cat file1 | cmd1 | cmd2 | cmd3 > outfile.txt`
 	local cmdlines = {}
-	for cmdline in input:gmatch("([^|]+)|?") do
-		local line = cmdline:gsub("^(%s+)", ""):gsub("(%s+)$", "") -- tream leading & trailing spaces
-		table.insert(cmdlines, line)
+	-- First we split the line by pipes (i.e. `|` symbol), but
+	-- we must ignore pipes inside quoted strings
+	local state = { last_idx = 1, count = 0, inside_quotes = false, quote_type = "" }
+	for char in input:gmatch(".") do
+		state.count = state.count + 1
+		-- Still not sure if we should account for the double curlies
+		-- cases (i.e. `{{ aome "strin" where regular 'quotes' are ignored }}` syntax)...
+		if char:match("['\"]") then
+			if state.inside_quotes then
+				if state.quote_type == char then
+					state.inside_quotes = false
+					state.quote_type = ""
+				end
+			else
+				state.quote_type = char
+				state.inside_quotes = true
+			end
+		end
+		if char == "|" and not state.inside_quotes then
+			local line = input:sub(state.last_idx, state.count - 1)
+			line = line:gsub("^(%s+)", ""):gsub("(%s+)$", "") -- tream leading & trailing spaces
+			table.insert(cmdlines, line)
+			state.last_idx = state.count + 1
+		end
+	end
+	if state.last_idx == 1 then -- there were no pipes in the pipeline
+		cmdlines = { input }
 	end
 	if #cmdlines > 1 then
 		for i = 2, #cmdlines - 1 do
