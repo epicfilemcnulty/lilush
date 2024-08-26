@@ -143,11 +143,11 @@ local builtins_default = {
 		user = { fg = 243 },
 	},
 	history = {
-		date = { fg = 101, before = " ", after = " " },
-		time = { fg = 102, before = "[", after = "]" },
+		date = { fg = 101, after = " " },
+		time = { fg = 102, before = "[", after = "] " },
 		duration = {},
 		status = {},
-		cmd = { indent = 1, ok = { fg = 249 }, fail = { fg = 59, s = "dim" } },
+		cmd = { ok = { fg = 249 }, fail = { fg = 95, s = "bold" } },
 	},
 	wg = {
 		net = {
