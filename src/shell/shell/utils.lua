@@ -142,11 +142,30 @@ parse_pipeline = function(input, with_inlines)
 	local cmdlines = {}
 	-- First we split the line by pipes (i.e. `|` symbol), but
 	-- we must ignore pipes inside quoted strings
-	local state = { last_idx = 1, count = 0, inside_quotes = false, quote_type = "" }
+	local state = { last_idx = 1, count = 0, inside_quotes = false, quote_type = "", curlies = 0 }
 	for char in input:gmatch(".") do
 		state.count = state.count + 1
-		-- Still not sure if we should account for the double curlies
-		-- cases (i.e. `{{ aome "strin" where regular 'quotes' are ignored }}` syntax)...
+		if char == "{" then
+			if not state.inside_quotes then
+				if state.curlies == 0 then
+					state.curlies = 1
+				elseif state.curlies == 1 then
+					state.inside_quotes = true
+					state.curlies = 0
+					state.quote_type = "curlies"
+				end
+			end
+		elseif char == "}" and state.inside_quotes and state.quote_type == "curlies" then
+			if state.curlies == 1 then
+				state.inside_quotes = false
+				state.curlies = 0
+				state.quote_type = ""
+			else
+				state.curlies = 1
+			end
+		else
+			state.curlies = 0
+		end
 		if char:match("['\"]") then
 			if state.inside_quotes then
 				if state.quote_type == char then
@@ -167,6 +186,10 @@ parse_pipeline = function(input, with_inlines)
 	end
 	if state.last_idx == 1 then -- there were no pipes in the pipeline
 		cmdlines = { input }
+	elseif state.last_idx > 1 and state.last_idx < #input then
+		local line = input:sub(state.last_idx)
+		line = line:gsub("^(%s+)", ""):gsub("(%s+)$", "")
+		table.insert(cmdlines, line)
 	end
 	if #cmdlines > 1 then
 		for i = 2, #cmdlines - 1 do
@@ -175,7 +198,6 @@ parse_pipeline = function(input, with_inlines)
 			end
 		end
 	end
-
 	local parsed_cmdlines = {}
 
 	if #cmdlines > 0 then

@@ -550,7 +550,9 @@ local input_obj_execute = function(self)
 			return self:promote_completion()
 		end
 	end
-	return "execute"
+	if self.buffer ~= "" then
+		return "execute"
+	end
 end
 
 local input_obj_escape = function(self)
