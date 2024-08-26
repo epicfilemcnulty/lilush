@@ -550,9 +550,14 @@ local input_obj_execute = function(self)
 			return self:promote_completion()
 		end
 	end
-	if self.buffer ~= "" then
-		return "execute"
+	if self.buffer == "" then
+		self.__config.l = self.__config.l + 1
+		if self.__config.l > self.__window.h then
+			self.__config.l = self.__window.h
+		end
+		return self:display(true)
 	end
+	return "execute"
 end
 
 local input_obj_escape = function(self)
