@@ -74,7 +74,9 @@ local run = function(self)
 		if event then
 			if event == "execute" then
 				term.write("\r\n")
-				term.set_sane_mode()
+				if self.__chosen_mode == "shell" then
+					term.set_sane_mode()
+				end
 				local cwd = std.fs.cwd()
 				std.ps.setenv("LILUSH_EXEC_CWD", cwd)
 				std.ps.setenv("LILUSH_EXEC_START", os.time())
@@ -86,7 +88,9 @@ local run = function(self)
 				std.ps.setenv("LILUSH_EXEC_STATUS", tostring(status))
 				io.flush()
 				self.__mode[self.__chosen_mode].input:flush()
-				term.set_raw_mode(true)
+				if self.__chosen_mode == "shell" then
+					term.set_raw_mode(true)
+				end
 				local l, c = term.cursor_position()
 				self.__mode[self.__chosen_mode].input.__config.l = l
 				self.__mode[self.__chosen_mode].input.__config.c = 1

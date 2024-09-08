@@ -351,6 +351,27 @@ local input_obj_previous_space = function(self)
 	return false
 end
 
+local input_obj_next_space = function(self)
+	local buf_len = std.utf.len(self.buffer)
+	local max = self:max_width() - self:prompt_len()
+	local cur_pos = self.position + self.cursor
+	local cur_char = std.utf.sub(self.buffer, cur_pos, cur_pos + 1)
+	if cur_char:match("%s") then
+		cur_pos = cur_pos + 1
+	end
+	local pos = self.buffer:find("%s", cur_pos) or 0
+	if pos > 0 and pos > cur_pos then
+		if pos < max then
+			self.cursor = self.cursor + (pos - cur_pos) + 1
+			return self:display()
+		end
+		self.position = pos
+		self.cursor = 0
+		return self:display()
+	end
+	return false
+end
+
 local input_obj_end_of_line = function(self)
 	local buf_len = std.utf.len(self.buffer)
 	local max = self:max_width() - self:prompt_len()
@@ -694,6 +715,7 @@ local new_input_obj = function(config)
 		end_of_line = input_obj_end_of_line,
 		start_of_line = input_obj_start_of_line,
 		previous_space = input_obj_previous_space,
+		next_space = input_obj_next_space,
 		execute = input_obj_execute,
 		clear = input_obj_clear,
 		max_width = input_obj_max_width,
@@ -716,6 +738,7 @@ local new_input_obj = function(config)
 		end_of_line = { "END", "CTRL+e" },
 		start_of_line = { "HOME", "CTRL+a" },
 		previous_space = { "CTRL+b", "CTRL+LEFT" },
+		next_space = { "CTRL+w", "CTRL+RIGHT" },
 		newline = { "SHIFT+ENTER" },
 		external_editor = { "ALT+ENTER" },
 		clear = { "CTRL+u" },

@@ -389,6 +389,8 @@ local cat = function(cmd, args)
 	local parser = argparser.new({
 		raw = { kind = "bool", note = "Force raw rendering mode (no pager, no word wraps)" },
 		page = { kind = "bool", note = "Force using pager even on one screen documents" },
+		djot = { short = "j", kind = "bool", note = "Force djot rendering mode" },
+		markdown = { kind = "bool", note = "Force markdown rendering mode" },
 		indent = { kind = "num", default = 0, note = "Indentation" },
 		wrap = { kind = "bool", note = "Wrap text even in raw mode" },
 		links = { kind = "bool", note = "Show link's url" },
@@ -429,6 +431,12 @@ local cat = function(cmd, args)
 	elseif mime_info.type:match("markdown") then
 		render_mode = "markdown"
 	end
+	if args.djot then
+		render_mode = "djot"
+	elseif args.markdown then
+		render_mode = "markdown"
+	end
+
 	if not args.raw then
 		term.set_raw_mode(true)
 		term.hide_cursor()

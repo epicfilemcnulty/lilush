@@ -145,6 +145,9 @@ local dir_search = function(self, input)
 		if v.cwd:match(pattern) then
 			local score = scores[v.cwd] or 0
 			score = score + 1
+			local pattern_len = std.utf.len(pattern)
+			local cwd_len = std.utf.len(v.cwd)
+			score = score + pattern_len / (cwd_len / 100) -- trying to favor smaller matches this way
 			scores[v.cwd] = score
 		end
 	end
@@ -155,7 +158,7 @@ local dir_search = function(self, input)
 	end
 	table.sort(candidates, function(a, b)
 		if scores[a] == scores[b] then
-			return a > b
+			return std.utf.len(a) < std.utf.len(b)
 		else
 			return scores[a] > scores[b]
 		end

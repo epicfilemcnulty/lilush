@@ -25,6 +25,7 @@ local run = function(self)
 	local chunk, err = load(preload .. code)
 	local status = 0
 	if chunk then
+		term.set_sane_mode()
 		term.write(tss:apply("modes.lua.sep") .. "\n")
 		local cwd = std.fs.cwd()
 		std.ps.setenv("LILUSH_EXEC_CWD", cwd)
@@ -37,6 +38,7 @@ local run = function(self)
 			return 255, err:match("^[^:]+:%d+:(.*)") or err
 		end
 		std.ps.setenv("LILUSH_EXEC_STATUS", 0)
+		term.set_raw_mode(true)
 	else
 		std.ps.setenv("LILUSH_EXEC_STATUS", 255)
 		return 255, err:match("^[^:]+:%d+:(.*)") or err

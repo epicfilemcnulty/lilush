@@ -72,7 +72,7 @@ end
 
 local ts_to_str = function(ts, fmt)
 	local ts = ts or os.time()
-	local fmt = fmt or "%Y-%m-%d %H:%M"
+	local fmt = fmt or "%Y-%m-%d %H:%M:%S"
 	return os.date(fmt, ts)
 end
 
