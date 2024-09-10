@@ -1072,16 +1072,16 @@ local history = function(cmd, args, extra)
 	return 0
 end
 
-local wg_help = [[
+local wgcli_help = [[
 : wg
 
   CLI tool to work with wireguard devices.
 ]]
-local wg = function(cmd, args)
+local wgcli = function(cmd, args)
 	local tss = style.new(theme)
 	local parser = argparser.new({
 		some = { kind = "bool" },
-	}, wg_help)
+	}, wgcli_help)
 	local args, err, help = parser:parse(args)
 	if err then
 		if help then
@@ -1474,7 +1474,7 @@ local builtins = {
 	["dig"] = dig,
 	["digg"] = dig,
 	["ps"] = kinda_ps,
-	["wg"] = wg,
+	["wgcli"] = wgcli,
 }
 
 local dont_fork = { z = true, cd = true, setenv = true, export = true, unsetenv = true, ktl = true }

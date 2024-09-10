@@ -19,7 +19,7 @@ LABEL maintainer="vlad@deviant.guru"
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /scratch/ /
-COPY --from=builder /bin/lilush /bin/lilush
+COPY --from=builder /usr/bin/lilush /usr/bin/lilush
 COPY --from=builder /usr/bin/dumb-init /usr/bin/dumb-init
 COPY docker/group   /etc/group
 COPY docker/passwd  /etc/passwd
@@ -27,8 +27,8 @@ COPY docker/passwd  /etc/passwd
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 USER user
-ENV PATH=/bin:/sbin:/usr/local/bin
+ENV PATH=/usr/bin:/usr/sbin:/usr/local/bin
 ENV HOME=/home/user USER=user
 WORKDIR /home/user
 
-CMD ["/bin/lilush"]
+CMD ["/usr/bin/lilush"]

@@ -52,16 +52,16 @@ do_linking() {
 }
 
 do_install () {
-    cp lilush /bin/
+    cp lilush /usr/bin/
     if ! grep lilush /etc/shells &> /dev/null; then
-        echo "/bin/lilush" >> /etc/shells
+        echo "/usr/bin/lilush" >> /etc/shells
     fi
 }
 
-builtins=(netstat dig digg files_matching envlist kat wg)
+builtins=(netstat dig digg files_matching envlist kat wgcli)
 
 create_symlinks () {
-    cd /bin/
+    cd /usr/bin/
     for builtin in ${builtins[@]}; do
         [[ ! -a ${builtin} ]] && ln -s lilush ${builtin}
     done
@@ -99,7 +99,7 @@ case ${1} in
         create_symlinks
         ;;
     *)
-        echo "Uknown option. Valid variants: clean, build, headers, link, install, all"
+        echo "Uknown option. Valid variants: clean, build, headers, link, install, symlinks, all"
         exit 1
         ;;
 esac
