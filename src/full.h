@@ -17,6 +17,7 @@ typedef struct mod_lua {
 #include "../build/luasocket/mod_lua_ssl.h"
 #include "../build/luasocket/mod_lua_url.h"
 #include "../build/luasocket/mod_lua_web.h"
+#include "../build/luasocket/mod_lua_web_server.h"
 // Std
 #include "../build/std/mod_lua_std.conv.h"
 #include "../build/std/mod_lua_std.fs.h"
@@ -89,6 +90,7 @@ const mod_lua__t lua_preload[] = {
     {"ssl",                              mod_lua_ssl,                              &mod_lua_ssl_SIZE                         },
     {"ssl.https",                        mod_lua_https,                            &mod_lua_https_SIZE                       },
     {"web",                              mod_lua_web,                              &mod_lua_web_SIZE                         },
+    {"web_server",                       mod_lua_web_server,                       &mod_lua_web_server_SIZE                  },
     {"ltn12",                            mod_lua_ltn12,                            &mod_lua_ltn12_SIZE                       },
     {"mime",                             mod_lua_mime,                             &mod_lua_mime_SIZE                        },
     {"std",                              mod_lua_std,                              &mod_lua_std_SIZE                         },
