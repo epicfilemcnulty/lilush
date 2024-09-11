@@ -18,7 +18,7 @@ local premature_error = function(client, status, msg)
 end
 
 local server_log = function(self, msg, level)
-	local builtin_levels = { debug = 0, warn = 10, info = 20, access = 30, error = 40 }
+	local builtin_levels = { debug = 0, access = 10, info = 20, warn = 30, error = 40 }
 	local level = level or 20
 	if type(level) == "string" then
 		level = builtin_levels[level] or 20
@@ -169,7 +169,7 @@ local server_process_request = function(self, client, count)
 		return nil, "failed to send response: " .. err
 	end
 
-	if self.__config.log.enabled and not host:match("^" .. self.__config.metrics_host) then
+	if self.__config.log.level <= 10 and not host:match("^" .. self.__config.metrics_host) then
 		local elapsed_time = os.clock() - start_time
 		local log_msg = {
 			vhost = host,
@@ -184,7 +184,7 @@ local server_process_request = function(self, client, count)
 				log_msg[h] = headers[h]
 			end
 		end
-		self:log(log_msg, 30)
+		self:log(log_msg, 10)
 	end
 	return response_headers["connection"]
 end
@@ -291,8 +291,7 @@ local server_new = function(ip, port, handle)
 				},
 			},
 			log = {
-				enabled = true,
-				level = 20, -- "info" level. 0: most verbose, or "debug" level, >= 40: only errors modes.
+				level = 10, -- "access" level. 0: most verbose, or "debug" level, >= 40: only errors modes.
 				headers = { "referer", "x-real-ip", "user-agent" }, -- request headers to include in the access log.
 			},
 		},
