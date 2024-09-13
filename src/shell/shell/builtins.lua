@@ -1072,25 +1072,29 @@ local history = function(cmd, args, extra)
 	return 0
 end
 
-local wgcli_help = [[
-: wg
-
-  CLI tool to work with wireguard devices.
-]]
 local wgcli = function(cmd, args)
-	local tss = style.new(theme)
-	local parser = argparser.new({
-		some = { kind = "bool" },
-	}, wgcli_help)
-	local args, err, help = parser:parse(args)
-	if err then
-		if help then
-			helpmsg(err)
+	local args = args or {}
+	if args[1] then
+		if args[1] == "up" or args[1] == "apply" then
+			local conf_name = args[2] or ""
+			local ok, err = utils.wg_apply(conf_name)
+			if err then
+				errmsg(err)
+				return 127
+			end
 			return 0
 		end
-		errmsg(err)
-		return 127
+		if args[1] == "down" then
+			local dev_name = args[2] or ""
+			local ok, err = utils.wg_down(dev_name)
+			if err then
+				errmsg(err)
+				return 127
+			end
+			return 0
+		end
 	end
+	local tss = style.new(theme)
 	local wg_info = utils.wg_info()
 	for net, info in pairs(wg_info) do
 		term.write(
