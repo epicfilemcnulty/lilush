@@ -131,7 +131,8 @@ local server_process_request = function(self, client, count)
 		compress_output = true
 	end
 
-	local content, status, response_headers = self.handle(method, query, args, headers, body)
+	local content, status, response_headers =
+		self.handle(method, query, args, headers, body, { metrics_host = self.__config.metrics_host })
 	response_headers = response_headers or {}
 	if not response_headers["content-type"] then
 		response_headers["content-type"] = "text/html"
