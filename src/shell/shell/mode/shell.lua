@@ -85,7 +85,11 @@ local run_script = function(self, cmd, args)
 end
 
 local load_config = function(self)
-	self:run_script("run_script", { os.getenv("HOME") .. "/.config/lilush/init.lsh" })
+	local home = os.getenv("HOME") or "/tmp"
+	local config_file = home .. "/.config/lilush/init.lsh"
+	if std.fs.file_exists(config_file) then
+		self:run_script("run_script", { config_file })
+	end
 end
 
 local replace_aliases = function(self, input)

@@ -122,7 +122,7 @@ end
 
 local new = function()
 	local home = os.getenv("HOME") or ""
-	std.ps.setenv("SHELL", "/bin/lilush")
+	std.ps.setenv("SHELL", "/usr/bin/lilush")
 	local lilush_modules_path = "./?.lua;"
 		.. home
 		.. "/.local/share/lilush/packages/?.lua;"

@@ -368,9 +368,10 @@ local new = function(options)
 	end
 	local user = os.getenv("USER") or "nobody"
 	local unique = ":" .. hostname .. ":" .. user
+	local home = os.getenv("HOME") or "/tmp"
 	local default_options = {
 		policy = "pass",
-		storage_dir = os.getenv("HOME") .. "/.local/share/lilush",
+		storage_dir = home .. "/.local/share/lilush",
 		redis_url = os.getenv("LILUSH_REDIS_URL"),
 		redis_common = os.getenv("LILUSH_REDIS_PREFIX") or "llsh:DATA:",
 		redis_unique = unique,

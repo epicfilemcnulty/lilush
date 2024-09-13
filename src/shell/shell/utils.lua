@@ -36,6 +36,9 @@ end
 
 local replace_envs_and_home = function(arg)
 	local env = std.environ()
+	if not env.HOME then
+		env.HOME = "/tmp"
+	end
 	local arg = arg:gsub("%${([^}]+)}", env)
 	arg = arg:gsub("^(~)", env.HOME)
 	return arg
