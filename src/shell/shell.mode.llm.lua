@@ -1,1 +1,0 @@
-shell/mode/llm.lua

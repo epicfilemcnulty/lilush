@@ -11,14 +11,12 @@ local json = require("cjson.safe")
 local prompt = require("term.input.prompt")
 
 local shell_mode = require("shell.mode.shell")
-local lua_mode = require("shell.mode.lua")
-local llm_mode = require("shell.mode.llm")
 
 local builtins = require("shell.builtins")
 local utils = require("shell.utils")
 local theme = require("shell.theme")
 
-local show_error_message = function(status, err)
+local show_error_msg = function(status, err)
 	local msg = tostring(err) .. " *(" .. tostring(status) .. ")*"
 	local out = text.render_djot(msg, theme.renderer.builtin_error)
 	io.stderr:write(out)
@@ -123,7 +121,7 @@ local run_once = function(self)
 end
 
 local new = function()
-	local home = os.getenv("HOME") or ""
+	local home = os.getenv("HOME") or "/tmp"
 	std.ps.setenv("SHELL", "/usr/bin/lilush")
 	local lilush_modules_path = "./?.lua;"
 		.. home
@@ -185,19 +183,19 @@ local new = function()
 	for name, m in pairs(shell_config.modes) do
 		local mod, pt, cmpl, hst
 		if not std.module_available(m.path) then
-			show_error_msg(29, "no such module")
+			show_error_msg(29, "no such module: " .. m.path)
 			os.exit(29)
 		end
 		if m.prompt then
 			if not std.module_available(m.prompt) then
-				show_error_msg(29, "no such module")
+				show_error_msg(29, "no such module: " .. m.prompt)
 				os.exit(29)
 			end
 			pt = prompt.new(m.prompt)
 		end
 		if m.completion then
 			if not std.module_available(m.completion.path) then
-				show_error_msg(29, "no such module")
+				show_error_msg(29, "no such module: " .. m.completion.path)
 				os.exit(29)
 			end
 			cmpl = completion.new(m.completion)
@@ -214,6 +212,14 @@ local new = function()
 end
 
 local new_mini = function()
+	local home = os.getenv("HOME") or "/tmp"
+	local lilush_modules_path = "./?.lua;"
+		.. home
+		.. "/.local/share/lilush/packages/?.lua;"
+		.. home
+		.. "/.local/share/lilush/packages/?/init.lua;/usr/local/share/lilush/?.lua;/usr/local/share/lilush/?/init.lua"
+	std.ps.setenv("LUA_PATH", lilush_modules_path)
+	package.path = lilush_modules_path
 	local shell = {
 		__mode = { shell = shell_mode.new(input.new({})) },
 		__chosen_mode = "shell",

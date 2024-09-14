@@ -22,11 +22,11 @@ typedef struct mod_lua {
 #include "../build/std/mod_lua_std.conv.h"
 #include "../build/std/mod_lua_std.fs.h"
 #include "../build/std/mod_lua_std.h"
+#include "../build/std/mod_lua_std.mime.h"
 #include "../build/std/mod_lua_std.ps.h"
 #include "../build/std/mod_lua_std.tbl.h"
 #include "../build/std/mod_lua_std.txt.h"
 #include "../build/std/mod_lua_std.utf.h"
-#include "../build/std/mod_lua_std.mime.h"
 // Text
 #include "../build/text/mod_lua_text.h"
 // Argparser
@@ -73,10 +73,6 @@ typedef struct mod_lua {
 #include "../build/shell/mod_lua_shell.completion.source.env.h"
 #include "../build/shell/mod_lua_shell.completion.source.fs.h"
 #include "../build/shell/mod_lua_shell.h"
-#include "../build/shell/mod_lua_shell.mode.llm.h"
-#include "../build/shell/mod_lua_shell.mode.llm.prompt.h"
-#include "../build/shell/mod_lua_shell.mode.lua.h"
-#include "../build/shell/mod_lua_shell.mode.lua.prompt.h"
 #include "../build/shell/mod_lua_shell.mode.shell.h"
 #include "../build/shell/mod_lua_shell.mode.shell.prompt.h"
 #include "../build/shell/mod_lua_shell.theme.h"
@@ -132,11 +128,7 @@ const mod_lua__t lua_preload[] = {
     {"shell.builtins",                   mod_lua_shell_builtins,                   &mod_lua_shell_builtins_SIZE              },
     {"shell.utils",                      mod_lua_shell_utils,                      &mod_lua_shell_utils_SIZE                 },
     {"shell.mode.shell",                 mod_lua_shell_mode_shell,                 &mod_lua_shell_mode_shell_SIZE            },
-    {"shell.mode.lua",                   mod_lua_shell_mode_lua,                   &mod_lua_shell_mode_lua_SIZE              },
-    {"shell.mode.llm",                   mod_lua_shell_mode_llm,                   &mod_lua_shell_mode_llm_SIZE              },
     {"shell.mode.shell.prompt",          mod_lua_shell_mode_shell_prompt,          &mod_lua_shell_mode_shell_prompt_SIZE     },
-    {"shell.mode.llm.prompt",            mod_lua_shell_mode_llm_prompt,            &mod_lua_shell_mode_llm_prompt_SIZE       },
-    {"shell.mode.lua.prompt",            mod_lua_shell_mode_lua_prompt,            &mod_lua_shell_mode_lua_prompt_SIZE       },
     {"shell.completion.shell",           mod_lua_shell_completion_shell,           &mod_lua_shell_completion_shell_SIZE      },
     {"shell.completion.source.bin",      mod_lua_shell_completion_source_bin,      &mod_lua_shell_completion_source_bin_SIZE },
     {"shell.completion.source.builtins", mod_lua_shell_completion_source_builtins,
