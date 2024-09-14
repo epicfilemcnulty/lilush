@@ -11,8 +11,8 @@ RUN cd /src && git clone https://github.com/LuaJIT/LuaJIT && cd LuaJIT && git ch
 COPY src /src/lilush/src
 COPY build /src/lilush/build
 RUN cd /src/lilush/build && ./make_reliw.sh all
-RUN mkdir -p /scratch/www
-
+COPY assets/fs/ /scratch
+RUN chown -R root:root /scratch/etc && chown -R 33:33 /scratch/www
 
 FROM scratch
 LABEL maintainer="vlad@deviant.guru"
@@ -24,6 +24,7 @@ COPY --from=builder /usr/bin/dumb-init /usr/bin/dumb-init
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
+USER www-data
 ENV PATH=/usr/local/bin
 ENV HOME=/www
 WORKDIR /www

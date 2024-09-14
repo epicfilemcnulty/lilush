@@ -11,8 +11,8 @@ RUN cd /src && git clone https://github.com/LuaJIT/LuaJIT && cd LuaJIT && git ch
 COPY src /src/lilush/src
 COPY build /src/lilush/build
 RUN cd /src/lilush/build && ./make.sh all
-# For the sake of the scratch container let's create its skeleton here
-RUN mkdir -p /scratch/etc /scratch/root /scratch/tmp /scratch/var/tmp /scratch/home/user && chmod 700 /scratch/root && chown root:root /scratch/root && chmod 1777 /scratch/tmp /scratch/var/tmp && chown 1000:1000 /scratch/home/user && chmod 750 /scratch/home/user && cp /etc/shells /scratch/etc/
+COPY assets/fs/ /scratch
+RUN chmod 700 /scratch/root && chown root:root /scratch/root && chmod 1777 /scratch/tmp /scratch/var/tmp && chown 1000:1000 /scratch/home/user && chmod 750 /scratch/home/user && cp /etc/shells /scratch/etc/ && chown -R 33:33 /scratch/www
 
 FROM scratch
 LABEL maintainer="vlad@deviant.guru"
@@ -21,8 +21,6 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certifi
 COPY --from=builder /scratch/ /
 COPY --from=builder /usr/bin/lilush /usr/bin/lilush
 COPY --from=builder /usr/bin/dumb-init /usr/bin/dumb-init
-COPY docker/group   /etc/group
-COPY docker/passwd  /etc/passwd
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
