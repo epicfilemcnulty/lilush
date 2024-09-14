@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
       fprintf(stdout, "version %s\n", RELIW_VERSION);
       return 0;
     }
-    fprintf(stderr, "Uknown argument");
+    fprintf(stderr, "Uknown argument\n");
     return 1;
   }
   error = luaL_dostring(L, START_RELIW);
