@@ -176,6 +176,7 @@ local python_env = function(self, cmd, args)
 		term.switch_screen("main", nil, true)
 		term.show_cursor()
 		term.go(l, c)
+		term.set_sane_mode()
 		virtual_env = base_dir .. "/" .. choice
 	end
 	if not virtual_env:match("^/") then
