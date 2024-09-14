@@ -1,0 +1,31 @@
+FROM alpine:3.20 AS builder
+LABEL maintainer="vlad@deviant.guru"
+
+ARG WOLFSSL_TAG=v5.7.2-stable
+ARG LUAJIT_TAG=v2.1
+ARG ARCH=x86_64
+
+RUN apk add --no-cache git alpine-sdk ca-certificates bash clang autoconf automake libtool util-linux linux-headers dumb-init
+RUN mkdir /src && cd /src && git clone --depth 1 -b ${WOLFSSL_TAG} https://github.com/wolfSSL/wolfssl.git && cd wolfssl && ./autogen.sh && ./configure --build=${ARCH} --host=${ARCH} --enable-curve25519 --enable-ed25519 --disable-oldtls --enable-tls13 --enable-static --enable-sni --enable-altcertchains && make && make install
+RUN cd /src && git clone https://github.com/LuaJIT/LuaJIT && cd LuaJIT && git checkout ${LUAJIT_TAG} && make XCFLAGS="-DLUAJIT_DISABLE_FFI -DLUAJIT_ENABLE_LUA52COMPAT" && make install
+COPY src /src/lilush/src
+COPY build /src/lilush/build
+RUN cd /src/lilush/build && ./make_reliw.sh all
+RUN mkdir -p /scratch/www
+
+
+FROM scratch
+LABEL maintainer="vlad@deviant.guru"
+
+COPY --from=builder /scratch/ /
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=builder /usr/local/bin/reliw /usr/local/bin/reliw
+COPY --from=builder /usr/bin/dumb-init /usr/bin/dumb-init
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+
+ENV PATH=/usr/local/bin
+ENV HOME=/www
+WORKDIR /www
+
+CMD ["/usr/local/bin/reliw"]

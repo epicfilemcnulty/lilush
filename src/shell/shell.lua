@@ -74,6 +74,8 @@ local run = function(self)
 		if event then
 			if event == "execute" then
 				term.write("\r\n")
+				-- Let's eat up whatever might be left in the input buffer first:
+				io.read("*a")
 				if self.__chosen_mode == "shell" then
 					term.set_sane_mode()
 				end
