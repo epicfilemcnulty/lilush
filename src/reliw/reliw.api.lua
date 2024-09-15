@@ -3,13 +3,25 @@ local store = require("reliw.store")
 --[[ 
      RELIW assumes the following data schema in the redis DB:
 
+     `RLW:API:vhost` is a JSON array of pattern-to-index mappings:
+        [
+          [ pattern, idx, is_exact_match ],
+          ...
+          [ pattern, idx, is_exact_match ]
+        ]
+
+     `RLW:API:vhost:idx` -- an API entry
+
      An API entry is a JSON object with the following structure:
 
      {
-       file = "filename.dj",
+       file = "filename.dj", static = false,
        methods = { GET = true, POST = true },
-       hash = sha256_checksum, size = size_in_bytes,
-       title = "Some title", css_file = "/css/some.css", favicon_file = "/images/favicon.svg",
+       title = "Some title",
+       css_file = "/css/some.css",
+       favicon_file = "/images/favicon.svg",
+       hash = sha256_checksum,
+       size = size_in_bytes,
        cache_control = "max-age=1800",
        rate_limit = { GET = { limit = 5, period = 60 }}
      }
@@ -18,25 +30,14 @@ local store = require("reliw.store")
      `title`,`css_file`,`favicon_file` only make sense for dynamically generated content,
      i.e. `text/djot` and `application/lua`.
 
-
-     `RLW:USERS:vhost` -- Hashes for vhost user, each user is a JSON object:
-        { pass = hashed_password, salt = unique_salt }
-
-     `RLW:API:vhost` is a JSON object:
-        {
-          exact = { pattern_1 = idx1, pattern2 = idx2, ...},
-          patterns = { pattern_1 = idx1, pattern2 = idx2, ...},
-          static = { pattern_1 = idx1, pattern2 = idx2, ...},
-        }
-
-     `RLW:API:vhost:idx` -- an API entry
-
      `RLW:TEXT:vhost:filename` -- Hashes for text files (MIME types `text/plain`, `text/html`, `text/djot`, `text/markdown`)
      `RLW:FILES:vhost:filename` -- Hashes for data files
         Required fields: `content` and `added`
         Optional fields: `updated` and `tags`
-
      `RLW:DATA:vhost:filename` -- Simple keys for userdata (data without API entries)
+
+     `RLW:USERS:vhost` -- Hashes for vhost user, each user is a JSON object:
+        { pass = hashed_password, salt = unique_salt }
 ]]
 
 local entry_index = function(host, query)
