@@ -1,3 +1,7 @@
+## Kitty graphics protocol support
+
+    Start with plain ol' PNGs
+
 ## Text rendering issues
 
     Gotta do something with this mess.
