@@ -17,20 +17,20 @@ of custom modules and libraries for
 * And much more =)
 
 For networking, _lilush_ includes [Luasocket](https://github.com/lunarmodules/luasocket) library,
-merged with [LuaSec](https://github.com/lunarmodules/luasec) and customized 
+which has been merged with [LuaSec](https://github.com/lunarmodules/luasec) and customized 
 to work seamlessly with [WolfSSL](https://www.wolfssl.com/).
 WolfSSL is also statically compiled and incorporated into the *Lilush* binary.
 
 Grab the binary (less than *2MB*) and put it on any *x86_64 Linux*
 system, or add it to a `FROM scratch` container, and your Lua scripts
 and apps can use all the builtin modules, without worrying about
-installing anything extra. Lilush can compile your Lua code into a
+installing anything extra. _Lilush_ can compile your Lua code into a
 static binary too.[^1]
 
 ---
 
 Secondly, to illustrate what can be built with the bundled modules, 
-_Lilush_ includes a builtin, modular Linux shell (as in Bash, Csh or Fish), which
+_Lilush_ includes a modular Linux shell (as in Bash, Csh or Fish), which
 
 * provides a sleek CLI interface straight out of the box:
 
@@ -41,6 +41,8 @@ _Lilush_ includes a builtin, modular Linux shell (as in Bash, Csh or Fish), whic
 * supports styling with the help of TSS
 * easily extendable with plugins
 * can do fortune telling and probably one day will save the humanity =)
+
+Oh, and there is also [RELIW](RELIW_README.md), a web server/framework built on top of _lilush_ core modules.
 
 ## Building from source
 
