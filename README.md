@@ -1,4 +1,4 @@
-# _Lilush_ – _Li_nux _Lu_a _Sh_ell
+# _Lilush_ – *Li*nux *Lu*a *Sh*ell
 
 ## Description
 
