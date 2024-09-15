@@ -45,8 +45,6 @@ typedef struct mod_lua {
 #include "../build/term/mod_lua_term.input.prompt.h"
 #include "../build/term/mod_lua_term.tss.h"
 #include "../build/term/mod_lua_term.widgets.h"
-// markdown
-#include "../build/markdown/mod_lua_markdown.h"
 // djot
 #include "../build/djot/mod_lua_djot.ast.h"
 #include "../build/djot/mod_lua_djot.attributes.h"
@@ -122,7 +120,6 @@ const mod_lua__t lua_preload[] = {
     {"llm.anthropic",                    mod_lua_llm_anthropic,                    &mod_lua_llm_anthropic_SIZE               },
     {"llm.ggml",                         mod_lua_llm_ggml,                         &mod_lua_llm_ggml_SIZE                    },
     {"llm.general",                      mod_lua_llm_general,                      &mod_lua_llm_general_SIZE                 },
-    {"markdown",                         mod_lua_markdown,                         &mod_lua_markdown_SIZE                    },
     {"shell",                            mod_lua_shell,                            &mod_lua_shell_SIZE                       },
     {"shell.theme",                      mod_lua_shell_theme,                      &mod_lua_shell_theme_SIZE                 },
     {"shell.builtins",                   mod_lua_shell_builtins,                   &mod_lua_shell_builtins_SIZE              },

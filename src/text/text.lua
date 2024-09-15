@@ -3,7 +3,6 @@
 local std = require("std")
 local buffer = require("string.buffer")
 local term = require("term")
-local markdown = require("markdown")
 local djot = require("djot")
 local style = require("term.tss")
 
@@ -23,7 +22,7 @@ local default_borders = {
 	v = { content = "⎜", w = 1 },
 }
 
-local default_formatted_rss = {
+local default_djot_rss = {
 	wrap = 80,
 	codeblock_wrap = true,
 	global_indent = 2,
@@ -52,6 +51,7 @@ local default_formatted_rss = {
 			plus = { content = "⚆", nested = { content = "•" } },
 			minus = { content = "▧", nested = { content = "▪" } },
 			star = { content = "⏺", nested = { content = "⦁" } },
+			task = { content = "[]", nested = { content = "[]" } },
 		},
 		ol = { s = "bold" },
 	},
@@ -90,146 +90,6 @@ local render_text = function(raw, rss, conf)
 		out = std.txt.lines_of(out, wrap)
 	end
 	return std.txt.indent(out, g_indent)
-end
-
-local render_markdown = function(raw, rss, conf)
-	local tss = style.merge(default_formatted_rss, rss)
-	local conf = conf or {}
-
-	local raw = raw or ""
-	raw = raw:gsub("\t", "    ")
-
-	local ast = markdown.ast(raw)
-	local buf = buffer.new()
-
-	local wrap = tss.__style.wrap or 0
-	if conf.wrap then
-		wrap = conf.wrap
-	end
-	local codeblock_wrap = tss.__style.codeblock_wrap
-	if conf.codeblock_wrap ~= nil then
-		codeblock_wrap = conf.codeblock_wrap
-	end
-	local g_indent = tss.__style.global_indent or 0
-	if conf.global_indent then
-		g_indent = conf.global_indent
-	end
-	if conf.hide_links ~= nil then
-		tss.__style.hide_links = conf.hide_links
-	end
-
-	local render_inline_el = function(el)
-		if el.t == "link" then
-			if tss.__style.hide_links then
-				tss.__style.link.url.content = ""
-			end
-			return tss:apply("link.title", el.title) .. tss:apply("link.url", el.link)
-		end
-		if el.t == "verbatim" then
-			return tss:apply("verbatim", el.c)
-		end
-		return tss:apply(el.t, el.c)
-	end
-
-	local list_level = function(idx)
-		local level = 0
-		while ast[idx].parent and ast[idx].parent > 0 do
-			level = level + 1
-			idx = ast[idx].parent
-		end
-		return level
-	end
-
-	local needs_marker = function(idx)
-		if not ast[idx].list_item then
-			return false
-		end
-		local parent = ast[idx].parent
-		local item = ast[idx].list_item
-		for i = parent, idx - 1 do
-			if ast[i].parent and ast[i].list_item then
-				if ast[i].parent == parent and ast[i].list_item == item then
-					return false
-				end
-			end
-		end
-		return true
-	end
-
-	for i, v in ipairs(ast) do
-		if v.t == "header" then
-			if not tss.__style.header.level then
-				tss.__style.header.level = {}
-			end
-			tss.__style.header.level.w = v.level
-			buf:put(tss:apply("header.level"), " ")
-			for _, line in ipairs(v.lines) do
-				if line.t == "reg" then
-					buf:put(tss:apply("header", line.c))
-				else
-					buf:put(render_inline_el(line))
-				end
-			end
-			buf:put("\n")
-		elseif v.t == "newline" then
-			buf:put("\n")
-		elseif v.t == "thematic_break" then
-			tss.__style.w = wrap
-			buf:put(tss:apply("thematic_break", v.lines[1]), "\n")
-			tss.__style.w = nil
-		elseif v.t == "codeblock" then
-			local indent = tss.__style.codeblock.indent or 0
-			local padding = tss.__style.codeblock.padding or 0
-			if wrap > 0 then
-				tss.__style.codeblock.w = wrap + indent + padding
-			end
-			if v.lang ~= "" then
-				buf:put(tss:apply("codeblock.lang", v.lang), "\n")
-			end
-			local content = v.lines
-			if wrap > 0 and codeblock_wrap then
-				content = std.txt.lines_of(table.concat(content, "\n"), wrap, true)
-			end
-			for _, l in ipairs(content) do
-				buf:put(tss:apply("codeblock", l), "\n")
-			end
-			buf:put("\n")
-		elseif v.t == "list" then
-			-- list_level = list_level + 1
-		elseif v.t == "p" then
-			-- Need to convert this madness to string.buffer too...
-			local p = ""
-			for _, line in ipairs(v.lines) do
-				p = p .. render_inline_el(line)
-			end
-			if wrap > 0 then
-				p = table.concat(
-					std.txt.indent_all_lines_but_first(std.txt.lines_of(p, wrap - v.indent, false, true), v.indent),
-					"\n"
-				)
-			end
-			if needs_marker(i) then
-				local level = list_level(i) - 1
-				local subtype = ast[v.parent].subtype
-				if subtype == "ul" then
-					local target = ast[v.parent].variant
-					if level > 0 then
-						target = target .. ".nested"
-					end
-					p = std.txt.indent(tss:apply("list.ul." .. target), level * 2) .. " " .. p .. "\n"
-				else
-					local items = tostring(ast[v.parent].items)
-					tss.__style.list.ol.w = #items + 1
-					tss.__style.list.ol.align = "left"
-					p = std.txt.indent(tss:apply("list.ol", v.list_item .. "."), level * 2) .. " " .. p .. "\n"
-				end
-			else
-				p = std.txt.indent(p, v.indent) .. "\n"
-			end
-			buf:put(p)
-		end
-	end
-	return std.txt.indent(buf:get(), g_indent)
 end
 
 -- All things djot are below =)
@@ -424,7 +284,7 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 		local level, list_indent, list_style = get_list_info(parent)
 		local marker
 		if not list_style:match("%d") then
-			local styles = { ["*"] = "star", ["-"] = "minus", ["+"] = "plus" }
+			local styles = { ["X"] = "task", ["*"] = "star", ["-"] = "minus", ["+"] = "plus" }
 			if level == 1 then
 				marker = tss:apply("list.ul." .. styles[list_style])
 			else
@@ -513,7 +373,7 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 end
 
 local render_djot = function(raw, rss, conf)
-	local tss = style.merge(default_formatted_rss, rss)
+	local tss = style.merge(default_djot_rss, rss)
 	local conf = conf or {}
 	local wrap = conf.wrap or tss.__style.wrap or 0
 	local g_indent = conf.global_indent or tss.__style.global_indent or 0
@@ -546,10 +406,7 @@ local render = function(raw, rss, conf)
 	if conf.mode then
 		mode = conf.mode
 	end
-	if mode == "markdown" then
-		return render_markdown(raw, rss, conf)
-	end
-	if mode == "djot" then
+	if mode == "djot" or mode == "markdown" then
 		return render_djot(raw, rss, conf)
 	end
 	return render_text(raw, rss, conf)
@@ -557,7 +414,6 @@ end
 
 return {
 	render_text = render_text,
-	render_markdown = render_markdown,
 	render_djot = render_djot,
 	render = render,
 }

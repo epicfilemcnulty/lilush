@@ -10,11 +10,11 @@ curated collection of Lua modules and C libraries for
 * Terminal I/O with UTF-8 support, styling with *TSS* (Terminal Style Sheets)
 * A set of terminal widgets for use in CLI apps
 * Process manipulation
-* JSON, markdown and [djot](https://djot.net/) processing/rendering
+* [djot](https://djot.net/) processing/rendering
 * TCP/UDP networking with SSL support; HTTP(S) client, HTTP(S)/1.1 server
 * Redis protocol support
 * Embedded [WireGuard](https://www.wireguard.com/embedding/) client
-* And much more =)
+* JSON, Base64, HMAC, ...
 
 For networking, _lilush_ includes [Luasocket](https://github.com/lunarmodules/luasocket) library,
 which has been merged with [LuaSec](https://github.com/lunarmodules/luasec) and customized 
@@ -74,11 +74,11 @@ as a reference for building details.
 
 Right now the project is certainly in beta. 
 
-* Not all planned features have been implemented
-* Documentation is lagging behind
-* No proper testing has been done
-* There are known bugs
-* There are most certainly yet undiscovered bugs, because no proper testing has been done.
+- [ ] Not all planned features have been implemented
+- [ ] Documentation is lagging behind
+- [ ] No proper testing has been done
+- [ ] There are known bugs
+- [ ] There are most certainly yet undiscovered bugs, because no proper testing has been done.
 
 When most of the above issues are resolved, the `1.0.0` version will be released.
 But quite a lot of things might be heavily refactored or removed along the way to the `1.0.0` version,

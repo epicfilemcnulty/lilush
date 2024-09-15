@@ -295,7 +295,7 @@ end
 ]]
 
 local pager_next_render_mode = function(self)
-	local modes = { "raw", "djot", "markdown" }
+	local modes = { "raw", "djot" }
 	local idx = 0
 	for i, mode in ipairs(modes) do
 		if mode == self.__config.render_mode then

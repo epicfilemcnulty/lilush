@@ -5,12 +5,6 @@
 
     Start with plain ol' PNGs
 
-## Text rendering issues
-
-    Gotta do something with this mess.
-    Ideally, we'd want to have one module for
-    dealing with both markdown and djot...
-
 ## Add basic `curl` functionality
 
     Either add it to `kat` or introduce `kurl`. Probably `kurl`.
