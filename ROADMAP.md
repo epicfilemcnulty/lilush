@@ -1,3 +1,6 @@
+## Implement postgreSQL lib
+
+
 ## Kitty graphics protocol support
 
     Start with plain ol' PNGs
@@ -10,16 +13,17 @@
 
 ## Add basic `curl` functionality
 
-    Either add it to `kat` or introduce `kurl`
+    Either add it to `kat` or introduce `kurl`. Probably `kurl`.
 
 ## Packaging
 
-    Single-file Lua apps binary packaging. Making the world a better place =)
+    Need digital signatures for that,
+    so have to expose a bit more of WolfCrypt API...
 
 ## Vault API lib
 
     Good to have, at least something simple to directly read secrets from Vault's KV,
-    so we could use something like:
+    then we could have an internal vault agent and do something like:
 
     ```
     setenv MY_API_TOKEN vault://secret/api/my_token

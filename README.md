@@ -3,8 +3,8 @@
 ## Description
 
 _Lilush_ is a couple of things. First of all, _lilush_ is a statically
-compiled LuaJIT interpreter that comes bundled with a curated collection
-of custom modules and libraries for
+compiled for Linux [LuaJIT](https://luajit.org/) interpreter that comes bundled with a 
+curated collection of Lua modules and C libraries for
 
 * File system operations
 * Terminal I/O with UTF-8 support, styling with *TSS* (Terminal Style Sheets)
@@ -21,32 +21,43 @@ which has been merged with [LuaSec](https://github.com/lunarmodules/luasec) and 
 to work seamlessly with [WolfSSL](https://www.wolfssl.com/).
 WolfSSL is also statically compiled and incorporated into the *Lilush* binary.
 
-The binary is less than *2MB*, and should work fine on any *x86_64 Linux*
+The binary is fewer than *2MB*, and should work fine on any *x86_64 Linux*
 system. It's also a nice addition to a `FROM scratch` docker container, as
-`lilush` can be used as a busybox replacement.
+_lilush_ can be used as a busybox replacement.
 
 And to top it off, _Lilush_ can compile your Lua code into a static binary too![^1]
 
 ---
 
-Secondly, to illustrate what can be built with the bundled modules, 
-_Lilush_ includes a modular Linux shell (as in Bash, Csh or Fish), which
+Secondly, as an example application built on top of its bundled modules, 
+_Lilush_ includes a modular Linux Shell (as in Bash, Csh or Fish) for
+modern terminal emulators, which
 
 * provides a sleek CLI interface straight out of the box:
 
     * Pre-configured prompts: host, user, dir, git, aws, k8s, python venv
     * Command completions, completions scrolling
     * Smart directory navigation and history search, similar to [McFly](https://github.com/cantino/mcfly) and [zoxide](https://github.com/ajeetdsouza/zoxide)
+    * [Terminal graphics](https://sw.kovidgoyal.net/kitty/graphics-protocol/) support
 
+* has some handy shell builtins like `kat` (file viewer + pager), `netstat`, `dig`, `wgcli`, etc.
 * supports styling with the help of TSS
-* easily extendable with plugins
+* is easily extendable with plugins
 * can do fortune telling and probably one day will save the humanity =)
 
-Oh, and there is also [RELIW](RELIW_README.md), a web server/framework built on top of _lilush_ core modules.
+::: NotaBene  
+
+  _Lilush_ Shell relies on [Kitty's keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol),
+  thus will only work in terminal emulators that support this protocol, e.g. `kitty`, `foot`, `alacritty`, `konsole`...  
+
+:::  
+
+Oh, and there is also [RELIW](RELIW_README.md), a web server/framework built on top of _Lilush_ core modules.
 
 ## Building from source
 
-Building is done with docker:
+The easiest way is just to build with docker and then copy
+the binary from the container:
 
 ```
 git clone https://github.com/epicfilemcnulty/lilush
@@ -56,18 +67,27 @@ docker build -t lilush .
 docker cp $(docker create --name lilush lilush):/usr/bin/lilush .
 docker rm lilush
 ```
-See the [Dockerfile](dockerfiles/lilush) for building details.
+If you want to build on a host system, see the [Dockerfile](dockerfiles/lilush) 
+as a reference for building details.
 
 ## Status
 
-Right now the project is certainly in beta. Beware and use at your own risk.
+Right now the project is certainly in beta. 
 
-After `1.0.0` version release the project will abide by the semantic versioning promises.
+* Not all planned features have been implemented
+* Documentation is lagging behind
+* No proper testing has been done
+* There are known bugs
+* There are most certainly yet undiscovered bugs, because no proper testing has been done.
 
-Until then all bets are off, meaning that there might be breaking changes of the core 
+When most of the above issues are resolved, the `1.0.0` version will be released.
+But quite a lot of things might be heavily refactored or removed along the way to the `1.0.0` version,
+so beware and use at your own risk.
+
+After `1.0.0` version release the project will abide by the semantic versioning promises,
+but until then all bets are off. Meaning that there might be breaking changes of the core 
 lilush modules' API even between, say, `0.5.x` and `0.6.x`. Or worse.
 But let's hope it won't come to that.
-
 
 
 
