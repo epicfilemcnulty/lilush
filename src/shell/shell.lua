@@ -82,7 +82,7 @@ local run = function(self)
 				std.ps.setenv("LILUSH_EXEC_START", os.time())
 				local status, err = self.__mode[self.__chosen_mode]:run()
 				if status ~= 0 then
-					show_error_message(status, err)
+					show_error_msg(status, err)
 				end
 				std.ps.setenv("LILUSH_EXEC_END", os.time())
 				std.ps.setenv("LILUSH_EXEC_STATUS", tostring(status))
