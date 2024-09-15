@@ -60,12 +60,15 @@ See the [Dockerfile](dockerfiles/lilush) for building details.
 
 ## Status
 
-Right now the project is certainly in beta.
-The first version I consider "stable" will be tagged as `1.0.0` and from there on
-the project will abide by the semantic versioning promises. 
+Right now the project is certainly in beta. Beware and use at your own risk.
 
-Until then all bets are off, meaning that there might be breaking
-changes of the core lilush modules' API even between, say, `0.5.x` and `0.6.x`. Or worse.
+After `1.0.0` version release the project will abide by the semantic versioning promises.
+
+Until then all bets are off, meaning that there might be breaking changes of the core 
+lilush modules' API even between, say, `0.5.x` and `0.6.x`. Or worse.
 But let's hope it won't come to that.
+
+
+
 
 [^1]: Well, not yet automatically. And it really depends. But still.
