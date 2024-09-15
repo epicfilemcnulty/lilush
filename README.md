@@ -31,7 +31,21 @@ static binary too.[^1]
 Secondly, to illustrate what can be built with the bundled modules, 
 *Lilush* includes a powerful and versatile Linux shell, easily extendable, 
 themable and customizable, that provides a sleek interface with a bunch of 
-handy prompts, smart history search, completions & predictions, and what not.
+handy prompts, smart history search, command completions, fortune telling and what not.
+
+## Building from source
+
+Building is done with docker:
+
+```
+git clone https://github.com/epicfilemcnulty/lilush
+cd lilush
+ln -s dockerfiles/lilush Dockerfile
+docker build -t lilush .
+docker cp $(docker create --name lilush lilush):/usr/bin/lilush .
+docker rm lilush
+```
+See the [Dockerfile](dockerfiles/lilush) for building details.
 
 ## Status
 
