@@ -7,7 +7,7 @@ compiled LuaJIT interpreter that comes bundled with a curated collection
 of custom modules and libraries for
 
 * File system operations
-* Terminal I/O with UTF-8 support, styling with TSS (terminal style sheets)
+* Terminal I/O with UTF-8 support, styling with *TSS* (Terminal Style Sheets)
 * A set of terminal widgets for use in CLI apps
 * Process manipulation
 * JSON, markdown and [djot](https://djot.net/) processing/rendering
@@ -21,11 +21,11 @@ which has been merged with [LuaSec](https://github.com/lunarmodules/luasec) and 
 to work seamlessly with [WolfSSL](https://www.wolfssl.com/).
 WolfSSL is also statically compiled and incorporated into the *Lilush* binary.
 
-Grab the binary (less than *2MB*) and put it on any *x86_64 Linux*
-system, or add it to a `FROM scratch` container, and your Lua scripts
-and apps can use all the builtin modules, without worrying about
-installing anything extra. _Lilush_ can compile your Lua code into a
-static binary too.[^1]
+The binary is less than *2MB*, and should work fine on any *x86_64 Linux*
+system. It's also a nice addition to a `FROM scratch` docker container, as
+`lilush` can be used as a busybox replacement.
+
+And to top it off, _Lilush_ can compile your Lua code into a static binary too![^1]
 
 ---
 
