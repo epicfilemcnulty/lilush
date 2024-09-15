@@ -19,19 +19,19 @@ curated collection of Lua modules and C libraries for
 For networking, _lilush_ includes [Luasocket](https://github.com/lunarmodules/luasocket) library,
 which has been merged with [LuaSec](https://github.com/lunarmodules/luasec) and customized 
 to work seamlessly with [WolfSSL](https://www.wolfssl.com/).
-WolfSSL is also statically compiled and incorporated into the *Lilush* binary.
+WolfSSL is also statically compiled and incorporated into the *lilush* binary.
 
 The binary is fewer than *2MB*, and should work fine on any *x86_64 Linux*
 system. It's also a nice addition to a `FROM scratch` docker container, as
 _lilush_ can be used as a busybox replacement.
 
-And to top it off, _Lilush_ can compile your Lua code into a static binary too![^1]
+And to top it off, _lilush_ can compile your Lua code into a static binary too![^1]
 
 ---
 
-Secondly, as an example application built on top of its bundled modules, 
-_Lilush_ includes a modular Linux Shell (as in Bash, Csh or Fish) for
-modern terminal emulators, which
+Secondly, to showcase most features of its bundled modules, 
+_lilush_ includes a modular Linux Shell (as in Bash, Csh or Fish), 
+suprisingly called _Lilush Shell_, which
 
 * provides a sleek CLI interface straight out of the box:
 
@@ -47,7 +47,7 @@ modern terminal emulators, which
 
 ::: NotaBene  
 
-  _Lilush_ Shell relies on [Kitty's keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol),
+  _Lilush Shell_ relies on [Kitty's keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol),
   thus will only work in terminal emulators that support this protocol, e.g. `kitty`, `foot`, `alacritty`, `konsole`...  
 
 :::  
