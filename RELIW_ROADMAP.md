@@ -1,3 +1,3 @@
-* Auth refactoring (OIDC client?)
-* HTTPS support
-* Add request times to metrics
+- [ ] Auth refactoring (OIDC client?)
+- [ ] HTTPS support
+- [ ] Add request times to metrics
