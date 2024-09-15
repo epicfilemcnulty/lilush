@@ -13,12 +13,12 @@ of custom modules and libraries for
 * TCP/UDP networking with SSL support; HTTP(S) client, HTTP(S)/1.1 server
 * Redis protocol support
 * Embedded [WireGuard](https://www.wireguard.com/embedding/) support
-* other useful stuff too =)
+* And much more =)
 
-For networking, *lilush* includes
-[Luasocket](https://github.com/lunarmodules/luasocket) library,
-customized to work seamlessly with [WolfSSL](https://www.wolfssl.com/),
-which is also statically compiled and incorporated into the binary.
+For networking, *lilush* includes [Luasocket](https://github.com/lunarmodules/luasocket) library,
+merged with [LuaSec](https://github.com/lunarmodules/luasec) and customized 
+to work seamlessly with [WolfSSL](https://www.wolfssl.com/).
+WolfSSL is also statically compiled and incorporated into the *Lilush* binary.
 
 Grab the binary (less than **2MB**) and put it on any **x86_64 Linux**
 system, or add it to a `FROM scratch` container, and your Lua scripts
@@ -28,14 +28,13 @@ static binary too.[^1]
 
 ---
 
-Secondly, *lilush* is a powerful and versatile Linux shell, that
-provides a sleek interface with a bunch of handy prompts, smart history search,
-completions & predictions, and a variety of built-in modes that allow
-users to switch between shell, Lua CLI interpreter, LLM CLI interface,
-and more.
+Secondly, to illustrate what can be built with the bundled modules, 
+*Lilush* includes a powerful and versatile Linux shell, easily extendable, 
+themable and customizable, that provides a sleek interface with a bunch of 
+handy prompts, smart history search, completions & predictions, and what not.
 
 ## Status
 
 Currently it’s in beta state, so beware and use at your own risk.
 
-[^1]: Well, not yet. And it really depends. But still.
+[^1]: Well, not yet automatically. And it really depends. But still.
