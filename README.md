@@ -1,6 +1,6 @@
-# _Lilush_ – *Li*nux *Lu*a *Sh*ell
+# Description
 
-## Description
+## Static LuaJIT runtime with batteries
 
 _Lilush_ is a couple of things. First of all, _lilush_ is a statically
 compiled for Linux [LuaJIT](https://luajit.org/) interpreter that comes bundled with a 
@@ -19,7 +19,7 @@ curated collection of Lua modules and C libraries for
 For networking, _lilush_ includes [Luasocket](https://github.com/lunarmodules/luasocket) library,
 which has been merged with [LuaSec](https://github.com/lunarmodules/luasec) and customized 
 to work seamlessly with [WolfSSL](https://www.wolfssl.com/).
-WolfSSL is also statically compiled and incorporated into the *lilush* binary.
+WolfSSL is also statically compiled and incorporated into the _lilush_ binary.
 
 The binary is fewer than *2MB*, and should work fine on any *x86_64 Linux*
 system. It's also a nice addition to a `FROM scratch` docker container, as
@@ -27,7 +27,7 @@ _lilush_ can be used as a busybox replacement.
 
 And to top it off, _lilush_ can compile your Lua code into a static binary too![^1]
 
----
+## *Li*nux *Lu*a *Sh*ell
 
 Secondly, to showcase most features of its bundled modules, 
 _lilush_ includes a modular Linux Shell (as in Bash, Csh or Fish), 
@@ -54,6 +54,8 @@ suprisingly called _Lilush Shell_, which
 
 Oh, and there is also [RELIW](RELIW_README.md), a web server/framework built on top of _Lilush_ core modules.
 
+# Installation
+
 ## Building from source
 
 The easiest way is just to build with docker and then copy
@@ -70,7 +72,7 @@ docker rm lilush
 If you want to build on a host system, see the [Dockerfile](dockerfiles/lilush) 
 as a reference for building details.
 
-## Status
+# Status
 
 Right now the project is certainly in beta. 
 

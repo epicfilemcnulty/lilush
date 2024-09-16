@@ -50,13 +50,14 @@ end
 local fetch_static_content = function(self, host, query, metadata)
 	local filename = metadata.file
 	if not filename then
-		if metadata.extension then
-			filename = self.data_dir .. "/" .. host .. query .. metadata.extension
-		elseif metadata.gsub then
-			local remapped_query = query:gsub(metadata.gsub.pattern, metadata.gsub.replacement)
-			filename = self.data_dir .. "/" .. host .. remapped_query
-		else
-			filename = self.data_dir .. "/" .. host .. query
+		filename = self.data_dir .. "/" .. host .. query
+		if not std.fs.file_exists(filename) then
+			if metadata.extension then
+				filename = self.data_dir .. "/" .. host .. query .. metadata.extension
+			elseif metadata.gsub then
+				local remapped_query = query:gsub(metadata.gsub.pattern, metadata.gsub.replacement)
+				filename = self.data_dir .. "/" .. host .. remapped_query
+			end
 		end
 	else
 		filename = self.data_dir .. "/" .. host .. "/" .. filename
