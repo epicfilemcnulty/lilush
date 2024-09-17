@@ -35,12 +35,12 @@ suprisingly called _Lilush Shell_, which
 
 * provides a sleek CLI interface straight out of the box:
 
-    * Pre-configured prompts: host, user, dir, git, aws, k8s, python venv
+    * Pre-configured prompts: `host`{.str}, `user`{.str},` dir`{.str},` git`{.str},` aws`{.str},` k8s`{.str}, `python venv`{.str}
     * Command completions, completions scrolling
     * Smart directory navigation and history search, similar to [McFly](https://github.com/cantino/mcfly) and [zoxide](https://github.com/ajeetdsouza/zoxide)
     * [Terminal graphics](https://sw.kovidgoyal.net/kitty/graphics-protocol/) support
 
-* has some handy shell builtins like `kat` (file viewer + pager), `netstat`, `dig`, `wgcli`, etc.
+* has some handy shell builtins like `kat`{.str} (file viewer + pager), `netstat`{.str}, `dig`{.str}, `wgcli`{.str}, etc.
 * supports styling with the help of TSS
 * is easily extendable with plugins
 * can do fortune telling and probably one day will save the humanity =)
