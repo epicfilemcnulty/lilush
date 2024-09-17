@@ -15,7 +15,7 @@ local store = require("reliw.store")
      An API entry is a JSON object with the following structure:
 
      {
-       file = "filename.dj", static = false,
+       file = "filename.dj", static = false, try_extensions = false,
        methods = { GET = true, POST = true },
        title = "Some title",
        css_file = "/css/some.css",
@@ -27,8 +27,10 @@ local store = require("reliw.store")
      }
 
      `file` field is required for dynamic resources, `methods` table is required.
-     `title`,`css_file`,`favicon_file` only make sense for dynamically generated content,
+     `title`, `css_file`, `favicon_file` only make sense for dynamically generated content,
      i.e. `text/djot` and `application/lua`.
+     `try_extensions` is for static resources -- if there is no file matching the query,
+     reliw will try adding `.lua` , `.dj` or `.md` to the query.
 
      `RLW:TEXT:vhost:filename` -- Hashes for text files (MIME types `text/plain`, `text/html`, `text/djot`, `text/markdown`)
      `RLW:FILES:vhost:filename` -- Hashes for data files

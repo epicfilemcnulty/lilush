@@ -1,4 +1,4 @@
-#define LILUSH_VERSION "0.5.3-20-g90a7dfd"
+#define LILUSH_VERSION "0.5.3-25-g89c97a3"
 
 static const char EXEC_BUILTIN[] = "local builtins = require('shell.builtins')\n"
                                    "local builtin = builtins.get(cmd)\n"

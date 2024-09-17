@@ -55,8 +55,14 @@ local fetch_static_content = function(self, host, query, metadata)
 			filename = filename .. metadata.index
 		end
 		if not std.fs.file_exists(filename) then
-			if metadata.extension then
-				filename = self.data_dir .. "/" .. host .. query .. metadata.extension
+			if metadata.try_extensions then
+				if std.fs.file_exists(filename .. ".lua") then
+					filename = filename .. ".lua"
+				elseif std.fs.file_exists(filename .. ".dj") then
+					filename = filename .. ".dj"
+				else
+					filename = filename .. ".md"
+				end
 			elseif metadata.gsub then
 				local remapped_query = query:gsub(metadata.gsub.pattern, metadata.gsub.replacement)
 				filename = self.data_dir .. "/" .. host .. remapped_query

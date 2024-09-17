@@ -135,7 +135,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		else
 			content = tmpls.render_page(content, tmpl_vars, user_tmpl)
 		end
-	elseif content_type == "text/djot" then
+	elseif content_type == "text/djot" or content_type == "text/markdown" then
 		if headers.accept and headers.accept:match("text/djot") then
 			response_headers["content-type"] = content_type
 		else
