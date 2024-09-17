@@ -52,7 +52,7 @@ suprisingly called _Lilush Shell_, which
 
 :::  
 
-Oh, and there is also [RELIW](RELIW_README.md), a web server/framework built on top of _Lilush_ core modules.
+Oh, and there is also [RELIW](https://github.com/epicfilemcnulty/lilush/blob/master/RELIW_README.md), a web server/framework built on top of _Lilush_ core modules.
 
 # Installation
 
@@ -69,7 +69,7 @@ docker build -t lilush .
 docker cp $(docker create --name lilush lilush):/usr/bin/lilush .
 docker rm lilush
 ```
-If you want to build on a host system, see the [Dockerfile](dockerfiles/lilush) 
+If you want to build on a host system, see the [Dockerfile](https://github.com/epicfilemcnulty/lilush/blob/master/dockerfiles/lilush)
 as a reference for building details.
 
 # Status
