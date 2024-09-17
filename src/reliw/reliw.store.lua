@@ -51,6 +51,9 @@ local fetch_static_content = function(self, host, query, metadata)
 	local filename = metadata.file
 	if not filename then
 		filename = self.data_dir .. "/" .. host .. query
+		if query:match("/$") and metadata.index then
+			filename = filename .. metadata.index
+		end
 		if not std.fs.file_exists(filename) then
 			if metadata.extension then
 				filename = self.data_dir .. "/" .. host .. query .. metadata.extension
