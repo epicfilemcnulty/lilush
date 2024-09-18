@@ -54,6 +54,28 @@ local get_session_user = function(headers)
 	return store:fetch_session_user(host, token)
 end
 
+local logout = function(headers)
+	local store, err = store.new()
+	if not store then
+		return nil, err
+	end
+	local token = ""
+	local host = headers.host
+	host = host:match("^([^:]+)")
+	local cookie = headers.cookie
+	if cookie then
+		token = cookie:match("rlw_session_token=([^%s;]+)") or ""
+	end
+	store:destroy_session(host, token)
+	return "Logging out...",
+		303,
+		{
+			["Set-Cookie"] = "rlw_session_token=" .. token .. "; Max-Age=0",
+			["Location"] = "/",
+			["Content-Type"] = "text/plain",
+		}
+end
+
 local authorized = function(headers, allowed_users)
 	local user = get_session_user(headers) or ""
 	for _, u in ipairs(allowed_users) do
@@ -82,7 +104,7 @@ local login_page = function(method, query, args, headers, body)
 	end
 	local args = web.parse_args(body)
 	if login(headers["host"], args.login, args.password) then
-		local session_cookie = start_session(headers["host"], args.login, 10800)
+		local session_cookie = start_session(headers["host"], args.login, 10800) -- 3 hours TTL by default
 		if session_cookie then
 			return "We're all good, babe.",
 				303,
@@ -98,6 +120,7 @@ end
 
 local _M = {
 	login = login,
+	logout = logout,
 	login_page = login_page,
 	start_session = start_session,
 	get_session_user = get_session_user,

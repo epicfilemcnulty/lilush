@@ -36,6 +36,9 @@ local handle = function(method, query, args, headers, body, ctx)
 	local err_img = metadata.error or {}
 	-- Require valid auth first
 	if metadata.auth then
+		if metadata.auth.logout then
+			return auth.logout(headers)
+		end
 		local authorized = auth.authorized(headers, metadata.auth)
 		if not authorized then
 			local vars = {

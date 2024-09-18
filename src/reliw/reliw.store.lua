@@ -136,7 +136,13 @@ local set_session_data = function(self, host, user, ttl)
 	if ok then
 		return uuid
 	end
-	return nil, err
+	return ok, err
+end
+
+local destroy_session = function(self, host, token)
+	local ok, err = self.red:cmd("DEL", self.prefix .. ":SESSIONS:" .. host .. ":" .. token)
+	self.red:close()
+	return ok, err
 end
 
 local fetch_session_user = function(self, host, token)
@@ -219,6 +225,7 @@ local new = function()
 		fetch_userdata = fetch_userdata,
 		check_rate_limit = check_rate_limit,
 		set_session_data = set_session_data,
+		destroy_session = destroy_session,
 		fetch_session_user = fetch_session_user,
 		fetch_metrics = fetch_metrics,
 		update_metrics = update_metrics,
