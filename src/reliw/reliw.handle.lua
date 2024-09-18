@@ -33,6 +33,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		return tmpls.error_page(500, hit_count, user_tmpl), 500, response_headers
 	end
 
+	local err_img = metadata.error or {}
 	-- Require valid auth first
 	if metadata.auth then
 		local authorized = auth.authorized(headers, metadata.auth)
@@ -49,9 +50,9 @@ local handle = function(method, query, args, headers, body, ctx)
 			else
 				response_headers = r_headers
 			end
-			local hit_count = metrics.update(host, method, query, code)
+			local hit_count = metrics.update(host, method, query, status)
 			if status >= 400 then
-				return tmpls.error_page(status, hit_count, user_tmpl, metadata.auth_failed_img),
+				return tmpls.error_page(status, hit_count, user_tmpl, err_img[tostring(status)]),
 					status,
 					response_headers
 			end
@@ -66,7 +67,7 @@ local handle = function(method, query, args, headers, body, ctx)
 			allow = allow .. method .. ", "
 		end
 		response_headers["Allow"] = allow:sub(1, -3) -- remove last comma and space
-		return tmpls.error_page(405, hit_count, user_tmpl), 405, response_headers
+		return tmpls.error_page(405, hit_count, user_tmpl, err_img["405"]), 405, response_headers
 	end
 	-- Check rate limits
 	if metadata.rate_limit and metadata.rate_limit[method] then
@@ -77,7 +78,7 @@ local handle = function(method, query, args, headers, body, ctx)
 			local count = api.check_rate_limit(host, method, query, remote_ip, metadata.rate_limit[method].period)
 			if count and count > metadata.rate_limit[method].limit then
 				local hit_count = metrics.update(host, method, query, 429)
-				return tmpls.error_page(429, hit_count, user_tmpl), 429, response_headers
+				return tmpls.error_page(429, hit_count, user_tmpl, err_img["429"]), 429, response_headers
 			end
 		end
 	end
@@ -91,7 +92,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		content = api.get_static_content(host, query, metadata)
 		if not content then
 			local hit_count = metrics.update(host, method, query, 404)
-			return tmpls.error_page(404, hit_count, user_tmpl), 404, response_headers
+			return tmpls.error_page(404, hit_count, user_tmpl, err_img["404"]), 404, response_headers
 		end
 	end
 	local content_type = std.mime.type(metadata.file)
@@ -131,7 +132,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		content, status, r_headers = content(method, query, args, headers, body)
 		if not status then
 			local hit_count = metrics.update(host, method, query, 500)
-			return tmpls.error_page(500, hit_count, user_tmpl), 500, response_headers
+			return tmpls.error_page(500, hit_count, user_tmpl, err_img["500"]), 500, response_headers
 		end
 		if r_headers then
 			response_headers = r_headers

@@ -30,23 +30,39 @@ local template = {
 	error_404_footer = [[<footer><p class="error">You are amongst the <span>{{hit_count}}</span> digital nomads who have sought for this page. None have found it, but the hope lives on.</p></footer>]],
 	errors = {
 		[401] = { title = "Unauthorized", msg = "Your papers expired three weeks ago!" },
-		[403] = { title = "Forbidden", msg = "You are too ugly to get in." },
+		[403] = { title = "Forbidden", msg = { "You are too ugly to get in.", "Beat it.", "Take a hike, Mike." } },
 		[404] = {
 			title = "Page Not Found",
 			msg = {
 				"You must be coming from AltaVista, right?",
 				"Elvis has left the building, baby.",
+				"Paginam perdidi.",
 				"The train has long been gone.",
 				"Oh, this overwhelming sense of loss...",
+				"Nope, no such page. Why are you looking for it, anyway? What is it, your relative? Who told you to go looking for pages on the internet?! Some people have no shame!",
 				"I think I saw that page somewhere...Might be over the sofa...",
 				"Oops. No page found. That's sad.",
 			},
 		},
-		[405] = { title = "Method Not Allowed", msg = { "Hey! Looky, no touchy.", "This ain't a Post Office, mate." } },
-		[429] = { title = "Too Many Requests", msg = "Slow down, speedy rider. It might get bumpy along the way." },
+		[405] = { title = "Method Not Allowed", msg = { "Hey! Looky, no touchy.", "This ain't a POST Office, mate." } },
+		[429] = {
+			title = "Too Many Requests",
+			msg = {
+				"You better slow down before it gets ugly, I'm warning you!",
+				"Take a pause for the cause, will ya?",
+			},
+		},
 		[503] = { title = "Service Unavailable", msg = "Sad days." },
 		[501] = { title = "Not Implemented", msg = "You can't implement everything, can you?" },
-		[500] = { title = "Internal Server Error", msg = "It's always something in the childhood..." },
+		[500] = {
+			title = "Internal Server Error",
+			msg = {
+				"I'm feeling sick. I hope it's not smallpox again...",
+				"Sometimes you just can't go on...I mean what's the point? There is no meaning in anything",
+				"Things break.",
+				"Nobody knows the troubles I've seen...",
+			},
+		},
 	},
 }
 
