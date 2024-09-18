@@ -40,17 +40,20 @@ local handle = function(method, query, args, headers, body, ctx)
 			local vars = {
 				css_file = metadata.css_file or default_css_file,
 				favicon_file = metadata.favicon_file or "/images/favicon.svg",
-				title = metadata.title,
+				title = "May we see your papers, please?",
+				class = "login",
 			}
 			local resp, status, r_headers = auth.login_page(method, query, args, headers, body)
 			if not r_headers then
-				resp = tmpls.render_page(resp, vars, t)
+				resp = tmpls.render_page(resp, vars, user_tmpl)
 			else
 				response_headers = r_headers
 			end
 			local hit_count = metrics.update(host, method, query, code)
 			if status >= 400 then
-				return tmpls.error_page(status, hit_count, user_tmpl), status, response_headers
+				return tmpls.error_page(status, hit_count, user_tmpl, metadata.auth_failed_img),
+					status,
+					response_headers
 			end
 			return resp, status, response_headers
 		end

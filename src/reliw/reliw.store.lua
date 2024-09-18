@@ -73,7 +73,7 @@ local fetch_static_content = function(self, host, query, metadata)
 	end
 	local content = std.fs.read_file(filename)
 	if not content then
-		return nil, "not found"
+		return nil, filename .. " not found"
 	end
 	if not metadata.title and std.fs.file_exists(self.data_dir .. "/" .. host .. "/.titles.json") then
 		local titles_json = std.fs.read_file(self.data_dir .. "/" .. host .. "/.titles.json")

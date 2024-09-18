@@ -12,9 +12,10 @@ local login = function(host, user, pass)
 	if not store then
 		return nil, err
 	end
+	local host = host:match("^([^:]+)")
 	local user = user or ""
 	local pass = pass or ""
-	local user_info = store:fetch_userinfo(host, user)
+	local user_info, err = store:fetch_userinfo(host, user)
 	if user_info then
 		local h = crypto.hmac(user_info.salt, pass)
 		if crypto.bin_to_hex(h) == user_info.pass then
@@ -25,6 +26,7 @@ local login = function(host, user, pass)
 end
 
 local start_session = function(host, user, ttl)
+	local host = host:match("^([^:]+)")
 	local store, err = store.new()
 	if not store then
 		return nil, err
@@ -44,6 +46,7 @@ local get_session_user = function(headers)
 	end
 	local token = ""
 	local host = headers.host
+	host = host:match("^([^:]+)")
 	local cookie = headers.cookie
 	if cookie then
 		token = cookie:match("rlw_session_token=([^%s;]+)")

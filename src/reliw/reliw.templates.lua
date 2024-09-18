@@ -23,12 +23,13 @@ local template = {
     <h3>{{error_code}}</h3>
     <p class="error">{{error_message}}</p>
     <h3>{{error_code}}</h3>
+    {{img}}
 </section>
 <section id="home">Take me <a href="/">home</a>, country roads...</section>
 ]],
 	error_404_footer = [[<footer><p class="error">You are amongst the <span>{{hit_count}}</span> digital nomads who have sought for this page. None have found it, but the hope lives on.</p></footer>]],
 	errors = {
-		[401] = { title = "Unauthorized", msg = "Authorized personnel only." },
+		[401] = { title = "Unauthorized", msg = "Your papers expired three weeks ago!" },
 		[403] = { title = "Forbidden", msg = "You are too ugly to get in." },
 		[404] = {
 			title = "Page Not Found",
@@ -49,7 +50,7 @@ local template = {
 	},
 }
 
-local error_page = function(code, hit_count, user_tmpl)
+local error_page = function(code, hit_count, user_tmpl, img)
 	local user_tmpl = user_tmpl or {}
 	local vars = {
 		title = "Uknown error",
@@ -59,6 +60,7 @@ local error_page = function(code, hit_count, user_tmpl)
 		error_message = "Never seen such a thing in my life!",
 		error_code = code,
 		class = "error",
+		img = img or "",
 	}
 	local tmpl = std.tbl.copy(template)
 	tmpl = std.tbl.merge(tmpl, user_tmpl)
