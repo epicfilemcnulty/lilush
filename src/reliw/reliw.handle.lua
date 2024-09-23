@@ -11,6 +11,14 @@ local handle = function(method, query, args, headers, body, ctx)
 	if ctx.metrics_host and host == ctx.metrics_host and query == "/metrics" and method == "GET" then
 		return metrics.show()
 	end
+	local blocked, rule = api.check_waf(host, query, headers)
+	if blocked then
+		ctx.logger:log({ msg = "Blocked by WAF", rule = rule, query = query, vhost = host }, 0)
+		return "Fuck Off", 301, {
+			["Location"] = "http://127.0.0.1/fuck_off",
+			["Content-Type"] = "text/plain",
+		}
+	end
 	local response_headers = { ["content-type"] = "text/html" }
 	local status = 200
 	local default_css_file = "/css/default.css"

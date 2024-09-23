@@ -149,6 +149,32 @@ local fetch_hash_and_size = function(self, host, file)
 	return resp[1], resp[2]
 end
 
+local check_waf = function(self, host, query, headers)
+	local global = self.red:cmd("HGET", self.prefix .. ":WAF", "__")
+	local per_host = self.red:cmd("HGET", self.prefix .. ":WAF", host)
+	self.red:close()
+	if (not global or global == "NULL") and (not per_host or per_host == "NULL") then
+		return nil
+	end
+	local global_rules = json.decode(global or "{}")
+	local per_host_rules = json.decode(per_host or "{}")
+	if global_rules.query then
+		for _, rule in ipairs(global_rules.query) do
+			if query:match(rule) then
+				return true, rule
+			end
+		end
+	end
+	if per_host_rules.query then
+		for _, rule in ipairs(per_host_rules.query) do
+			if query:match(rule) then
+				return true, rule
+			end
+		end
+	end
+	return nil
+end
+
 local check_rate_limit = function(self, host, method, query, remote_ip, period)
 	local count =
 		self.red:cmd("INCR", self.prefix .. ":LIMITS:" .. host .. ":" .. method .. ":" .. query .. ":" .. remote_ip)
@@ -265,6 +291,7 @@ local new = function()
 		fetch_hash_and_size = fetch_static_content,
 		fetch_userdata = fetch_userdata,
 		check_rate_limit = check_rate_limit,
+		check_waf = check_waf,
 		set_session_data = set_session_data,
 		destroy_session = destroy_session,
 		fetch_session_user = fetch_session_user,

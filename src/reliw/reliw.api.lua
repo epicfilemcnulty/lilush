@@ -84,6 +84,14 @@ local get_content = function(host, query, metadata)
 	return store:fetch_content(host, query, metadata)
 end
 
+local check_waf = function(host, query, headers)
+	local store, err = store.new()
+	if err then
+		return nil, err
+	end
+	return store:check_waf(host, query, headers)
+end
+
 local check_rate_limit = function(host, method, query, remote_ip, period)
 	local store, err = store.new()
 	if err then
@@ -98,5 +106,6 @@ local api = {
 	get_content = get_content,
 	get_userdata = get_userdata,
 	check_rate_limit = check_rate_limit,
+	check_waf = check_waf,
 }
 return api
