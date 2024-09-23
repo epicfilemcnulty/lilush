@@ -17,27 +17,6 @@ local premature_error = function(client, status, msg)
 	client:send(resp)
 end
 
-local server_log = function(self, msg, level)
-	local builtin_levels = { debug = 0, access = 10, info = 20, warn = 30, error = 40 }
-	local level = level or 20
-	if type(level) == "string" then
-		level = builtin_levels[level] or 20
-	end
-	if level >= self.__config.log.level then
-		local log_msg_base = { level = level, ts = os.date() }
-		if type(msg) ~= "table" then
-			msg = { msg = msg }
-		end
-		msg = std.tbl.merge(log_msg_base, msg)
-		local log_json = json.encode(msg)
-		print(log_json)
-		-- Not flushing immediately probably would've been
-		-- better for high load, but in that case you'd better disable
-		-- access log entirely.
-		io.flush()
-	end
-end
-
 --[[ 
         This is a very naive implementation of HTTP request parsing.
 
@@ -131,8 +110,14 @@ local server_process_request = function(self, client, count)
 		compress_output = true
 	end
 
-	local content, status, response_headers =
-		self.handle(method, query, args, headers, body, { metrics_host = self.__config.metrics_host })
+	local content, status, response_headers = self.handle(
+		method,
+		query,
+		args,
+		headers,
+		body,
+		{ logger = self.logger, metrics_host = self.__config.metrics_host }
+	)
 	response_headers = response_headers or {}
 	if not response_headers["content-type"] then
 		response_headers["content-type"] = "text/html"
@@ -170,7 +155,7 @@ local server_process_request = function(self, client, count)
 		return nil, "failed to send response: " .. err
 	end
 
-	if self.__config.log.level <= 10 and not host:match("^" .. self.__config.metrics_host) then
+	if self.logger:level() <= 10 and not host:match("^" .. self.__config.metrics_host) then
 		local elapsed_time = os.clock() - start_time
 		local log_msg = {
 			vhost = host,
@@ -180,12 +165,12 @@ local server_process_request = function(self, client, count)
 			size = #content,
 			time = string.format("%.4f", elapsed_time),
 		}
-		for _, h in ipairs(self.__config.log.headers) do
+		for _, h in ipairs(self.__config.log_headers) do
 			if headers[h] then
 				log_msg[h] = headers[h]
 			end
 		end
-		self:log(log_msg, 10)
+		self.logger:log(log_msg, 10)
 	end
 	return response_headers["connection"]
 end
@@ -199,7 +184,7 @@ local server_serve = function(self)
 	server:listen(self.__config.backlog)
 	server:settimeout(0)
 	local ip, port = server:getsockname()
-	self:log({
+	self.logger:log({
 		msg = "Started HTTP server",
 		ip = ip,
 		port = tonumber(port),
@@ -227,7 +212,7 @@ local server_serve = function(self)
 				local pid = 1
 				pid = std.ps.fork()
 				if pid < 0 then
-					self:log("failed to fork for request processing", "error")
+					self.logger:log("failed to fork for request processing", "error")
 				end
 
 				if pid > 0 then
@@ -241,9 +226,9 @@ local server_serve = function(self)
 						local state, err = self:process_request(client, count)
 						if err then
 							if err == "closed" then
-								self:log("client closed connection", "debug")
+								self.logger:log("client closed connection", "debug")
 							else
-								self:log(err, "error")
+								self.logger:log(err, "error")
 							end
 							state = "close"
 						end
@@ -253,7 +238,7 @@ local server_serve = function(self)
 					os.exit(0)
 				end
 			else
-				self:log("fork limit reached", "error")
+				self.logger:log("fork limit reached", "error")
 			end
 		end
 	end
@@ -291,13 +276,10 @@ local server_new = function(ip, port, handle)
 					["application/rss+xml"] = true,
 				},
 			},
-			log = {
-				level = 10, -- "access" level. 0: most verbose, or "debug" level, >= 40: only errors modes.
-				headers = { "referer", "x-real-ip", "user-agent" }, -- request headers to include in the access log.
-			},
+			log_headers = { "referer", "x-real-ip", "user-agent" }, -- request headers to include in the access log.
 		},
 		handle = handle,
-		log = server_log,
+		logger = std.logger.new("access"),
 		process_request = server_process_request,
 		serve = server_serve,
 	}

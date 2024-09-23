@@ -5,9 +5,9 @@ local store = require("reliw.store")
 
      `RLW:API:vhost` is a JSON array of pattern-to-index mappings:
         [
-          [ pattern, idx, is_exact_match ],
+          [ pattern, idx, true ],
           ...
-          [ pattern, idx, is_exact_match ]
+          [ pattern, idx ]
         ]
 
      `RLW:API:vhost:idx` -- an API entry
@@ -15,27 +15,26 @@ local store = require("reliw.store")
      An API entry is a JSON object with the following structure:
 
      {
-       file = "filename.dj", static = false, try_extensions = false,
+       file = "filename.dj", try_extensions = false,
        methods = { GET = true, POST = true },
        title = "Some title",
+       index = "index.dj",
        css_file = "/css/some.css",
        favicon_file = "/images/favicon.svg",
-       hash = sha256_checksum,
-       size = size_in_bytes,
        cache_control = "max-age=1800",
+       auth = { "user1", "user2" },
        rate_limit = { GET = { limit = 5, period = 60 }}
      }
 
-     `file` field is required for dynamic resources, `methods` table is required.
+     `methods` table is the only required field.
+
      `title`, `css_file`, `favicon_file` only make sense for dynamically generated content,
-     i.e. `text/djot` and `application/lua`.
-     `try_extensions` is for static resources -- if there is no file matching the query,
+     i.e. `text/djot`, `text/markdown` and `application/lua`.
+
+     When `try_extensions` is true and no match found for raw query, 
      reliw will try adding `.lua` , `.dj` or `.md` to the query.
 
-     `RLW:TEXT:vhost:filename` -- Hashes for text files (MIME types `text/plain`, `text/html`, `text/djot`, `text/markdown`)
-     `RLW:FILES:vhost:filename` -- Hashes for data files
-        Required fields: `content` and `added`
-        Optional fields: `updated` and `tags`
+     `RLW:FILES:vhost:filename` -- Hashes for data files, fields: content, hash, size, mime, title
      `RLW:DATA:vhost:filename` -- Simple keys for userdata (data without API entries)
 
      `RLW:USERS:vhost` -- Hashes for vhost user, each user is a JSON object:
@@ -49,7 +48,7 @@ local entry_index = function(host, query)
 	end
 	local schema = store:fetch_host_schema(host) or {}
 	for _, path in ipairs(schema) do
-		-- path is an indexed array of 3 elements: pattern, idx, match_type
+		-- path is an indexed array of 2 (optionally 3) elements: pattern, idx, is_exact_match
 		if path[3] then -- exact matching
 			if path[1] == query then
 				return path[2]
@@ -77,20 +76,12 @@ local get_userdata = function(host, file)
 	return store:fetch_userdata(host, file)
 end
 
-local get_content = function(host, file)
+local get_content = function(host, query, metadata)
 	local store, err = store.new()
 	if err then
 		return nil, err
 	end
-	return store:fetch_content(host, file)
-end
-
-local get_static_content = function(host, query, metadata)
-	local store, err = store.new()
-	if err then
-		return nil, err
-	end
-	return store:fetch_static_content(host, query, metadata)
+	return store:fetch_content(host, query, metadata)
 end
 
 local check_rate_limit = function(host, method, query, remote_ip, period)
@@ -105,7 +96,6 @@ local api = {
 	entry_index = entry_index,
 	entry_metadata = entry_metadata,
 	get_content = get_content,
-	get_static_content = get_static_content,
 	get_userdata = get_userdata,
 	check_rate_limit = check_rate_limit,
 }

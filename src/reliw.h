@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#define RELIW_VERSION "0.5.3-30-g2d094e3"
+#define RELIW_VERSION "0.5.4"
 
 static const char START_RELIW[] = "local ws = require('web_server')\n"
                                   "local handle = require('reliw.handle')\n"
@@ -14,10 +14,10 @@ static const char START_RELIW[] = "local ws = require('web_server')\n"
                                   "for header in reliw_log_headers:gmatch('([%w-]+),?') do\n"
                                   "  table.insert(headers_to_log, header)\n"
                                   "end\n"
-                                  "server.__config.log.level = tonumber(os.getenv('RELIW_LOG_LEVEL')) or 10\n"
+                                  "server.logger:set_level(tonumber(os.getenv('RELIW_LOG_LEVEL')) or 10)\n"
                                   "server.__config.metrics_host = os.getenv('RELIW_METRICS_HOST') or "
                                   "'reliw.stats'\n"
-                                  "server.__config.log.headers = headers_to_log\n"
+                                  "server.__config.log_headers = headers_to_log\n"
                                   "server:serve()\n";
 
 typedef struct mod_lua {
@@ -41,6 +41,7 @@ typedef struct mod_lua {
 #include "../build/std/mod_lua_std.conv.h"
 #include "../build/std/mod_lua_std.fs.h"
 #include "../build/std/mod_lua_std.h"
+#include "../build/std/mod_lua_std.logger.h"
 #include "../build/std/mod_lua_std.mime.h"
 #include "../build/std/mod_lua_std.ps.h"
 #include "../build/std/mod_lua_std.tbl.h"
@@ -84,6 +85,7 @@ const mod_lua__t lua_preload[] = {
     {"std.tbl",         mod_lua_std_tbl,         &mod_lua_std_tbl_SIZE        },
     {"std.conv",        mod_lua_std_conv,        &mod_lua_std_conv_SIZE       },
     {"std.mime",        mod_lua_std_mime,        &mod_lua_std_mime_SIZE       },
+    {"std.logger",      mod_lua_std_logger,      &mod_lua_std_logger_SIZE     },
     {"std.utf",         mod_lua_std_utf,         &mod_lua_std_utf_SIZE        },
     {"crypto",          mod_lua_crypto,          &mod_lua_crypto_SIZE         },
     {"djot",            mod_lua_djot,            &mod_lua_djot_SIZE           },

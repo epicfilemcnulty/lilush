@@ -3,8 +3,6 @@ local redis = require("redis")
 local json = require("cjson.safe")
 local crypto = require("crypto")
 
-local text_types = { ["text/html"] = true, ["text/djot"] = true, ["text/plain"] = true, ["text/markdown"] = true }
-
 local fetch_host_schema = function(self, host)
 	local paths, err = self.red:cmd("GET", self.prefix .. ":API:" .. host)
 	self.red:close()
@@ -47,7 +45,7 @@ local fetch_userdata = function(self, host, file)
 	return userdata
 end
 
-local fetch_static_content = function(self, host, query, metadata)
+local fetch_content = function(self, host, query, metadata)
 	local filename = metadata.file
 	if not filename then
 		filename = self.data_dir .. "/" .. host .. query
@@ -71,44 +69,84 @@ local fetch_static_content = function(self, host, query, metadata)
 	else
 		filename = self.data_dir .. "/" .. host .. "/" .. filename
 	end
+	local short_filename = filename:gsub(self.data_dir .. "/" .. host, "")
+	local mime_type = std.mime.type(filename)
+	local count, err = self.red:cmd("HEXISTS", self.prefix .. ":FILES:" .. host .. ":" .. short_filename, "content")
+	if count and count == 1 then
+		local resp, err = self.red:cmd(
+			"HMGET",
+			self.prefix .. ":FILES:" .. host .. ":" .. short_filename,
+			"content",
+			"hash",
+			"size",
+			"mime",
+			"title"
+		)
+		if resp and resp ~= "NULL" then
+			local content = resp[1]
+			if resp[4] == "application/lua" then
+				content = load(resp[1])()
+			end
+			return content, resp[2], resp[3], resp[4], resp[5]
+		end
+		return nil, "something went wrong"
+	end
 	local content = std.fs.read_file(filename)
 	if not content then
+		self.red:close()
 		return nil, filename .. " not found"
 	end
-	if not metadata.title and std.fs.file_exists(self.data_dir .. "/" .. host .. "/.titles.json") then
-		local titles_json = std.fs.read_file(self.data_dir .. "/" .. host .. "/.titles.json")
-		local titles = json.decode(titles_json)
-		metadata.title = titles[filename:gsub(self.data_dir .. "/" .. host .. "/", "")]
+	local title = metadata.title
+	local resp, err = self.red:cmd("HGET", self.prefix .. ":TITLES:" .. host, short_filename)
+	if resp and resp ~= "NULL" then
+		title = resp
 	end
-	metadata.size = #content
-	metadata.hash = crypto.bin_to_hex(crypto.sha256(content))
-	metadata.file = filename
-	if std.mime.type(filename) == "application/lua" then
+	local size = #content
+	local hash = crypto.bin_to_hex(crypto.sha256(content))
+	if size <= self.cache_max_size then
+		self.red:cmd(
+			"HSET",
+			self.prefix .. ":FILES:" .. host .. ":" .. short_filename,
+			"content",
+			content,
+			"hash",
+			hash,
+			"size",
+			size,
+			"mime",
+			mime_type,
+			"title",
+			title
+		)
+		self.red:cmd(
+			"HEXPIRE",
+			self.prefix .. ":FILES:" .. host .. ":" .. short_filename,
+			3600,
+			"NX",
+			"FIELDS",
+			5,
+			"content",
+			"hash",
+			"size",
+			"mime",
+			"title"
+		)
+	end
+	if mime_type == "application/lua" then
 		content = load(content)()
 	end
-	return content
+	self.red:close()
+	return content, hash, size, mime_type, title
 end
 
-local fetch_content = function(self, host, file)
+local fetch_hash_and_size = function(self, host, file)
 	local target = self.prefix .. ":FILES:" .. host .. ":" .. file
-	if text_types[std.mime.type(file)] then
-		target = self.prefix .. ":TEXT:" .. host .. ":" .. file
-	end
-	local resp, err = self.red:cmd("HMGET", target, "content", "added", "tags")
+	local resp, err = self.red:cmd("HMGET", target, "hash", "size")
 	self.red:close()
 	if not resp or resp == "NULL" then
 		return nil, "not found"
 	end
-	local content = resp[1]
-	local ts = resp[2]
-	local tags = ""
-	if resp[3] ~= "NULL" then
-		tags = resp[3]
-	end
-	if std.mime.type(file) == "application/lua" then
-		content = load(resp[1])()
-	end
-	return content, ts, tags
+	return resp[1], resp[2]
 end
 
 local check_rate_limit = function(self, host, method, query, remote_ip, period)
@@ -148,6 +186,7 @@ end
 local fetch_session_user = function(self, host, token)
 	local session_user, err = self.red:cmd("GET", self.prefix .. ":SESSIONS:" .. host .. ":" .. token)
 	if not session_user or session_user == "NULL" then
+		self.red:close()
 		return nil
 	end
 	local user = self.red:cmd("HEXISTS", self.prefix .. ":USERS:" .. host, session_user)
@@ -209,6 +248,7 @@ local new = function()
 	local static_data_dir = os.getenv("RELIW_DATA_DIR") or "/www"
 	local data_prefix = os.getenv("RELIW_REDIS_PREFIX") or "RLW"
 	local redis_url = os.getenv("RELIW_REDIS_URL") or "127.0.0.1:6379/13"
+	local cache_max_size = tonumber(os.getenv("RELIW_CACHE_MAX")) or 5242880 -- 5 megabyte by default
 	local red, err = redis.connect(redis_url)
 	if err then
 		return nil, err
@@ -217,11 +257,12 @@ local new = function()
 		prefix = data_prefix,
 		red = red,
 		data_dir = static_data_dir,
+		cache_max_size = cache_max_size,
 		fetch_host_schema = fetch_host_schema,
 		fetch_userinfo = fetch_userinfo,
 		fetch_entry_metadata = fetch_entry_metadata,
 		fetch_content = fetch_content,
-		fetch_static_content = fetch_static_content,
+		fetch_hash_and_size = fetch_static_content,
 		fetch_userdata = fetch_userdata,
 		check_rate_limit = check_rate_limit,
 		set_session_data = set_session_data,

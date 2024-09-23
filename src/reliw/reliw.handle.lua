@@ -29,6 +29,7 @@ local handle = function(method, query, args, headers, body, ctx)
 
 	local metadata = api.entry_metadata(real_host, index)
 	if not metadata then
+		ctx.logger:log("no metadata found for query " .. query, 0)
 		local hit_count = metrics.update(host, method, query, 500)
 		return tmpls.error_page(500, hit_count, user_tmpl), 500, response_headers
 	end
@@ -86,51 +87,36 @@ local handle = function(method, query, args, headers, body, ctx)
 		end
 	end
 
-	local content, ts, tags
-	-- Since API entries for static locations most of the time
-	-- won't have `filename`, `size` and `hash` fields, we have
-	-- to load the actual file from disk before we can say if it
-	-- matches ETAG in the request,
-	if metadata.static then
-		content = api.get_static_content(host, query, metadata)
-		if not content then
-			local hit_count = metrics.update(host, method, query, 404)
-			return tmpls.error_page(404, hit_count, user_tmpl, err_img["404"]), 404, response_headers
-		end
+	local content, hash, size, mime, title = api.get_content(host, query, metadata)
+	if not content then
+		local hit_count = metrics.update(host, method, query, 404)
+		return tmpls.error_page(404, hit_count, user_tmpl, err_img["404"]), 404, response_headers
 	end
-	local content_type = std.mime.type(metadata.file)
+	local ttl = metadata.cache_control or "max-age=86400"
 
 	local request_etag = headers["if-none-match"] or ""
-	if request_etag == metadata.hash or method == "HEAD" then
+	if request_etag == hash or method == "HEAD" then
 		if method ~= "HEAD" then
 			status = 304
 		end
-		response_headers["content-length"] = metadata.size
-		if content_type ~= "text/djot" then
+		response_headers["content-length"] = size
+		if mime ~= "text/djot" then
 			response_headers["content-type"] = content_type
 		end
-		response_headers["etag"] = metadata.hash
-		response_headers["cache-control"] = metadata.cache_control
+		response_headers["etag"] = hash
+		response_headers["cache-control"] = ttl
 		metrics.update(host, method, query, status)
 		return "", status, response_headers
 	end
 
-	if not metadata.static then
-		content, ts, tags = api.get_content(real_host, metadata.file)
-	end
-	-- Convert comma-separated tags into span-separated =)
-	if tags then
-		tags = tags:gsub("(%w+),?", "<span class='tags'>%1</span>")
-	end
 	local tmpl_vars = {
 		css_file = metadata.css_file or default_css_file,
 		favicon_file = metadata.favicon_file or "/images/favicon.svg",
-		title = metadata.title or "",
-		published = os.date("%A, %d of %B, %Y", tonumber(ts) or os.time()),
-		tags = tags,
+		title = title,
+		published = os.date("%A, %d of %B, %Y", os.time()),
 		class = "page",
 	}
-	if content_type == "application/lua" then
+	if mime == "application/lua" then
 		local r_headers
 		content, status, r_headers = content(method, query, args, headers, body)
 		if not status then
@@ -142,18 +128,18 @@ local handle = function(method, query, args, headers, body, ctx)
 		else
 			content = tmpls.render_page(content, tmpl_vars, user_tmpl)
 		end
-	elseif content_type == "text/djot" or content_type == "text/markdown" then
+	elseif mime == "text/djot" or mime == "text/markdown" then
 		if headers.accept and headers.accept:match("text/djot") then
-			response_headers["content-type"] = content_type
+			response_headers["content-type"] = mime
 		else
 			content = tmpls.render_page(tmpls.djot_to_html(content), tmpl_vars, user_tmpl)
 		end
 	else
-		response_headers["content-type"] = content_type
+		response_headers["content-type"] = mime
 	end
-	if metadata.cache_control then
-		response_headers["etag"] = metadata.hash
-		response_headers["cache-control"] = metadata.cache_control
+	if metadata.cache_control or mime:match("css") or mime:match("image") then
+		response_headers["etag"] = hash
+		response_headers["cache-control"] = ttl
 	end
 	metrics.update(host, method, query, status)
 	return content, status, response_headers

@@ -10,6 +10,7 @@ local tbl = require("std.tbl")
 local txt = require("std.txt")
 local conv = require("std.conv")
 local mime = require("std.mime")
+local logger = require("std.logger")
 
 local function sleep(seconds)
 	core.sleep(seconds)
@@ -130,6 +131,7 @@ local std = {
 	ps = ps,
 	conv = conv,
 	mime = mime,
+	logger = logger,
 	txt = txt,
 	environ = environ,
 	clockticks = core.clockticks,
