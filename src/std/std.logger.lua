@@ -31,7 +31,7 @@ local level = function(self)
 end
 
 local level_str = function(self)
-	local l_str = "custom"
+	local l_str = tostring(self.__config.level)
 	for name, value in pairs(log_levels) do
 		if value == self.__config.level then
 			l_str = name

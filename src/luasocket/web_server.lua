@@ -188,12 +188,11 @@ local server_serve = function(self)
 		msg = "Started HTTP server",
 		ip = ip,
 		port = tonumber(port),
-		config = "backlog="
-			.. self.__config.backlog
-			.. ", fork_limit="
-			.. self.__config.fork_limit
-			.. ", requests_per_fork="
-			.. self.__config.requests_per_fork,
+		backlog = self.__config.backlog,
+		fork_limit = self.__config.fork_limit,
+		requests_per_fork = self.__config.requests_per_fork,
+		log_level = self.logger:level(),
+		log_level_str = self.logger:level_str(),
 	})
 
 	while true do
