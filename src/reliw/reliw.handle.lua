@@ -13,7 +13,7 @@ local handle = function(method, query, args, headers, body, ctx)
 	end
 	local blocked, rule = api.check_waf(host, query, headers)
 	if blocked then
-		ctx.logger:log({ msg = "Blocked by WAF", rule = rule, query = query, vhost = host }, 10)
+		ctx.logger:log({ waf_rule = rule, query = query, vhost = host }, 10)
 		return "Fuck Off", 301, {
 			["Location"] = "http://127.0.0.1/fuck_off",
 			["Content-Type"] = "text/plain",
@@ -22,20 +22,13 @@ local handle = function(method, query, args, headers, body, ctx)
 	local response_headers = { ["content-type"] = "text/html" }
 	local status = 200
 	local default_css_file = "/css/default.css"
-
 	local user_tmpl = api.get_userdata(host, "template.lua")
-	local real_host = host
 	local index = api.entry_index(host, query)
-	if not index then
-		index = api.entry_index("__", query)
-		real_host = "__"
-	end
 	if not index then
 		local hit_count = metrics.update(host, method, query, 404)
 		return tmpls.error_page(404, hit_count, user_tmpl), 404, response_headers
 	end
-
-	local metadata = api.entry_metadata(real_host, index)
+	local metadata = api.entry_metadata(host, index)
 	if not metadata then
 		ctx.logger:log("no metadata found for query " .. query, 0)
 		local hit_count = metrics.update(host, method, query, 500)

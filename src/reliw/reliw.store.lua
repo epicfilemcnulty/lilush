@@ -47,35 +47,33 @@ end
 
 local fetch_content = function(self, host, query, metadata)
 	local filename = metadata.file
+	local prefix = self.data_dir .. "/" .. host
 	if not filename then
-		filename = self.data_dir .. "/" .. host .. query
+		filename = query
 		if query:match("/$") and metadata.index then
 			filename = filename .. metadata.index
 		end
-		if not std.fs.file_exists(filename) then
+		if not std.fs.file_exists(prefix .. filename) then
 			if metadata.try_extensions then
-				if std.fs.file_exists(filename .. ".lua") then
+				if std.fs.file_exists(prefix .. filename .. ".lua") then
 					filename = filename .. ".lua"
-				elseif std.fs.file_exists(filename .. ".dj") then
+				elseif std.fs.file_exists(prefix .. filename .. ".dj") then
 					filename = filename .. ".dj"
-				else
+				elseif std.fs.file_exists(prefix .. filename .. ".md") then
 					filename = filename .. ".md"
 				end
 			elseif metadata.gsub then
 				local remapped_query = query:gsub(metadata.gsub.pattern, metadata.gsub.replacement)
-				filename = self.data_dir .. "/" .. host .. remapped_query
+				filename = remapped_query
 			end
 		end
-	else
-		filename = self.data_dir .. "/" .. host .. "/" .. filename
 	end
-	local short_filename = filename:gsub(self.data_dir .. "/" .. host, "")
 	local mime_type = std.mime.type(filename)
-	local count, err = self.red:cmd("HEXISTS", self.prefix .. ":FILES:" .. host .. ":" .. short_filename, "content")
+	local count, err = self.red:cmd("HEXISTS", self.prefix .. ":FILES:" .. host .. ":" .. filename, "content")
 	if count and count == 1 then
 		local resp, err = self.red:cmd(
 			"HMGET",
-			self.prefix .. ":FILES:" .. host .. ":" .. short_filename,
+			self.prefix .. ":FILES:" .. host .. ":" .. filename,
 			"content",
 			"hash",
 			"size",
@@ -91,13 +89,13 @@ local fetch_content = function(self, host, query, metadata)
 		end
 		return nil, "something went wrong"
 	end
-	local content = std.fs.read_file(filename)
+	local content = std.fs.read_file(prefix .. filename) or std.fs.read_file(self.data_dir .. "/__" .. filename)
 	if not content then
 		self.red:close()
 		return nil, filename .. " not found"
 	end
 	local title = metadata.title or ""
-	local resp, err = self.red:cmd("HGET", self.prefix .. ":TITLES:" .. host, short_filename)
+	local resp, err = self.red:cmd("HGET", self.prefix .. ":TITLES:" .. host, filename)
 	if resp and resp ~= "NULL" then
 		title = resp
 	end
@@ -106,7 +104,7 @@ local fetch_content = function(self, host, query, metadata)
 	if size <= self.cache_max_size then
 		self.red:cmd(
 			"HSET",
-			self.prefix .. ":FILES:" .. host .. ":" .. short_filename,
+			self.prefix .. ":FILES:" .. host .. ":" .. filename,
 			"content",
 			content,
 			"hash",
@@ -120,7 +118,7 @@ local fetch_content = function(self, host, query, metadata)
 		)
 		self.red:cmd(
 			"HEXPIRE",
-			self.prefix .. ":FILES:" .. host .. ":" .. short_filename,
+			self.prefix .. ":FILES:" .. host .. ":" .. filename,
 			3600,
 			"NX",
 			"FIELDS",
