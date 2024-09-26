@@ -147,19 +147,11 @@ local fetch_hash_and_size = function(self, host, file)
 	return resp[1], resp[2]
 end
 
-local log_waf_ip = function(self, ip)
-	if ip then
-		self.red:cmd("HINCRBY", self.prefix .. ":WAF:IPs", ip, 1)
-		self.red:cmd("HEXPIRE", self.prefix .. ":WAF:IPs", 1800, "FIELDS", 1, ip)
-		self.red:close()
-	end
-end
-
 local check_waf = function(self, host, query, headers)
 	local global = self.red:cmd("HGET", self.prefix .. ":WAF", "__")
 	local per_host = self.red:cmd("HGET", self.prefix .. ":WAF", host)
+	self.red:close()
 	if (not global or global == "NULL") and (not per_host or per_host == "NULL") then
-		self.red:close()
 		return nil
 	end
 	local global_rules = json.decode(global)
@@ -168,7 +160,6 @@ local check_waf = function(self, host, query, headers)
 		if global_rules.query then
 			for _, rule in ipairs(global_rules.query) do
 				if query:match(rule) then
-					self:log_waf_ip(headers["x-forwarded-for"])
 					return true, rule
 				end
 			end
@@ -177,7 +168,6 @@ local check_waf = function(self, host, query, headers)
 			for header, rules in pairs(global_rules.headers) do
 				for _, rule in ipairs(rules) do
 					if headers[header] and headers[header]:match(rule) then
-						self:log_waf_ip(headers["x-forwarded-for"])
 						return true, rule
 					end
 				end
@@ -188,7 +178,6 @@ local check_waf = function(self, host, query, headers)
 		if per_host_rules.query then
 			for _, rule in ipairs(per_host_rules.query) do
 				if query:match(rule) then
-					self:log_waf_ip(headers["x-forwarded-for"])
 					return true, rule
 				end
 			end
@@ -197,7 +186,6 @@ local check_waf = function(self, host, query, headers)
 			for header, rules in pairs(per_host_rules.headers) do
 				for _, rule in ipairs(rules) do
 					if headers[header] and headers[header]:match(rule) then
-						self:log_waf_ip(headers["x-forwarded-for"])
 						return true, rule
 					end
 				end
@@ -324,7 +312,6 @@ local new = function()
 		fetch_userdata = fetch_userdata,
 		check_rate_limit = check_rate_limit,
 		check_waf = check_waf,
-		log_waf_ip = log_waf_ip,
 		set_session_data = set_session_data,
 		destroy_session = destroy_session,
 		fetch_session_user = fetch_session_user,

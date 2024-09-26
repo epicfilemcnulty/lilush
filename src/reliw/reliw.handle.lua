@@ -13,7 +13,10 @@ local handle = function(method, query, args, headers, body, ctx)
 	end
 	local blocked, rule = api.check_waf(host, query, headers)
 	if blocked then
-		ctx.logger:log({ waf_rule = rule, query = query, vhost = host }, 10)
+		ctx.logger:log(
+			{ msg = "blocked by WAF", waf_rule = rule, query = query, vhost = host, ip = headers["x-forwarded-for"] },
+			30
+		)
 		return "Fuck Off", 301, {
 			["Location"] = "http://127.0.0.1/fuck_off",
 			["Content-Type"] = "text/plain",
