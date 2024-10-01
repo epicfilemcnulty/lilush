@@ -554,7 +554,7 @@ local promote_completion = function(self)
 			self.completion:flush()
 			self:end_of_line()
 			if metadata.exec_on_prom then
-				return "execute"
+				return self:execute()
 			end
 		end
 	end
@@ -578,6 +578,7 @@ local input_obj_execute = function(self)
 		end
 		return self:display(true)
 	end
+	io.read("*a")
 	return "execute"
 end
 

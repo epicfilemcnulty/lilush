@@ -71,12 +71,10 @@ local run = function(self)
 		local event, combo = self.__mode[self.__chosen_mode].input:event()
 		if event then
 			if event == "execute" then
-				term.write("\r\n")
 				-- Let's eat up whatever might be left in the input buffer first:
 				io.read("*a")
-				if self.__chosen_mode == "shell" then
-					term.set_sane_mode()
-				end
+				term.write("\r\n")
+				term.set_sane_mode()
 				local cwd = std.fs.cwd()
 				std.ps.setenv("LILUSH_EXEC_CWD", cwd)
 				std.ps.setenv("LILUSH_EXEC_START", os.time())
@@ -88,10 +86,10 @@ local run = function(self)
 				std.ps.setenv("LILUSH_EXEC_STATUS", tostring(status))
 				io.flush()
 				self.__mode[self.__chosen_mode].input:flush()
-				if self.__chosen_mode == "shell" then
-					term.set_raw_mode(true)
-				end
+				term.set_raw_mode()
+				io.read("*a")
 				local l, c = term.cursor_position()
+				term.enable_kkbp()
 				self.__mode[self.__chosen_mode].input.__config.l = l
 				self.__mode[self.__chosen_mode].input.__config.c = 1
 				self.__mode[self.__chosen_mode].input:display(true)
