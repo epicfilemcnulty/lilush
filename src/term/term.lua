@@ -237,6 +237,7 @@ end
 
 local disable_kkbp = function()
 	write("\027[<u")
+	io.flush()
 end
 
 local set_sane_mode = function()

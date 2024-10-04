@@ -8,7 +8,7 @@ local std = require("std")
 local socket = require("socket")
 
 local config_from_string = function(url)
-    local url = url or "127.0.0.1:6379/0"
+	local url = url or "127.0.0.1:6379/0"
 	return {
 		host = url:match("^[^:]+"),
 		port = tonumber(url:match("^[^:]+:(%d+)")) or 6379,
@@ -95,6 +95,9 @@ local read_response = function(client)
 	local resp, err = read_simple_type(client)
 	if err then
 		return nil, err
+	end
+	if resp.value == "NULL" then
+		return nil, "not found"
 	end
 	if resp.type == "arr" and resp.size > 0 then
 		resp.value, err = read_array(client, resp.size)

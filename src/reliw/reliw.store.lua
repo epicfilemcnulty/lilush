@@ -6,7 +6,7 @@ local crypto = require("crypto")
 local fetch_host_schema = function(self, host)
 	local paths, err = self.red:cmd("GET", self.prefix .. ":API:" .. host)
 	self.red:close()
-	if not paths or paths == "NULL" then
+	if err then
 		return nil, "API schema not found"
 	end
 	return json.decode(paths)
@@ -15,28 +15,28 @@ end
 local fetch_entry_metadata = function(self, host, entry_id)
 	local metadata, err = self.red:cmd("GET", self.prefix .. ":API:" .. host .. ":" .. entry_id)
 	self.red:close()
-	if not metadata or metadata == "NULL" then
-		return nil, "metadata not found"
+	if err then
+		return nil, "metadata: " .. err
 	end
 	return json.decode(metadata)
 end
 
 local fetch_userinfo = function(self, host, user)
-	local user_info = self.red:cmd("HGET", self.prefix .. ":USERS:" .. host, user)
+	local user_info, err = self.red:cmd("HGET", self.prefix .. ":USERS:" .. host, user)
 	self.red:close()
-	if not user_info or user_info == "NULL" then
-		return nil, "not found"
+	if err then
+		return nil, err
 	end
 	return json.decode(user_info)
 end
 
 local fetch_userdata = function(self, host, file)
 	local userdata, err = self.red:cmd("GET", self.prefix .. ":DATA:" .. host .. ":" .. file)
-	if not userdata or userdata == "NULL" then
+	if err then
 		userdata, err = self.red:cmd("GET", self.prefix .. ":DATA:__:" .. file)
 	end
 	self.red:close()
-	if not userdata or userdata == "NULL" then
+	if not userdata then
 		return nil, "userdata not found"
 	end
 	if std.mime.type(file) == "application/lua" then
@@ -80,7 +80,7 @@ local fetch_content = function(self, host, query, metadata)
 			"mime",
 			"title"
 		)
-		if resp and resp ~= "NULL" then
+		if resp then
 			local content = resp[1]
 			if resp[4] == "application/lua" then
 				content = load(resp[1])()
@@ -96,7 +96,7 @@ local fetch_content = function(self, host, query, metadata)
 	end
 	local title = metadata.title or ""
 	local resp, err = self.red:cmd("HGET", self.prefix .. ":TITLES:" .. host, filename)
-	if resp and resp ~= "NULL" then
+	if resp then
 		title = resp
 	end
 	local size = #content
@@ -141,7 +141,7 @@ local fetch_hash_and_size = function(self, host, file)
 	local target = self.prefix .. ":FILES:" .. host .. ":" .. file
 	local resp, err = self.red:cmd("HMGET", target, "hash", "size")
 	self.red:close()
-	if not resp or resp == "NULL" then
+	if err then
 		return nil, "not found"
 	end
 	return resp[1], resp[2]
@@ -151,7 +151,7 @@ local check_waf = function(self, host, query, headers)
 	local global = self.red:cmd("HGET", self.prefix .. ":WAF", "__")
 	local per_host = self.red:cmd("HGET", self.prefix .. ":WAF", host)
 	self.red:close()
-	if (not global or global == "NULL") and (not per_host or per_host == "NULL") then
+	if not global and not per_host then
 		return nil
 	end
 	local global_rules = json.decode(global)
@@ -198,7 +198,7 @@ end
 local check_rate_limit = function(self, host, method, query, remote_ip, period)
 	local count =
 		self.red:cmd("INCR", self.prefix .. ":LIMITS:" .. host .. ":" .. method .. ":" .. query .. ":" .. remote_ip)
-	if not count or count == "NULL" then
+	if not count then
 		self.red:close()
 		return nil
 	end
@@ -231,7 +231,7 @@ end
 
 local fetch_session_user = function(self, host, token)
 	local session_user, err = self.red:cmd("GET", self.prefix .. ":SESSIONS:" .. host .. ":" .. token)
-	if not session_user or session_user == "NULL" then
+	if err then
 		self.red:close()
 		return nil
 	end

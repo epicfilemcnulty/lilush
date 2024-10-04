@@ -35,9 +35,8 @@ local get_key = function(self, key, decode_json)
 		if err and self.policy == "break" then
 			return nil, "can't get the key from redis: " .. tostring(err)
 		end
-		if content == "NULL" then
-			err = "key does not exist"
-			content = nil
+		if err then
+			return nil, err
 		end
 		if decode_json then
 			content, err = json.decode(content)
@@ -103,9 +102,8 @@ local get_hash_key = function(self, hash, key, decode_json)
 		if err and self.policy == "break" then
 			return nil, "can't get the key from redis: " .. tostring(err)
 		end
-		if content == "NULL" then
-			content = nil
-			err = "key does not exist"
+		if err then
+			return nil, err
 		end
 		if decode_json then
 			content, err = json.decode(content)
