@@ -2,6 +2,7 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
 local term = require("term")
+local style = require("term.tss")
 local buffer = require("string.buffer")
 local socket = require("socket")
 
@@ -263,7 +264,11 @@ local input_obj_display = function(self, redraw_prompt)
 	if self.__config.escape_newlines then
 		display_part = display_part:gsub("\n", "␊")
 	end
-	term.write(display_part)
+	if self.__config.tss then
+		term.write(self.__config.tss:apply("input", display_part))
+	else
+		term.write(display_part)
+	end
 	if self.cursor > max - prompt_len then
 		self.cursor = max - prompt_len
 	end
@@ -455,7 +460,11 @@ local input_obj_add = function(self, key)
 					compl = self.completion:get()
 				end
 			end
-			term.write(key .. compl)
+			if self.__config.tss then
+				term.write(self.__config.tss:apply("input", key) .. compl)
+			else
+				term.write(key .. compl)
+			end
 			if #compl > 0 then
 				term.go(self.__config.l, self.__config.c + self.cursor + prompt_len)
 			end
@@ -684,6 +693,11 @@ local new_input_obj = function(config)
 		width = win_c - 1,
 	}
 	local config = std.tbl.merge(default_config, config)
+	if config.rss then
+		local tss = style.new(config.rss)
+		config.tss = tss
+		config.rss = nil
+	end
 	local input_obj = {
 		-- DATA
 		__window = { h = win_l, w = win_c },

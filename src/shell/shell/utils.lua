@@ -387,7 +387,9 @@ local pager_display_status_line = function(self)
 
 	local bottom_status = tss:apply("status_line.position", position)
 		.. tss:apply("status_line.render_mode", self.__config.render_mode)
-		.. tss:apply("status_line.search.pattern", self.__search.pattern)
+	if self.__search.pattern ~= "" then
+		bottom_status = bottom_status .. tss:apply("status_line.search.pattern", self.__search.pattern)
+	end
 	local y, x = term.window_size()
 	term.go(1, 1)
 	term.clear_line()
@@ -541,7 +543,12 @@ end
 local pager_search = function(self, combo)
 	local pattern = ""
 	if combo == "/" then
-		local buf = input.new({ history = self.__search.history, l = self.__window.y, c = 9 })
+		local buf = input.new({
+			history = self.__search.history,
+			l = self.__window.y,
+			c = 9,
+			rss = theme.builtins.pager.status_line.search,
+		})
 		term.go(self.__window.y, 1)
 		local tss = style.new(theme.builtins.pager)
 		term.write(tss:apply("status_line.search", "SEARCH: "))
@@ -549,6 +556,7 @@ local pager_search = function(self, combo)
 		repeat
 			local event, combo = buf:event()
 		until event == "execute" or event == "exit"
+		term.set_style("reset")
 		pattern = buf:render()
 		if pattern == "" then
 			self.__search.idx = 0
