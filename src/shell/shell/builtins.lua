@@ -1428,8 +1428,12 @@ local zx = function(cmd, args)
 	local snippets = store:list_hash_keys("snippets") or {}
 	for _, snippet in ipairs(snippets) do
 		if snippet:match(table.concat(args.pattern, ".-")) then
-			local script = store:get_hash_key("snippets", snippet) or {}
+			local script = store:get_hash_key("snippets", snippet)
 			store:close(true)
+			if not script then
+				errmsg("no script")
+				return 33
+			end
 			local txt = "# Running snippet\n\n```" .. snippet .. "\n" .. script .. "\n```\n"
 			term.write("\n" .. text.render_djot(txt, theme.renderer.kat) .. "\n")
 			local script_lines = std.txt.lines(script)

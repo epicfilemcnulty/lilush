@@ -41,15 +41,15 @@ local renderer_default = {
 	},
 	kat = {
 		hide_links = true,
-		verbatim = { fg = 73, s = "bold" },
-		header = { fg = { 189, 147, 249 }, s = "bold", level = { fg = 181, content = "⁜" } },
+		verbatim = { fg = { 130, 160, 130 }, s = "bold" },
+		header = { fg = { 177, 140, 169 }, s = "bold", level = { fg = 181, content = "⁜" } },
 		codeblock = {
+			indent = 1,
 			fg = { 150, 180, 150 },
-			bg = { 38, 62, 38 },
 			lang = { bg = { 38, 64, 38 }, fg = { 105, 137, 105 } },
 		},
-		emph = { fg = { 241, 250, 140 } },
-		strong = { fg = { 237, 190, 113 } },
+		emph = { fg = { 237, 210, 121 } },
+		strong = { fg = { 237, 210, 121 } },
 		link = {
 			title = { fg = { 177, 140, 169 } },
 			url = { fg = { 129, 161, 193 }, w = 0.2 },
@@ -167,7 +167,7 @@ local builtins_default = {
 		},
 	},
 	pager = {
-		line_num = { fg = 60, selected = { fg = 44, bg = 66, s = "bold,italic" } },
+		line_num = { fg = 60, selected = { s = "bold,inverted" } },
 		search_match = { fg = { 38, 62, 38 }, bg = 66, s = "italic,bold" },
 		status_line = {
 			bg = 66,
