@@ -1,7 +1,7 @@
 -- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
-local storage = require("storage")
+local storage = require("shell.store")
 
 local widgets_default = {
 	aws = {
@@ -265,25 +265,15 @@ local completion_default = {
 }
 
 local load_user_theme = function()
-	local data_store = storage.new()
-	local widgets = data_store:get_hash_key("theme", "widgets.json", true) or {}
+	local store = storage.new()
+	local widgets, renderer, builtins, prompts, modes, completion = store:load_theme()
 	std.tbl.merge(widgets_default, widgets)
-
-	local renderer = data_store:get_hash_key("theme", "renderer.json", true) or {}
 	std.tbl.merge(renderer_default, renderer)
-
-	local builtins = data_store:get_hash_key("theme", "builtins.json", true) or {}
 	std.tbl.merge(builtins_default, builtins)
-
-	local prompts = data_store:get_hash_key("theme", "prompts.json", true) or {}
 	std.tbl.merge(prompts_default, prompts)
-
-	local modes = data_store:get_hash_key("theme", "modes.json", true) or {}
 	std.tbl.merge(modes_default, modes)
-
-	local completion = data_store:get_hash_key("theme", "completion.json", true) or {}
 	std.tbl.merge(completion_default, completion)
-	data_store:close(true)
+	store:close(true)
 	local theme = {
 		widgets = widgets_default,
 		renderer = renderer_default,

@@ -4,7 +4,7 @@
 local std = require("std")
 local core = require("std.core")
 local json = require("cjson.safe")
-local storage = require("storage")
+local storage = require("shell.store")
 local text = require("text")
 local term = require("term")
 local theme = require("shell.theme")
@@ -20,7 +20,7 @@ local zx_complete = function(args)
 		pattern = pattern .. arg .. ".-"
 	end
 	local store = storage.new()
-	local snippets = store:list_hash_keys("snippets") or {}
+	local snippets = store:list_snippets()
 	store:close(true)
 	for _, snippet in ipairs(snippets) do
 		if snippet:match(pattern) then

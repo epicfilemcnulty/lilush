@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
-local json = require("cjson.safe")
 
 local history_add = function(self, entry)
 	if #entry > 0 and not entry:match("^ ") and not entry:match("^%.%.+") then
@@ -16,7 +15,7 @@ local history_add = function(self, entry)
 		local payload = { cmd = entry, ts = start_ts, d = duration, cwd = cwd, exit = status }
 		table.insert(self.entries, payload)
 		if self.store then
-			self.store:add_set_member("history/" .. self.mode, payload, payload.ts, true)
+			self.store:save_history_entry(self.mode, payload)
 		end
 		self.position = 0
 		return true
@@ -78,18 +77,12 @@ end
 
 local load_history = function(self)
 	if self.store then
-		local res, err = self.store:get_set_range("history/" .. self.mode, 0, -1)
+		local entries, err = self.store:load_history(self.mode)
 		if err then
 			return nil, "can't get history: " .. tostring(err)
 		end
-		local history = {}
-		for i, v in ipairs(res) do
-			local entry = json.decode(v)
-			if entry then
-				history[i] = entry
-			end
-		end
-		self.entries = history
+		self.entries = entries
+		self.store:close()
 	end
 end
 

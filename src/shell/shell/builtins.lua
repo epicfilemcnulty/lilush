@@ -1401,7 +1401,7 @@ local files_matching = function(cmd, args)
 	return 0
 end
 
-local storage = require("storage")
+local storage = require("shell.store")
 
 local zx_help = [[
 : zx
@@ -1425,10 +1425,10 @@ local zx = function(cmd, args)
 		arg = std.escape_magic_chars(arg)
 	end
 	local store = storage.new()
-	local snippets = store:list_hash_keys("snippets") or {}
+	local snippets = store:list_snippets()
 	for _, snippet in ipairs(snippets) do
 		if snippet:match(table.concat(args.pattern, ".-")) then
-			local script = store:get_hash_key("snippets", snippet)
+			local script = store:get_snippet(snippet)
 			store:close(true)
 			if not script then
 				errmsg("no script")

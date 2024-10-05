@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
 local text = require("text")
-local storage = require("storage")
+local storage = require("shell.store")
 local term = require("term")
 local input = require("term.input")
 local history = require("term.input.history")
