@@ -553,10 +553,9 @@ local pager_search = function(self, combo)
 		local tss = style.new(theme.builtins.pager)
 		term.write(tss:apply("status_line.search", "SEARCH: "))
 		buf:display()
-		repeat
-			local event, combo = buf:event()
-		until event == "execute" or event == "exit"
-		term.set_style("reset")
+		term.show_cursor()
+		event = buf:run()
+		term.hide_cursor()
 		pattern = buf:render()
 		if pattern == "" then
 			self.__search.idx = 0

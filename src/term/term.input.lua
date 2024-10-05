@@ -684,6 +684,21 @@ local input_obj_resize = function(self)
 	return false
 end
 
+local input_obj_run = function(self, exit_events)
+	local exit_events = exit_events or { execute = true, exit = true }
+	local event, combo
+	repeat
+		if term.resized() then
+			if self:resize() then
+				term.clear_line(2)
+				self:display(true)
+			end
+		end
+		event, combo = self:event()
+	until exit_events[event]
+	return event, combo
+end
+
 local new_input_obj = function(config)
 	local win_l, win_c = term.window_size()
 	local default_config = {
@@ -732,6 +747,7 @@ local new_input_obj = function(config)
 		previous_space = input_obj_previous_space,
 		next_space = input_obj_next_space,
 		execute = input_obj_execute,
+		run = input_obj_run,
 		clear = input_obj_clear,
 		max_width = input_obj_max_width,
 		prompt_len = input_obj_prompt_len,

@@ -177,7 +177,7 @@ local builtins_default = {
 			size = { after = " ※ " },
 			position = { fg = { 30, 54, 30 } },
 			search = {
-				input = { bg = 22, fg = 36 },
+				input = { bg = 66, fg = { 38, 62, 38 }, s = "bold,inverted" },
 				pattern = { before = "/", s = "bold" },
 			},
 			render_mode = { after = " ※ ", before = " ※ " },

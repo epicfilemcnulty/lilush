@@ -62,13 +62,7 @@ local run = function(self)
 	term.clear()
 	self.__mode[self.__chosen_mode].input:display(true)
 	while true do
-		if term.resized() then
-			if self.__mode[self.__chosen_mode].input:resize() then
-				term.clear_line(2)
-				self.__mode[self.__chosen_mode].input:display(true)
-			end
-		end
-		local event, combo = self.__mode[self.__chosen_mode].input:event()
+		local event, combo = self.__mode[self.__chosen_mode].input:run({ execute = true, exit = false, combo = true })
 		if event then
 			if event == "execute" then
 				-- Let's eat up whatever might be left in the input buffer first:
