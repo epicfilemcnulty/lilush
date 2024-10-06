@@ -13,6 +13,17 @@ local init_redis_store = function(redis_url)
 	return red
 end
 
+local get_file = function(self, filename)
+	local filename = filename or ""
+	return std.fs.read_file(self.storage_dir .. "/" .. filename)
+end
+
+local get_json_file = function(self, filename)
+	local filename = filename or ""
+	local content_json, err = std.fs.read_file(self.storage_dir .. "/" .. filename)
+	return json.decode(content_json)
+end
+
 local save_history_entry = function(self, mode, payload)
 	local mode = mode or "general"
 	local encoded, err = json.encode(payload)
@@ -47,22 +58,6 @@ local load_history = function(self, mode, lines)
 	return entries
 end
 
-local load_theme = function(self)
-	local widgets_file = std.fs.read_file(self.storage_dir .. "/theme/widgets.json")
-	local widgets = json.decode(widgets_file) or {}
-	local renderer_file = std.fs.read_file(self.storage_dir .. "/theme/renderer.json")
-	local renderer = json.decode(renderer_file) or {}
-	local prompts_file = std.fs.read_file(self.storage_dir .. "/theme/prompts.json")
-	local prompts = json.decode(prompts_file) or {}
-	local builtins_file = std.fs.read_file(self.storage_dir .. "/theme/builtins.json")
-	local builtins = json.decode(builtins_file) or {}
-	local modes_file = std.fs.read_file(self.storage_dir .. "/theme/modes.json")
-	local modes = json.decode(modes_file) or {}
-	local completion_file = std.fs.read_file(self.storage_dir .. "/theme/completion.json")
-	local completion = json.decode(completion_file) or {}
-	return widgets, renderer, builtins, prompts, modes, completion
-end
-
 local list_snippets = function(self)
 	local files = std.fs.list_dir(self.storage_dir .. "/snippets")
 	local snippets = {}
@@ -79,17 +74,6 @@ end
 local get_snippet = function(self, snippet)
 	local snippet = snippet or ""
 	return std.fs.read_file(self.storage_dir .. "/snippets/" .. snippet)
-end
-
-local get_file = function(self, filename)
-	local filename = filename or ""
-	return std.fs.read_file(self.storage_dir .. "/" .. filename)
-end
-
-local get_json_file = function(self, filename)
-	local filename = filename or ""
-	local content_json, err = std.fs.read_file(self.storage_dir .. "/" .. filename)
-	return json.decode(content_json)
 end
 
 local add_llm_cost = function(self) end
@@ -135,8 +119,15 @@ local new = function(options)
 	std.tbl.merge(default_options, options)
 
 	local red, err = init_redis_store(default_options.redis_url)
-	if not red then
-		return nil, "failed to init redis store: " .. err
+	if err then
+		red = {
+			cmd = function(self)
+				return nil, err
+			end,
+			close = function(self)
+				return true
+			end,
+		}
 	end
 	local obj = {
 		redis = red,
@@ -145,7 +136,6 @@ local new = function(options)
 		storage_dir = storage_dir,
 		save_history_entry = save_history_entry,
 		load_history = load_history,
-		load_theme = load_theme,
 		list_snippets = list_snippets,
 		get_snippet = get_snippet,
 		get_json_file = get_json_file,

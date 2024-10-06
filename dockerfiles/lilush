@@ -25,6 +25,7 @@ COPY --from=builder /usr/bin/dumb-init /usr/bin/dumb-init
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 USER user
+ENV LILUSH_PROMT user,dir
 ENV PATH=/usr/bin:/usr/sbin:/usr/local/bin
 ENV HOME=/home/user USER=user
 WORKDIR /home/user

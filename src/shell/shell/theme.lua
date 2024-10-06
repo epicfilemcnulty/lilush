@@ -252,13 +252,30 @@ local completion_default = {
 
 local load_user_theme = function()
 	local store = storage.new()
-	local widgets, renderer, builtins, prompts, modes, completion = store:load_theme()
-	std.tbl.merge(widgets_default, widgets)
-	std.tbl.merge(renderer_default, renderer)
-	std.tbl.merge(builtins_default, builtins)
-	std.tbl.merge(prompts_default, prompts)
-	std.tbl.merge(modes_default, modes)
-	std.tbl.merge(completion_default, completion)
+	local widgets = store:get_json_file("theme/widgets.json")
+	if widgets then
+		std.tbl.merge(widgets_default, widgets)
+    end
+    local renderer = store:get_json_file("theme/renderer.json")
+    if renderer then
+		std.tbl.merge(renderer_default, renderer)
+    end
+    local builtins = store:get_json_file("theme/builtins.json")
+    if builtins then
+		std.tbl.merge(builtins_default, builtins)
+    end
+    local prompts = store:get_json_file("theme/prompts.json")
+    if prompts then
+		std.tbl.merge(prompts_default, prompts)
+    end
+    local modes = store:get_json_file("theme/modes.json")
+    if modes then
+		std.tbl.merge(modes_default, modes)
+    end
+    local completion = store:get_json_file("theme/completion.json")
+    if completion then
+		std.tbl.merge(completion_default, completion)
+	end
 	store:close(true)
 	local theme = {
 		widgets = widgets_default,
