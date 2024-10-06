@@ -48,8 +48,8 @@ local renderer_default = {
 			fg = { 150, 180, 150 },
 			lang = { bg = { 38, 64, 38 }, fg = { 105, 137, 105 } },
 		},
-		emph = { fg = { 237, 210, 121 } },
-		strong = { fg = { 237, 210, 121 } },
+		emph = { fg = 180 },
+		strong = { fg = 180 },
 		link = {
 			title = { fg = { 177, 140, 169 } },
 			url = { fg = { 129, 161, 193 }, w = 0.2 },

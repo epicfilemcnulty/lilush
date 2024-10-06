@@ -230,7 +230,9 @@ local run = function(self)
 		if cmd == "kat" then
 			extra = self.conf.renderer
 		end
-		return utils.run_pipeline(pipeline, nil, builtins, extra)
+		term.set_sane_mode()
+		local status, err = utils.run_pipeline(pipeline, nil, builtins, extra)
+		return status, err
 	end
 end
 

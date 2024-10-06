@@ -68,7 +68,6 @@ local run = function(self)
 				-- Let's eat up whatever might be left in the input buffer first:
 				io.read("*a")
 				term.write("\r\n")
-				term.set_sane_mode()
 				local cwd = std.fs.cwd()
 				std.ps.setenv("LILUSH_EXEC_CWD", cwd)
 				std.ps.setenv("LILUSH_EXEC_START", os.time())
@@ -76,14 +75,15 @@ local run = function(self)
 				if status ~= 0 then
 					show_error_msg(status, err)
 				end
+				if self.__chosen_mode == "shell" then
+				    term.set_raw_mode(true)
+				end
 				std.ps.setenv("LILUSH_EXEC_END", os.time())
 				std.ps.setenv("LILUSH_EXEC_STATUS", tostring(status))
 				io.flush()
 				self.__mode[self.__chosen_mode].input:flush()
-				term.set_raw_mode()
 				io.read("*a")
 				local l, c = term.cursor_position()
-				term.enable_kkbp()
 				self.__mode[self.__chosen_mode].input.__config.l = l
 				self.__mode[self.__chosen_mode].input.__config.c = 1
 				self.__mode[self.__chosen_mode].input:display(true)
@@ -138,29 +138,22 @@ local new = function()
 			end
 		end
 	end
-	local shell_config_json = std.fs.read_file(home .. "/.config/lilush/config.json")
-	local shell_config = json.decode(shell_config_json)
-		or {
-			chosen_mode = "shell",
-			modes = {
-				shell = {
-					shortcut = "F1",
-					path = "shell.mode.shell",
-					history = true,
-					prompt = "shell.mode.shell.prompt",
-					completion = {
-						path = "shell.completion.shell",
-						sources = {
-							"shell.completion.source.bin",
-							"shell.completion.source.builtins",
-							"shell.completion.source.cmds",
-							"shell.completion.source.env",
-							"shell.completion.source.fs",
-						},
-					},
-				},
+	local shell_mode_config = {
+		shortcut = "F1",
+		path = "shell.mode.shell",
+		history = true,
+		prompt = "shell.mode.shell.prompt",
+		completion = {
+			path = "shell.completion.shell",
+			sources = {
+				"shell.completion.source.bin",
+				"shell.completion.source.builtins",
+				"shell.completion.source.cmds",
+				"shell.completion.source.env",
+				"shell.completion.source.fs",
 			},
-		}
+		},
+	}
 	local history_store = storage.new()
 	local shell = {
 		__mode = {},
@@ -169,10 +162,24 @@ local new = function()
 			["CTRL+d"] = exit_combo,
 			["CTRL+l"] = clear_combo,
 		},
-		__chosen_mode = shell_config.chosen_mode,
+		__chosen_mode = "shell",
 		run = run,
 	}
-	for name, m in pairs(shell_config.modes) do
+	local modes = std.fs.list_files(home .. "/.config/lilush/modes", "json") or {}
+	if not modes["shell.json"] then
+		modes["shell.json"] = true
+	end
+	for mode_file, _ in pairs(modes) do
+		local mode_json = std.fs.read_file(home .. "/.config/lilush/modes/" .. mode_file)
+		local name = mode_file:match("^(.+)%.json$")
+		local m = json.decode(mode_json)
+		if name == "shell" and not m then
+			m = shell_mode_config
+		end
+		if not m then
+			show_error_msg(29, "failed to decode mode config")
+			os.exit(29)
+		end
 		local mod, pt, cmpl, hst
 		if not std.module_available(m.path) then
 			show_error_msg(29, "no such module: " .. m.path)
