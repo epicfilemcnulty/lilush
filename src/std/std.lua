@@ -50,7 +50,7 @@ local function envsubst(filename)
 end
 
 local escape_magic_chars = function(str)
-	return str:gsub("[+*%%%.%$[%]%(%)-]", "%%%1") -- escape all possible magic characters that are used in Lua string patterns
+	return str:gsub("[+*%%%.%$[%]%?%(%)-]", "%%%1") -- escape all possible magic characters that are used in Lua string patterns
 end
 
 local function salt(length)

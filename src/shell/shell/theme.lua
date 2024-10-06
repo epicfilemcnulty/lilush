@@ -70,20 +70,6 @@ local renderer_default = {
 			fn = { fg = 175 },
 			file = { fg = 152 },
 			dir = { fg = 153 },
-			link = { lcl = { s = "not_underlined" } },
-			user = { indent = 2, s = "italic" },
-			assistant = { indent = 6 },
-		},
-	},
-	llm_sys_prompt = {
-		global_indent = 0,
-		codeblock = {
-			align = "center",
-			padding = 2,
-			s = "dim",
-			bg = { 33, 0, 33 },
-			fg = 175,
-			lang = { fg = 183, bg = { 44, 10, 44 } },
 		},
 	},
 }
