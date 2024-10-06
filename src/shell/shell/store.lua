@@ -81,6 +81,36 @@ local get_snippet = function(self, snippet)
 	return std.fs.read_file(self.storage_dir .. "/snippets/" .. snippet)
 end
 
+local get_file = function(self, filename)
+	local filename = filename or ""
+	return std.fs.read_file(self.storage_dir .. "/" .. filename)
+end
+
+local get_json_file = function(self, filename)
+	local filename = filename or ""
+	local content_json, err = std.fs.read_file(self.storage_dir .. "/" .. filename)
+	return json.decode(content_json)
+end
+
+local add_llm_cost = function(self) end
+
+local save_llm_chat = function(self, name, payload)
+	local encoded, err = json.encode(payload)
+	if err then
+		return nil, err
+	end
+	return self.redis:cmd("HSET", self.prefix .. "llm/chats" .. self.suffix, name, encoded)
+end
+
+local load_llm_chat = function(self, name)
+	local chat_json, err = self.redis:cmd("HGET", self.prefix .. "llm/chats" .. self.suffix, name)
+	return json.decode(chat_json)
+end
+
+local list_llm_chats = function(self)
+	return self.redis:cmd("HKEYS", self.prefix .. "llm/chats" .. self.suffix)
+end
+
 local close = function(self, no_keepalive)
 	self.redis:close(no_keepalive)
 end
@@ -118,6 +148,12 @@ local new = function(options)
 		load_theme = load_theme,
 		list_snippets = list_snippets,
 		get_snippet = get_snippet,
+		get_json_file = get_json_file,
+		get_file = get_file,
+		add_llm_cost = add_llm_cost,
+		save_llm_chat = save_llm_chat,
+		load_llm_chat = load_llm_chat,
+		list_llm_chats = list_llm_chats,
 		close = close,
 	}
 	return obj

@@ -2,8 +2,8 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 
 -- API docs:
--- https://docs.mistral.ai/api/
 -- https://docs.anthropic.com/claude/reference/
+-- https://docs.mistral.ai/api/
 -- https://platform.openai.com/docs/api-reference/chat
 
 local json = require("cjson.safe")
@@ -15,11 +15,6 @@ local pricing_per_1k_tokens = {
 	["claude-3-sonnet-20240229"] = { input = 0.003, output = 0.015 },
 	["claude-3-5-sonnet-20240620"] = { input = 0.003, output = 0.015 },
 	["claude-3-haiku-20240307"] = { input = 0.00025, output = 0.00125 },
-	["mistral-small-latest"] = { input = 0.002, output = 0.006 },
-	["mistral-medium-latest"] = { input = 0.0027, output = 0.0081 },
-	["mistral-large-latest"] = { input = 0.0081, output = 0.024 },
-	["gpt-4-turbo"] = { input = 0.010, output = 0.030 },
-	["gpt-3.5-turbo-0125"] = { input = 0.0005, output = 0.0015 },
 }
 
 local sanitize = function(messages)
@@ -32,16 +27,10 @@ end
 
 local request = function(url, json_data, api_key, timeout, backend)
 	local headers = {
-		["Authorization"] = "Bearer " .. api_key,
+		["x-api-key"] = api_key,
 		["Content-Type"] = "application/json",
+		["anthropic-version"] = "2023-06-01",
 	}
-	if backend == "Claude" then
-		headers = {
-			["x-api-key"] = api_key,
-			["Content-Type"] = "application/json",
-			["anthropic-version"] = "2023-06-01",
-		}
-	end
 	local start = os.time()
 	local resp, err = web.request(url, { method = "POST", body = json_data, headers = headers }, timeout)
 	if resp then
@@ -93,16 +82,10 @@ end
 
 local models = function(self)
 	local headers = {
-		["Authorization"] = "Bearer " .. self.api_key,
+		["x-api-key"] = self.api_key,
 		["Content-Type"] = "application/json",
+		["anthropic-version"] = "2023-06-01",
 	}
-	if self.backend == "Claude" then
-		headers = {
-			["x-api-key"] = api_key,
-			["Content-Type"] = "application/json",
-			["anthropic-version"] = "2023-06-01",
-		}
-	end
 	local res, err = web.request(self.api_url .. "/models", { method = "GET", headers = headers })
 	if res and res.status == 200 then
 		local res_json, err = json.decode(res.body)
@@ -129,7 +112,7 @@ end
 ]]
 local complete = function(self, model, messages, sampler)
 	local sys_prompt = ""
-	if self.backend == "Claude" and messages[1].role == "system" then
+	if messages[1].role == "system" then
 		sys_prompt = messages[1].content
 		table.remove(messages, 1)
 	end
@@ -141,47 +124,28 @@ local complete = function(self, model, messages, sampler)
 		top_p = sampler.top_p,
 		top_k = sampler.top_k,
 	}
-	if sys_prompt ~= "" and self.backend == "Claude" then
+	if sys_prompt ~= "" then
 		data.system = sys_prompt
 	end
-	if self.backend == "OpenAI" or self.backend == "MistralAI" then
-		data.top_k = nil
-	end
-	return request(self.api_url .. self.completion_ep, json.encode(data), self.api_key, self.timeout, self.backend)
+	return request(self.api_url .. "/messages", json.encode(data), self.api_key, self.timeout, self.backend)
 end
 
 local new = function(api_url)
-	local apis = {
-		Claude = {
-			timeout = tonumber(os.getenv("ANTHROPIC_API_TIMEOUT")) or tonumber(os.getenv("LLM_API_TIMEOUT")) or 600,
-			api_key = os.getenv("ANTHROPIC_API_KEY") or "n/a",
-			api_url = os.getenv("ANTHROPIC_API_URL") or "https://api.anthropic.com/v1",
-			completion_ep = "/messages",
-		},
-		MistralAI = {
-			timeout = tonumber(os.getenv("MISTRALAI_API_TIMEOUT")) or tonumber(os.getenv("LLM_API_TIMEOUT")) or 600,
-			api_key = os.getenv("MISTRALAI_API_KEY") or "n/a",
-			api_url = os.getenv("MISTRALAI_API_URL") or "https://api.mistral.ai/v1",
-		},
-		OpenAI = {
-			timeout = tonumber(os.getenv("OPENAI_API_TIMEOUT")) or tonumber(os.getenv("LLM_API_TIMEOUT")) or 600,
-			api_key = os.getenv("OPENAI_API_KEY") or "n/a",
-			api_url = os.getenv("OPENAI_API_URL") or "https://api.openai.com/v1",
-		},
-	}
-	local obj = { backend = "local", timeout = 600, api_url = api_url, completion_ep = "/chat/completions" }
-	if apis[api_url] then
-		obj.backend = api_url
-		obj.api_url = apis[api_url].api_url
-		obj.api_key = apis[api_url].api_key
-		obj.timeout = apis[api_url].timeout
-		if apis[api_url].completion_ep then
-			obj.completion_ep = apis[api_url].completion_ep
-		end
+	local api_url = api_url
+	if not api_url then
+		api_url = os.getenv("ANTHROPIC_API_URL") or "https://api.anthropic.com/v1"
 	end
-	obj.complete = complete
-	obj.models = models
-	return obj
+	local api_key = os.getenv("ANTHROPIC_API_KEY") or "n/a"
+	local timeout = tonumber(os.getenv("ANTHROPIC_API_TIMEOUT")) or tonumber(os.getenv("LLM_API_TIMEOUT")) or 600
+	local client = {
+		backend = "AnthropicAI",
+		timeout = timeout,
+		api_key = api_key,
+		api_url = api_url,
+		complete = complete,
+		models = models,
+	}
+	return client
 end
 
 return { new = new, pricing = pricing_per_1k_tokens }

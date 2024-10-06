@@ -168,16 +168,16 @@ local builtins_default = {
 	},
 	pager = {
 		line_num = { fg = 60, selected = { s = "bold,inverted" } },
-		search_match = { fg = { 38, 62, 38 }, bg = 66, s = "italic,bold" },
+		search_match = { fg = { 38, 62, 38 }, bg = 31, s = "italic,bold" },
 		status_line = {
-			bg = 66,
+			bg = 31,
 			fg = { 38, 62, 38 },
 			filename = { after = " ※ " },
 			total_lines = { after = " ※ " },
 			size = { after = " ※ " },
 			position = { fg = { 30, 54, 30 } },
 			search = {
-				input = { bg = 66, fg = { 38, 62, 38 }, s = "bold,inverted" },
+				input = { bg = 31, fg = { 38, 62, 38 }, s = "bold,inverted" },
 				pattern = { before = "/", s = "bold" },
 			},
 			render_mode = { after = " ※ ", before = " ※ " },
