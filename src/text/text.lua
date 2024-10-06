@@ -48,9 +48,9 @@ local default_djot_rss = {
 			suffix = { s = "dim", content = "─", fill = true },
 		},
 		ul = {
-			plus = { content = "⚆", nested = { content = "•" } },
+			plus = { content = "✚", nested = { content = "✛" } },
 			minus = { content = "▧", nested = { content = "▪" } },
-			star = { content = "⏺", nested = { content = "⦁" } },
+			star = { content = "⚆", nested = { content = "⦁" } },
 			task = { content = "[]", nested = { content = "[]" } },
 		},
 		ol = { s = "bold" },

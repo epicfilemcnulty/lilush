@@ -26,8 +26,14 @@ local save_history_entry = function(self, mode, payload)
 	return true
 end
 
-local load_history = function(self, mode)
-	local res, err = self.redis:cmd("ZRANGE", self.prefix .. "history/" .. mode .. self.suffix, 0, -1)
+local load_history = function(self, mode, lines)
+	local lines = tonumber(lines) or 0
+	local res, err
+	if lines ~= 0 then
+		res, err = self.redis:cmd("ZRANGE", self.prefix .. "history/" .. mode .. self.suffix, -lines, -1)
+	else
+		res, err = self.redis:cmd("ZRANGE", self.prefix .. "history/" .. mode .. self.suffix, 0, -1)
+	end
 	if err then
 		return nil, "failed to load history: " .. err
 	end

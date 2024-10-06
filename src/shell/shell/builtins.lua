@@ -8,6 +8,7 @@ local web = require("web")
 local utils = require("shell.utils")
 local dig = require("dns.dig")
 local theme = require("shell.theme")
+local storage = require("shell.store")
 local text = require("text")
 local argparser = require("argparser")
 local buffer = require("string.buffer")
@@ -375,27 +376,26 @@ local file_remove = function(cmd, args)
 end
 
 --[[ 
-    CAT
+    KAT
 ]]
-local cat_help = [[
+local kat_help = [[
 : kat
 
   Show file contents. In Kitty terminal *kat*
   can also show images.
 
 ]]
-local cat = function(cmd, args)
+local kat = function(cmd, args)
 	local extra = extra or {}
 	local parser = argparser.new({
 		raw = { kind = "bool", note = "Force raw rendering mode (no pager, no word wraps)" },
 		page = { kind = "bool", note = "Force using pager even on one screen documents" },
 		djot = { short = "j", kind = "bool", note = "Force djot rendering mode" },
-		markdown = { kind = "bool", note = "Force markdown rendering mode" },
 		indent = { kind = "num", default = 0, note = "Indentation" },
-		wrap = { kind = "bool", note = "Wrap text even in raw mode" },
+		wrap = { kind = "num", default = 100, note = "Wrap width" },
 		links = { kind = "bool", note = "Show link's url" },
 		pathname = { kind = "file", idx = 1 },
-	}, cat_help)
+	}, kat_help)
 	local args, err, help = parser:parse(args)
 	if err then
 		if help then
@@ -426,39 +426,31 @@ local cat = function(cmd, args)
 		return 0
 	end
 	local render_mode = "raw"
-	if mime_info.type:match("djot") then
+	if mime_info.type:match("djot") or mime_info.type:match("markdown") then
 		render_mode = "djot"
-	elseif mime_info.type:match("markdown") then
-		render_mode = "markdown"
 	end
 	if args.djot then
 		render_mode = "djot"
-	elseif args.markdown then
-		render_mode = "markdown"
-	end
-
-	if not args.raw then
-		term.set_raw_mode(true)
-		term.hide_cursor()
-		local pager = utils.pager({
-			exit_on_one_page = not args.page,
-			indent = args.indent,
-			render_mode = render_mode,
-			hide_links = not args.links,
-			wrap_in_raw = args.wrap,
-		})
-		pager:load_content(args.pathname)
-		pager:set_render_mode()
-		pager:page()
-		term.show_cursor()
-		term.set_sane_mode()
-		return 0
 	end
 	if args.raw then
 		local txt = std.fs.read_file(args.pathname) or ""
 		term.write("\n" .. text.render_text(txt, {}, { global_indent = 0, wrap = -1 }) .. "\n")
 		return 0
 	end
+	term.set_raw_mode(true)
+	term.hide_cursor()
+	local pager = utils.pager({
+		exit_on_one_page = not args.page,
+		indent = args.indent,
+		render_mode = render_mode,
+		hide_links = not args.links,
+		wrap = args.wrap,
+	})
+	pager:load_content(args.pathname)
+	pager:set_render_mode()
+	pager:page()
+	term.show_cursor()
+	term.set_sane_mode()
 	return 0
 end
 
@@ -774,7 +766,6 @@ local aws_profile = function(cmd, args)
 		term.show_cursor()
 		term.switch_screen("main", nil, true)
 		term.go(l, c)
-		term.set_sane_mode()
 		if profile ~= "" then
 			std.ps.setenv("AWS_PROFILE", profile)
 		end
@@ -797,7 +788,6 @@ local aws_region = function(cmd, args)
 		term.switch_screen("main", nil, true)
 		term.go(l, c)
 		term.show_cursor()
-		term.set_sane_mode()
 		if region ~= "" then
 			std.ps.setenv("AWS_REGION", region)
 		end
@@ -1028,7 +1018,7 @@ local history_help = [[
 
   See commands history.
 ]]
-local history = function(cmd, args, extra)
+local history = function(cmd, args)
 	local tss = style.new(theme)
 	local parser = argparser.new({
 		short = { kind = "bool" },
@@ -1044,31 +1034,33 @@ local history = function(cmd, args, extra)
 		errmsg(err)
 		return 127
 	end
-	local size = #extra
-	local offset = size - args.lines
-	if offset < 0 then
-		offset = 1
+	local store = storage.new()
+	local entries, err = store:load_history("shell", args.lines)
+	store:close()
+	if err then
+		errmsg(err)
+		return 127
 	end
-	local lines = ""
-	for i = offset, #extra do
-		local date = tss:apply("builtins.history.date", os.date("%Y-%m-%d", extra[i].ts))
-		local time = tss:apply("builtins.history.time", os.date("%H:%M:%S", extra[i].ts))
-		local duration = extra[i].d
-		local status = extra[i].exit
-		local cmd = tss:apply("builtins.history.cmd.ok", extra[i].cmd)
+	local buf = buffer.new()
+	for _, entry in ipairs(entries) do
+		local date = tss:apply("builtins.history.date", os.date("%Y-%m-%d", entry.ts))
+		local time = tss:apply("builtins.history.time", os.date("%H:%M:%S", entry.ts))
+		local duration = entry.d
+		local status = entry.exit
+		local cmd = tss:apply("builtins.history.cmd.ok", entry.cmd)
 		if status > 0 then
-			cmd = tss:apply("builtins.history.cmd.fail", extra[i].cmd)
+			cmd = tss:apply("builtins.history.cmd.fail", entry.cmd)
 		end
 		if args.short then
-			lines = lines .. cmd .. "\n"
+			buf:put(cmd, "\n")
 		elseif args.time then
-			lines = lines .. time .. cmd .. "\n"
+			buf:put(time, cmd, "\n")
 		else
-			lines = lines .. date .. time .. cmd .. "\n"
+			buf:put(date, time, cmd, "\n")
 		end
 	end
 	local indent = tss.__style.builtins.history.global_indent or 0
-	term.write(std.txt.indent(lines, indent) .. "\n")
+	term.write(std.txt.indent(buf:get(), indent) .. "\n")
 	return 0
 end
 
@@ -1401,8 +1393,6 @@ local files_matching = function(cmd, args)
 	return 0
 end
 
-local storage = require("shell.store")
-
 local zx_help = [[
 : zx
 
@@ -1464,7 +1454,7 @@ local builtins = {
 	["zx"] = zx,
 	["rm"] = file_remove,
 	["rmrf"] = file_remove,
-	["kat"] = cat,
+	["kat"] = kat,
 	["envlist"] = list_env,
 	["history"] = history,
 	["files_matching"] = files_matching,

@@ -56,7 +56,7 @@ local renderer_default = {
 		},
 		list = {
 			definition = { suffix = { fg = 185 }, term = { fg = 81 }, def = {} },
-			fg = { 192, 134, 58 },
+			fg = 110,
 		},
 		tbl = {
 			border = { fg = 59, s = "dim" },

@@ -126,12 +126,22 @@ int raw_mode(lua_State *L) {
     return 1;
 }
 
+int is_tty(lua_State *L) {
+    static signed char out_tty = -1;
+    if (out_tty < 0) {
+        out_tty = isatty(STDOUT_FILENO);
+    }
+    lua_pushboolean(L, out_tty);
+    return 1;
+}
+
 static luaL_Reg funcs[] = {
     {"set_raw_mode",    set_raw_mode   },
     {"set_sane_mode",   set_sane_mode  },
     {"get_window_size", get_window_size},
     {"resized",         resized        },
     {"raw_mode",        raw_mode       },
+    {"is_tty",          is_tty         },
     {NULL,              NULL           }
 };
 

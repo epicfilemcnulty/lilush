@@ -100,7 +100,7 @@ int main(int argc, char **argv) {
             lua_rawseti(L, -2, i - 1);
         }
         lua_setglobal(L, "arg");
-        error = luaL_dostring(L, START_MINI_SHELL);
+        error = luaL_dostring(L, RUN_SHELL_CMD);
         if (error) {
             fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
             return 1;
@@ -118,7 +118,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // Let's load it by default and make it global
+    // Set lilush package path first
     error = luaL_dostring(L, PRELOAD_INIT);
     if (error) {
         fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
@@ -134,6 +134,7 @@ int main(int argc, char **argv) {
     }
     lua_setglobal(L, "arg");
 
+    // And run the provided script
     error = luaL_dofile(L, argv[1]);
     if (error) {
         fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));

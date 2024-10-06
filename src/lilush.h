@@ -1,4 +1,4 @@
-#define LILUSH_VERSION "0.5.4-6-ge2891bb"
+#define LILUSH_VERSION "0.5.4-14-gb5d8828"
 
 static const char EXEC_BUILTIN[] = "local builtins = require('shell.builtins')\n"
                                    "local builtin = builtins.get(cmd)\n"
@@ -13,8 +13,8 @@ static const char START_SHELL[] = "local sh = require('shell')\n"
                                   "core.register_signal(2)\n"
                                   "local shell = sh.new() shell:run()";
 
-static const char START_MINI_SHELL[] = "local sh = require('shell')\n"
-                                       "local shell = sh.new_mini() shell:run()";
+static const char RUN_SHELL_CMD[] = "local sh = require('shell')\n"
+                                    "local shell = sh.new_mini() shell:run()";
 
 static const char PRELOAD_INIT[] = "local std = require('std')\n"
                                    "local home = os.getenv('HOME') or '/tmp'\n"

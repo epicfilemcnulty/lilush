@@ -290,6 +290,7 @@ local _M = {
 	set_color = set_color,
 	set_raw_mode = set_raw_mode,
 	set_sane_mode = set_sane_mode,
+	is_tty = core.is_tty,
 	resized = core.resized,
 	raw_mode = core.raw_mode,
 	window_size = core.get_window_size,

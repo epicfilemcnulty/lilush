@@ -167,7 +167,6 @@ local python_env = function(self, cmd, args)
 			table.insert(venvs, f)
 		end
 		venvs = std.tbl.alphanumsort(venvs)
-		term.set_raw_mode()
 		local l, c = term.cursor_position()
 		local content = { title = "Choose a python venv", options = venvs }
 		term.switch_screen("alt", true)
@@ -176,7 +175,6 @@ local python_env = function(self, cmd, args)
 		term.switch_screen("main", nil, true)
 		term.show_cursor()
 		term.go(l, c)
-		term.set_sane_mode()
 		virtual_env = base_dir .. "/" .. choice
 	end
 	if not virtual_env:match("^/") then
@@ -223,14 +221,26 @@ local run = function(self)
 	if tlb[cmd] then
 		return self[cmd](self, cmd, pipeline[1].args)
 	else
-		local extra = {}
-		if cmd == "history" then
-			extra = self.input.history.entries
-		end
-		if cmd == "kat" then
-			extra = self.conf.renderer
-		end
 		term.set_sane_mode()
+		local status, err = utils.run_pipeline(pipeline, nil, builtins, extra)
+		term.set_raw_mode(true)
+		return status, err
+	end
+end
+
+local run_once = function(self)
+	local input = self.input:render()
+	local pipeline, err = utils.parse_pipeline(input, true)
+	if not pipeline then
+		return 255, "invalid pipeline: " .. tostring(err)
+	end
+	if #pipeline == 0 then
+		return 0
+	end
+	local cmd = pipeline[1].cmd
+	if tlb[cmd] then
+		return self[cmd](self, cmd, pipeline[1].args)
+	else
 		local status, err = utils.run_pipeline(pipeline, nil, builtins, extra)
 		return status, err
 	end
@@ -278,6 +288,7 @@ local new = function(input)
 		load_config = load_config,
 		run_script = run_script,
 		run = run,
+		run_once = run_once,
 		replace_aliases = replace_aliases,
 		rehash = rehash,
 		pyvenv = python_env,

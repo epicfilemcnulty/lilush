@@ -52,6 +52,10 @@ local change_mode_combo = function(self, combo)
 end
 
 local run = function(self)
+	if not term.is_tty() then
+		show_error_msg("Not connected to a TTY", 29)
+		os.exit(29)
+	end
 	term.set_raw_mode()
 	if not term.has_kkbp() then
 		term.write("This terminal does not seem to support kitty keyboard protocol\r\n")
@@ -60,6 +64,7 @@ local run = function(self)
 	end
 	term.enable_kkbp()
 	term.clear()
+
 	self.__mode[self.__chosen_mode].input:display(true)
 	while true do
 		local event, combo = self.__mode[self.__chosen_mode].input:run({ execute = true, exit = false, combo = true })
@@ -74,9 +79,6 @@ local run = function(self)
 				local status, err = self.__mode[self.__chosen_mode]:run()
 				if status ~= 0 then
 					show_error_msg(status, err)
-				end
-				if self.__chosen_mode == "shell" then
-				    term.set_raw_mode(true)
 				end
 				std.ps.setenv("LILUSH_EXEC_END", os.time())
 				std.ps.setenv("LILUSH_EXEC_STATUS", tostring(status))
@@ -105,7 +107,7 @@ end
 local run_once = function(self)
 	local cmd = table.concat(arg, " ") or ""
 	self.__mode.shell.input.buffer = cmd
-	local status, err = self.__mode.shell:run()
+	local status, err = self.__mode.shell:run_once()
 	if err then
 		print(err)
 	end

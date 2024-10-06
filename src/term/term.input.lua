@@ -678,7 +678,7 @@ local input_obj_resize = function(self)
 	local win_l, win_c = term.window_size()
 	if win_c ~= self.__window.w then
 		self.__window = { h = win_l, w = win_c }
-		self.__config.width = win_c - 1
+		self.__config.max_width = win_c - 1
 		return true
 	end
 	return false
@@ -705,6 +705,7 @@ local new_input_obj = function(config)
 		l = 1,
 		c = 1,
 		escape_newlines = true,
+		max_width = win_c - 1,
 		width = win_c - 1,
 	}
 	local config = std.tbl.merge(default_config, config)
