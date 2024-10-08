@@ -302,8 +302,9 @@ local input_obj_down = function(self)
 	if self.history and self.history:down() then
 		self.buffer = self.history:get()
 		self:end_of_line()
+		return false
 	end
-	return false
+	return self:scroll_completion()
 end
 
 local input_obj_left = function(self)
