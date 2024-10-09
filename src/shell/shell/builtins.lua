@@ -1416,27 +1416,68 @@ local zx = function(cmd, args)
 	end
 	local store = storage.new()
 	local snippets = store:list_snippets()
-	for _, snippet in ipairs(snippets) do
-		if snippet:match(table.concat(args.pattern, ".-")) then
-			local script = store:get_snippet(snippet)
+	for _, snippet_name in ipairs(snippets) do
+		if snippet_name:match(table.concat(args.pattern, ".-")) then
+			local snippet = store:get_snippet(snippet_name)
 			store:close(true)
-			if not script then
-				errmsg("no script")
+			if not snippet then
+				errmsg("no such snippet")
 				return 33
 			end
-			local txt = "# Running snippet\n\n```" .. snippet .. "\n" .. script .. "\n```\n"
-			term.write("\n" .. text.render_djot(txt, theme.renderer.kat) .. "\n")
-			local script_lines = std.txt.lines(script)
-			for i, line in ipairs(script_lines) do
-				local pipeline, err = utils.parse_pipeline(line, true)
-				if err then
-					errmsg(err)
-					return 33, err
+			local snippet_meta_json = snippet:match("^(.+)```lsh")
+			local snippet_meta = json.decode(snippet_meta_json) or {}
+			local snippet_code = snippet:match("```lsh\n(.+)\n```")
+			if not snippet_code then
+				errmsg("failed to parse snippet")
+				return 34
+			end
+			local snippet_args = {}
+			if not snippet_meta.args then
+				snippet_meta.args = {}
+			end
+			term.set_raw_mode()
+			local l, c = term.cursor_position()
+			for _, arg in ipairs(snippet_meta.args) do
+				if arg.kind == "options" then
+					term.switch_screen("alt", true)
+					term.hide_cursor()
+					local chosen_option = widgets.switcher(
+						{ title = "Choose " .. arg.name .. " value", options = arg.values },
+						theme.widgets.shell
+					)
+					term.show_cursor()
+					term.switch_screen("main", nil, true)
+					snippet_args[arg.name] = chosen_option
 				end
-				local status, err = utils.run_pipeline(pipeline, nil, _M, nil)
-				if status ~= 0 then
-					errmsg(err)
-					return status, err
+			end
+			term.go(l, c)
+			term.set_sane_mode()
+			local code = snippet_code:gsub("{{([%w%d_]+)}}", snippet_args)
+			local txt = "# Running snippet\n\n```" .. snippet_name .. "\n" .. code .. "\n```\n"
+			term.write("\n" .. text.render_djot(txt, theme.renderer.kat) .. "\n")
+
+			if snippet_meta.confirm then
+				local confirmed = widgets.simple_confirm("Are you sure? y/n\n", theme.widgets.shell)
+				if not confirmed then
+					errmsg("Aborted.")
+					return 66
+				end
+			end
+
+			local script_lines = std.txt.lines(code)
+
+			for i, line in ipairs(script_lines) do
+				if line ~= "" then
+					local pipeline, err = utils.parse_pipeline(line, true)
+					if err then
+						errmsg(err)
+						return 35, err
+					end
+					local status, err = utils.run_pipeline(pipeline, nil, _M, nil)
+					if status ~= 0 then
+						errmsg(err)
+						return status, err
+					end
 				end
 			end
 			return 0

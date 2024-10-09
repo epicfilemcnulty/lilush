@@ -461,11 +461,22 @@ local file_chooser = function(title, start_dir, rss, patterns)
 	return choice
 end
 
+local simple_confirm = function(text, rss)
+	local tss = style.merge(default_widgets_rss, rss)
+	term.write(tss:apply("confirm", text))
+	local confirmed = io.read(1)
+	if confirmed and (confirmed == "y" or confirmed == "Y") then
+		return true
+	end
+	return false
+end
+
 local _M = {
 	switcher = switcher,
 	settings = settings,
 	file_chooser = file_chooser,
 	draw_borders = draw_borders,
+	simple_confirm = simple_confirm,
 }
 
 return _M
