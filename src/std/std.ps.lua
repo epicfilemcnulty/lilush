@@ -3,6 +3,7 @@
 local core = require("std.core")
 
 local fs = require("std.fs")
+local txt = require("std.txt")
 
 local function setenv(name, value)
 	return core.setenv(name, value)
@@ -101,23 +102,6 @@ local function wait(pid)
 	return core.wait(pid)
 end
 
-local function lines(raw)
-	local raw = raw or ""
-	local lines = {}
-	if not raw:match("\n") then
-		table.insert(lines, raw)
-		return lines
-	end
-	for line in raw:gmatch("(.-)\r?\n") do
-		table.insert(lines, line)
-	end
-	local tail = raw:match("\n([^\n\r]+)$")
-	if tail then
-		table.insert(lines, tail)
-	end
-	return lines
-end
-
 local exec_simple = function(cmd, nowait)
 	local args = {}
 	for arg in cmd:gmatch("%S+") do
@@ -132,8 +116,8 @@ local exec_simple = function(cmd, nowait)
 	stderr:close_inn()
 	local out = stdout:read() or ""
 	local err = stderr:read() or ""
-	local out_lines = lines(out)
-	local err_lines = lines(err)
+	local out_lines = txt.lines(out)
+	local err_lines = txt.lines(err)
 	stdout:close_out()
 	stderr:close_out()
 	local dummy, code

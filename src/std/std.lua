@@ -56,11 +56,11 @@ end
 local function salt(length)
 	math.randomseed(os.time())
 	local length = length or 16
-	local salt = ""
+	local salt = buffer.new()
 	for i = 1, length do
-		salt = salt .. string.char(math.random(255))
+		salt:put(string.char(math.random(255)))
 	end
-	return salt
+	return salt:get()
 end
 
 local function uuid()

@@ -504,10 +504,9 @@ local list_env = function(cmd, args)
 	local matched = std.tbl.include_keys(std.tbl.sort_keys(env), arg)
 	tss.__style.builtins.envlist.var.w = std.tbl.longest(matched)
 
-	local out = ""
+	local out = buffer.new()
 	for _, entry in ipairs(matched) do
-		out = out .. tss:apply("builtins.envlist.var", entry)
-		out = out .. tss:apply("builtins.envlist.value", " " .. env[entry]) .. "\n"
+		out:put(tss:apply("builtins.envlist.var", entry), " ", tss:apply("builtins.envlist.value", env[entry]), "\n")
 	end
 	term.write(out)
 	return 0

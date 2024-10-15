@@ -1,9 +1,11 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 
 local bytes_human = function(size)
 	local human_size = size .. " B"
-	if size / 1024 / 1024 / 1024 >= 1 then
+	if size / 1024 / 1024 / 1024 / 1024 >= 1 then
+		human_size = string.format("%.2f", size / 1024 / 1024 / 1024 / 1024) .. " TB"
+	elseif size / 1024 / 1024 / 1024 >= 1 then
 		human_size = string.format("%.2f", size / 1024 / 1024 / 1024) .. " GB"
 	elseif size / 1024 / 1024 >= 1 then
 		human_size = string.format("%.2f", size / 1024 / 1024) .. " MB"
