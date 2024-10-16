@@ -42,15 +42,16 @@ end
 local function envsubst(filename)
 	local content, err = fs.read_file(filename)
 	if content then
-		return content:gsub("{{([%w%d_]+)}}", function(cap)
-			return os.getenv(cap)
-		end)
+		-- txt.template uses std.environ() as the substitute table
+		-- and `${[^}]+}` as the pattern by default
+		return txt.template(content)
 	end
 	return nil, err
 end
 
 local escape_magic_chars = function(str)
-	return str:gsub("[+*%%%.%$[%]%?%(%)-]", "%%%1") -- escape all possible magic characters that are used in Lua string patterns
+	-- escape all possible magic characters that are used in Lua string patterns
+	return str:gsub("[+*%%%.%$[%]%?%(%)-]", "%%%1")
 end
 
 local function salt(length)

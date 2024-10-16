@@ -2,6 +2,7 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local buffer = require("string.buffer")
 local utf = require("std.utf")
+local core = require("std.core")
 
 local ascii_printable = function(filename)
 	local f = io.open(filename)
@@ -48,8 +49,19 @@ local function lines(raw)
 	return lines
 end
 
-local function template(tmpl, sub_tbl)
-	return string.gsub(tmpl, "{{([%w_%d]+)}}", sub_tbl)
+local function template(tmpl, sub_tbl, pattern)
+	local pattern = pattern or "%${([^}]+)}"
+	if sub_tbl then
+		return string.gsub(tmpl, pattern, sub_tbl)
+	end
+	local env = {}
+	local strings = core.environ()
+	for _, s in ipairs(strings) do
+		local name = s:match("^([^=]+)")
+		local value = s:match("^[^=]+=(.*)")
+		env[name] = value
+	end
+	return string.gsub(tmpl, pattern, env)
 end
 
 local indent_lines = function(input, ind, exclude)

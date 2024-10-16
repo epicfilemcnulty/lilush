@@ -19,10 +19,9 @@ local log = function(self, msg, level)
 		msg = tbl.merge(log_msg_base, msg)
 		local log_json = json.encode(msg)
 		print(log_json)
-		-- Not flushing immediately probably would've been
-		-- better for high load, but in that case you'd better disable
-		-- access log entirely.
-		io.flush()
+		if self.__config.flush then
+			io.flush()
+		end
 	end
 end
 
@@ -57,6 +56,7 @@ local new = function(lvl)
 	local logger = {
 		__config = {
 			level = lvl,
+			flush = true,
 		},
 		log = log,
 		level = level,

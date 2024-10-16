@@ -5,29 +5,29 @@ local template = {
 	head = [[
 <!DOCTYPE html><html>
 <head>
-    <title>{{title}}</title>
+    <title>${title}</title>
     <meta charset="utf-8"/>
-    <link rel="stylesheet" href="{{css_file}}" type="text/css" />
-	<link rel="icon" href="{{favicon_file}}" />
+    <link rel="stylesheet" href="${css_file}" type="text/css" />
+	<link rel="icon" href="${favicon_file}" />
 </head>
 ]],
 	body = [[
 <body>
 <header>
-    <section class="{{class}}" id="title">{{title}}</section>
+    <section class="${class}" id="title">${title}</section>
 </header>
 ]],
 	footer = "</body></html>",
 	error_section = [[
 <section id="error">
-    <h3>{{error_code}}</h3>
-    <p class="error">{{error_message}}</p>
-    <h3>{{error_code}}</h3>
-    {{img}}
+    <h3>${error_code}</h3>
+    <p class="error">${error_message}</p>
+    <h3>${error_code}</h3>
+    ${img}
 </section>
 <section id="home">Take me <a href="/">home</a>, country roads...</section>
 ]],
-	error_404_footer = [[<footer><p class="error">You are amongst the <span>{{hit_count}}</span> digital nomads who have sought for this page. None have found it, but the hope lives on.</p></footer>]],
+	error_404_footer = [[<footer><p class="error">You are amongst the <span>${hit_count}</span> digital nomads who have sought for this page. None have found it, but the hope lives on.</p></footer>]],
 	errors = {
 		[401] = { title = "Unauthorized", msg = "Your papers expired three weeks ago!" },
 		[403] = { title = "Forbidden", msg = { "You are too ugly to get in.", "Beat it.", "Take a hike, Mike." } },
@@ -94,7 +94,12 @@ local error_page = function(code, hit_count, user_tmpl, img)
 	end
 	if code == 404 then
 		return std.txt.template(
-			tmpl.head .. tmpl.body .. tmpl.error_section .. tmpl.error_404_footer .. tmpl.footer,
+			-- I wonder if it's worth to use string.buffer here...
+			tmpl.head
+				.. tmpl.body
+				.. tmpl.error_section
+				.. tmpl.error_404_footer
+				.. tmpl.footer,
 			vars
 		)
 	end

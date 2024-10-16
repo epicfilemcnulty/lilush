@@ -86,7 +86,7 @@ local authorized = function(headers, allowed_users)
 	return false
 end
 
-local form = [[<form id="login_form" method="post">
+local login_form = [[<form id="login_form" method="post">
 <div>
 <label for="login">login</label>
 <input type="text" id="login" name="login" class="login">
@@ -99,8 +99,7 @@ local form = [[<form id="login_form" method="post">
 
 local login_page = function(method, query, args, headers, body)
 	if method == "GET" then
-		local content = form
-		return content, 200
+		return login_form, 200
 	end
 	local args = web.parse_args(body)
 	if login(headers["host"], args.login, args.password) then
