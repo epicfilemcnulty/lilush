@@ -1,6 +1,7 @@
 # Roadmap
 
 - [ ] postgreSQL library
+- [ ] Djot rendering refactor: add divs and quotes support; navigation
 - [ ] Kitty graphics protocol support
 - [ ] Add basic `curl` alternative to shell builtins
 - [ ] Digital signatures from WolfCrypt for proper packaging/plugins support
