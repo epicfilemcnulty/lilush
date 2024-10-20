@@ -547,7 +547,7 @@ end
 ]]
 local render_dns_record = function(records)
 	local tss = style.new(theme)
-	local out = ""
+	local out = buffer.new()
 	for i, rec in ipairs(records) do
 		local content = rec[2]
 		if type(rec[2]) == "table" then
@@ -556,18 +556,19 @@ local render_dns_record = function(records)
 				content = content .. v .. " "
 			end
 		end
-		out = out
-			.. tss:apply("builtins.dig.name", rec[1])
-			.. " "
-			.. tss:apply("builtins.dig._in", "IN ")
-			.. tss:apply("builtins.dig._type", rec[4])
-			.. " "
-			.. tss:apply("builtins.dig.content", content)
-			.. " "
-			.. tss:apply("builtins.dig.ttl", rec[3])
-			.. "\n"
+		out:put(
+			tss:apply("builtins.dig.name", rec[1]),
+			" ",
+			tss:apply("builtins.dig._in", "IN "),
+			tss:apply("builtins.dig._type", rec[4]),
+			" ",
+			tss:apply("builtins.dig.content", content),
+			" ",
+			tss:apply("builtins.dig.ttl", rec[3]),
+			"\n"
+		)
 	end
-	return out
+	return out:get()
 end
 
 local dig_help = [[
