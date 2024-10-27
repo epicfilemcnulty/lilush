@@ -12,8 +12,8 @@ local std = require("std")
 
 local pricing_per_1k_tokens = {
 	["claude-3-opus-20240229"] = { input = 0.015, output = 0.075 },
-	["claude-3-sonnet-20240229"] = { input = 0.003, output = 0.015 },
 	["claude-3-5-sonnet-20240620"] = { input = 0.003, output = 0.015 },
+	["claude-3-5-sonnet-20241022"] = { input = 0.003, output = 0.015 },
 	["claude-3-haiku-20240307"] = { input = 0.00025, output = 0.00125 },
 }
 
@@ -69,7 +69,7 @@ local request = function(url, json_data, api_key, timeout, backend)
 				elseif resp_json.content then
 					answer.text = resp_json.content[1].text
 				end
-				answer.text = answer.text:gsub("^\n+", "") -- remove leading newlines, for some reason OpenAI API prepends them to the response...
+				answer.text = answer.text:gsub("^\n+", "") -- remove any leading newlines
 				answer.backend = backend
 				return answer
 			end
