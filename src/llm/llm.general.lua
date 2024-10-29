@@ -114,6 +114,7 @@ local complete = function(self, model, query, sampler, sc, uuid)
 		min_p = sampler.min_p,
 		add_bos = sampler.add_bos,
 		add_eos = sampler.add_eos,
+		dry_multiplier = sampler.dry_multiplier,
 		repetition_penalty = sampler.repetition_penalty,
 		max_new_tokens = sampler.max_new_tokens,
 		hide_special_tokens = sampler.hide_special_tokens,
