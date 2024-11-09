@@ -18,7 +18,11 @@ local log = function(self, msg, level)
 		end
 		msg = tbl.merge(log_msg_base, msg)
 		local log_json = json.encode(msg)
-		print(log_json)
+		if level >= self.__config.to_stderr then
+			io.stderr:write(log_json .. "\n")
+		else
+			io.stdout:write(log_jsoni .. "\n")
+		end
 		if self.__config.flush then
 			io.flush()
 		end
@@ -48,13 +52,17 @@ local set_level = function(self, level)
 	self.__config.level = lvl
 end
 
-local new = function(lvl)
+local new = function(lvl, to_stderr)
+	-- Log messages with level higher than
+	-- `to_stderr` to stderr
+	local to_stderr = to_stderr or 100
 	local lvl = lvl or 20
 	if type(lvl) == "string" then
 		lvl = log_levels[lvl] or 20
 	end
 	local logger = {
 		__config = {
+			to_stderr = to_stderr,
 			level = lvl,
 			flush = true,
 		},
