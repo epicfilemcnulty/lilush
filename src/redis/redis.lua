@@ -6,14 +6,14 @@
 
 local std = require("std")
 local socket = require("socket")
+local ssl = require("ssl")
 
 local config_from_string = function(url)
-	local url = url or "127.0.0.1:6379/0"
+	local url = url or "127.0.0.1:6379"
 	return {
 		host = url:match("^[^:]+"),
 		port = tonumber(url:match("^[^:]+:(%d+)")) or 6379,
-		db = tonumber(url:match("^[^:]+:%d+/(%d%d?)")) or 0,
-		tcp_nodelay = true,
+		db = tonumber(url:match("^[^:]+:%d+/(%d%d?)")),
 	}
 end
 
@@ -129,15 +129,22 @@ end
 local close = function(self, no_keepalive)
 	if no_keepalive or #socket_pool[self.idx] > socket_pool_size then
 		self.s:close()
+		if self.tcp then
+			self.tcp:close()
+		end
 		return true
 	end
 	table.insert(socket_pool[self.idx], self.s)
 	return true
 end
 
-local connect = function(url)
-	local conf = config_from_string(url)
-	local conf_str_key = conf.host .. ":" .. conf.port .. "/" .. conf.db
+local connect = function(config)
+	local conf = config
+	if type(config) ~= "table" then
+		conf = config_from_string(config)
+	end
+	local db = conf.db or "0"
+	local conf_str_key = conf.host .. ":" .. conf.port .. "/" .. db
 
 	if socket_pool[conf_str_key] then
 		if #socket_pool[conf_str_key] > 0 then
@@ -154,15 +161,33 @@ local connect = function(url)
 		socket_pool[conf_str_key] = {}
 	end
 
-	local client = socket.tcp()
+	local tcp = socket.tcp()
 	if conf.timeout then
-		client:settimeout(conf.timeout)
+		tcp:settimeout(conf.timeout)
 	end
-	local ok, err = client:connect(conf.host, conf.port)
+	local ok, err = tcp:connect(conf.host, conf.port)
 	if ok then
-		client:setoption("tcp-nodelay", conf.tcp_nodelay)
-		local obj = { s = client, cmd = redis_command, close = close, read = read, idx = conf_str_key }
-		obj:cmd("select", conf.db)
+		local client = tcp
+		client:setoption("tcp-nodelay", true)
+		if conf.ssl then
+			local conn, err = ssl.wrap(tcp)
+			if err then
+				tcp:close()
+				return nil, err
+			end
+			local ok, err = conn:dohandshake()
+			if err then
+				return nil, err
+			end
+			client = conn
+		end
+		local obj = { s = client, tcp = tcp, cmd = redis_command, close = close, read = read, idx = conf_str_key }
+		if conf.auth then
+			obj:cmd("AUTH", conf.auth.user, conf.auth.pass)
+		end
+		if conf.db then
+			obj:cmd("select", conf.db)
+		end
 		return obj
 	end
 	return nil, err
