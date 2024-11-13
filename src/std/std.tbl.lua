@@ -146,9 +146,18 @@ local function longest(t)
 	return max
 end
 
+local contains = function(tbl, element)
+	for i, v in ipairs(tbl) do
+		if v == element then
+			return i
+		end
+	end
+	return nil
+end
+
 -- Shuffle a table in place,
 -- Fisher-Yates shuffle method
-local function shuffle(tbl)
+local shuffle = function(tbl)
 	for i = #tbl, 2, -1 do
 		local j = math.random(i)
 		tbl[i], tbl[j] = tbl[j], tbl[i]
@@ -243,6 +252,7 @@ local tbl = {
 	alphanumsort = alphanumsort,
 	sort_keys = sort_keys,
 	longest = longest,
+	contains = contains,
 	shuffle = shuffle,
 	include_keys = include_keys,
 	exclude_keys = exclude_keys,

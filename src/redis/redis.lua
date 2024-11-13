@@ -166,31 +166,31 @@ local connect = function(config)
 		tcp:settimeout(conf.timeout)
 	end
 	local ok, err = tcp:connect(conf.host, conf.port)
-	if ok then
-		local client = tcp
-		client:setoption("tcp-nodelay", true)
-		if conf.ssl then
-			local conn, err = ssl.wrap(tcp)
-			if err then
-				tcp:close()
-				return nil, err
-			end
-			local ok, err = conn:dohandshake()
-			if err then
-				return nil, err
-			end
-			client = conn
-		end
-		local obj = { s = client, tcp = tcp, cmd = redis_command, close = close, read = read, idx = conf_str_key }
-		if conf.auth then
-			obj:cmd("AUTH", conf.auth.user, conf.auth.pass)
-		end
-		if conf.db then
-			obj:cmd("select", conf.db)
-		end
-		return obj
+	if not ok then
+		return nil, err
 	end
-	return nil, err
+	local client = tcp
+	client:setoption("tcp-nodelay", true)
+	if conf.ssl then
+		local conn, err = ssl.wrap(tcp)
+		if err then
+			tcp:close()
+			return nil, err
+		end
+		local ok, err = conn:dohandshake()
+		if err then
+			return nil, err
+		end
+		client = conn
+	end
+	local obj = { s = client, tcp = tcp, cmd = redis_command, close = close, read = read, idx = conf_str_key }
+	if conf.auth then
+		obj:cmd("AUTH", conf.auth.user, conf.auth.pass)
+	end
+	if conf.db then
+		obj:cmd("select", conf.db)
+	end
+	return obj
 end
 
 local _M = { connect = connect }
