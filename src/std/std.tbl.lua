@@ -146,10 +146,16 @@ local function longest(t)
 	return max
 end
 
-local contains = function(tbl, element)
+local contains = function(tbl, element, fuzzy)
 	for i, v in ipairs(tbl) do
 		if v == element then
 			return i
+		end
+		if fuzzy then
+			local esc_element = element:gsub("[+*%%%.%$[%]%?%(%)-]", "%%%1")
+			if v:match(esc_element) then
+				return i
+			end
 		end
 	end
 	return nil
