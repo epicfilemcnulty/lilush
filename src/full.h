@@ -57,7 +57,6 @@ typedef struct mod_lua {
 // redis
 #include "../build/redis/mod_lua_redis.h"
 // llm
-#include "../build/llm/mod_lua_llm.anthropic.h"
 #include "../build/llm/mod_lua_llm.general.h"
 #include "../build/llm/mod_lua_llm.h"
 // shell
@@ -117,7 +116,6 @@ const mod_lua__t lua_preload[] = {
     {"djot.inline",                      mod_lua_djot_inline,                      &mod_lua_djot_inline_SIZE                 },
     {"redis",                            mod_lua_redis,                            &mod_lua_redis_SIZE                       },
     {"llm",                              mod_lua_llm,                              &mod_lua_llm_SIZE                         },
-    {"llm.anthropic",                    mod_lua_llm_anthropic,                    &mod_lua_llm_anthropic_SIZE               },
     {"llm.general",                      mod_lua_llm_general,                      &mod_lua_llm_general_SIZE                 },
     {"shell",                            mod_lua_shell,                            &mod_lua_shell_SIZE                       },
     {"shell.theme",                      mod_lua_shell_theme,                      &mod_lua_shell_theme_SIZE                 },

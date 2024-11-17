@@ -2,13 +2,9 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 
 local std = require("std")
-local anthropic = require("llm.anthropic")
 local general = require("llm.general")
 
-local new = function(backend, api_url)
-	if backend == "AnthropicAI" then
-		return anthropic.new()
-	end
+local new = function(api_url)
 	local api_url = api_url or "http://127.0.0.1:8013"
 	return general.new(api_url)
 end
