@@ -1,6 +1,8 @@
 -- SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 
+local buffer = require("string.buffer")
+
 local bytes_human = function(size)
 	local human_size = size .. " B"
 	if size / 1024 / 1024 / 1024 / 1024 >= 1 then
@@ -78,38 +80,59 @@ local ts_to_str = function(ts, fmt)
 	return os.date(fmt, ts)
 end
 
-local time_human = function(date)
-	local date_ts = date_to_ts(date)
-	local age = os.time() - date_ts
-	local human_time
-	local plural = ""
-	if age / 86400 > 1 then
-		local days = math.ceil(age / 86400)
-		if days > 1 then
-			plural = "s"
+-- Beware, the results are not accurate, we just assume a month to be 30 days,
+-- and don't bother ourselves with the nitty-gritty details of the calendar madness.
+-- For most cases this is good enough, though.
+local time_span_human = function(seconds, precision)
+	local seconds = seconds or os.time()
+	local precision = precision or "second"
+	local spans = { year = 31104000, month = 2592000, week = 604800, day = 86400, hour = 3600, minute = 60, second = 1 }
+
+	local get_count = function(period, span_name)
+		local count = period / spans[span_name]
+		if count >= 1 then
+			local approx_count = math.floor(period / spans[span_name])
+			local remains = period - spans[span_name] * approx_count
+			local plural = ""
+			if approx_count > 1 then
+				plural = "s"
+			end
+			return approx_count .. " " .. span_name .. plural, remains
 		end
-		human_time = days .. " day" .. plural .. " ago"
-	elseif age / 3600 > 1 then
-		local hours = math.ceil(age / 3600)
-		if hours > 1 then
-			plural = "s"
-		end
-		human_time = hours .. " hour" .. plural .. " ago"
-	else
-		local minutes = math.ceil(age / 60)
-		if minutes > 1 then
-			plural = "s"
-		end
-		human_time = minutes .. " minute" .. plural .. " ago"
+		return nil
 	end
-	return human_time, date_ts
+
+	local buf = buffer:new()
+	for _, span_name in ipairs({ "year", "month", "week", "day", "hour", "minute", "second" }) do
+		local count, remains = get_count(seconds, span_name)
+		if count then
+			buf:put(count)
+			seconds = remains
+		end
+		if span_name == precision then
+			break
+		end
+		if remains and remains > 0 then
+			buf:put(", ")
+		end
+	end
+	return buf:get()
+end
+
+local time_diff_human = function(date, precision, start_ts)
+	local precision = precision or "second"
+	local start_ts = start_ts or os.time()
+	local date_ts = date_to_ts(date)
+	local period = math.abs(start_ts - date_ts)
+	return time_span_human(period, precision)
 end
 
 local conv = {
 	date_to_ts = date_to_ts,
 	ts_to_str = ts_to_str,
 	hex_ipv4 = hex_ipv4,
-	time_human = time_human,
+	time_span_human = time_span_human,
+	time_diff_human = time_diff_human,
 	bytes_human = bytes_human,
 }
 return conv

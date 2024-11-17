@@ -1104,7 +1104,7 @@ local wgcli = function(cmd, args)
 			)
 			local last_handshake = "never"
 			if peer.last_handshake > 0 then
-				last_handshake = std.conv.time_human(peer.last_handshake)
+				last_handshake = std.conv.time_diff_human(peer.last_handshake) .. " ago"
 			end
 			term.write(
 				tss:apply("builtins.wg.endpoint.seen", "Last handshake: " .. last_handshake)
