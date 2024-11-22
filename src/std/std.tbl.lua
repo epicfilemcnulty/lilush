@@ -147,6 +147,7 @@ local function longest(t)
 end
 
 local contains = function(tbl, element, fuzzy)
+	local tbl = tbl or {}
 	for i, v in ipairs(tbl) do
 		if v == element then
 			return i
