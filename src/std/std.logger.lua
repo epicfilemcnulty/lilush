@@ -21,7 +21,7 @@ local log = function(self, msg, level)
 		if level >= self.__config.to_stderr then
 			io.stderr:write(log_json .. "\n")
 		else
-			io.stdout:write(log_jsoni .. "\n")
+			io.stdout:write(log_json .. "\n")
 		end
 		if self.__config.flush then
 			io.flush()

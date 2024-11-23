@@ -4,6 +4,7 @@ local std = require("std")
 local socket = require("socket")
 local json = require("cjson.safe")
 local buffer = require("string.buffer")
+local ssl = require("ssl")
 
 local premature_error = function(client, status, msg)
 	local resp = "HTTP/1.1 "
@@ -221,8 +222,26 @@ local server_serve = function(self)
 
 				if pid == 0 and client then
 					local count = 1
+					local cfg = {
+						mode = "server",
+						cafile = self.__config.cafile,
+						keyfile = self.__config.keyfile,
+						certfile = self.__config.certfile,
+					}
+					local ssl_client, err = ssl.wrap(client, cfg)
+					if not ssl_client then
+						self.logger:log("failed to wrap client with SSL: " .. err, "error")
+						client:close()
+						os.exit(1)
+					end
+					local status, err = ssl_client:dohandshake()
+					if not status then
+						self.logger:log("SSL handshake failed: " .. err, "error")
+						ssl_client:close()
+						os.exit(1)
+					end
 					repeat
-						local state, err = self:process_request(client, count)
+						local state, err = self:process_request(ssl_client, count)
 						if err then
 							if err == "closed" then
 								self.logger:log("client closed connection", "debug")
@@ -233,7 +252,7 @@ local server_serve = function(self)
 						end
 						count = count + 1
 					until state == "close" or count > self.__config.requests_per_fork
-					client:close()
+					ssl_client:close()
 					os.exit(0)
 				end
 			else
@@ -247,9 +266,9 @@ local sample_handle = function()
 	return "Hi there!", 200, {}
 end
 
-local server_new = function(ip, port, handle)
+local server_new = function(ip, port, handle, certfile, keyfile)
 	local ip = ip or "127.0.0.1"
-	local port = port or 8080
+	local port = port or 8443
 	local handle = handle or sample_handle
 
 	return {
@@ -258,6 +277,9 @@ local server_new = function(ip, port, handle)
 			port = port,
 			backlog = 256,
 			fork_limit = 64,
+			cafile = "/etc/ssl/certs/ca-certificates.crt",
+			certfile = certfile,
+			keyfile = keyfile,
 			requests_per_fork = 512,
 			max_body_size = 1024 * 1024 * 5, -- 5 megabytes is plenty.
 			request_line_limit = 1024 * 8, -- 8Kb for the request line or a single header is HUGE! I'm too generous here.

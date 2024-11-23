@@ -87,7 +87,11 @@ static int handshake(p_ssl ssl) {
         return IO_CLOSED;
 
     for (;;) {
-        err        = wolfSSL_connect(ssl->ssl);
+        if (ssl->mode == LSEC_MODE_SERVER) {
+            err = wolfSSL_accept(ssl->ssl);
+        } else {
+            err = wolfSSL_connect(ssl->ssl);
+        }
         ssl->error = wolfSSL_get_error(ssl->ssl, err);
         switch (ssl->error) {
         case SSL_ERROR_NONE:
@@ -246,7 +250,9 @@ static int meth_create(lua_State *L) {
             lua_pushfstring(L, "error creating SSL object (%s)", "uknown");
             return 2;
         }
+        ssl->mode = mode;
     } else {
+        printf("Invalid context passed to meth_create\n"); // Debug print
         return luaL_argerror(L, 1, "invalid context");
     }
     ssl->state = LSEC_STATE_NEW;

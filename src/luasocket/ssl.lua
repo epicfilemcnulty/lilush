@@ -14,29 +14,20 @@ local unpack = table.unpack or unpack
 -- otherwise the C registry will be cleared.
 local registry = setmetatable({}, { __mode = "k" })
 
--- Default SSL config
-local config = {
-	mode = "client",
-	cafile = "/etc/ssl/certs/ca-certificates.crt",
-	no_verify_mode = false,
-}
-
 --
 local function newcontext(cfg)
 	local succ, msg, ctx
 	-- Create the context
-	ctx, msg = context.create()
+	local mode = cfg.mode or "client"
+	ctx, msg = context.create(mode)
 	if not ctx then
 		return nil, msg
 	end
-	-- Mode
-	succ, msg = context.setmode(ctx, cfg.mode)
-	if not succ then
-		return nil, msg
-	end
+
+	succ, msg = context.setmode(ctx, mode)
 	-- Load the CA certificates
-	if cfg.cafile or cfg.capath then
-		succ, msg = context.locations(ctx, cfg.cafile, cfg.capath)
+	if cfg.cafile or cfg.capath or cfg.certfile or cfg.keyfile then
+		succ, msg = context.locations(ctx, cfg.cafile, cfg.capath, cfg.certfile, cfg.keyfile)
 		if not succ then
 			return nil, msg
 		end
@@ -50,13 +41,18 @@ local function newcontext(cfg)
 	return ctx
 end
 
---
---
 local function wrap(sock, cfg)
-	local c = cfg or {}
-	c = std.tbl.merge(c, config)
+	local cfg = cfg
+		or {
+			mode = "client",
+			cafile = "/etc/ssl/certs/ca-certificates.crt",
+			no_verify_mode = false,
+		}
+	local ctx, msg = newcontext(cfg)
+	if not ctx then
+		return nil, msg
+	end
 
-	local ctx, msg = newcontext(c)
 	local s, msg = core.create(ctx)
 	if s then
 		core.setfd(s, sock:getfd())
@@ -72,7 +68,6 @@ end
 --
 
 local _M = {
-	config = config,
 	newcontext = newcontext,
 	wrap = wrap,
 }

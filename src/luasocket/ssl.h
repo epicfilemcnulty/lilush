@@ -32,6 +32,7 @@ typedef struct t_ssl_ {
     WOLFSSL *ssl;
     int state;
     int error;
+    int mode;
 } t_ssl;
 typedef t_ssl *p_ssl;
 
