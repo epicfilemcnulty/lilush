@@ -15,44 +15,45 @@ local unpack = table.unpack or unpack
 local registry = setmetatable({}, { __mode = "k" })
 
 --
+local default_config = {
+	mode = "client",
+	cafile = "/etc/ssl/certs/ca-certificates.crt",
+	no_verify_mode = false,
+}
+
 local function newcontext(cfg)
+	local config = std.tbl.copy(default_config)
+	config = std.tbl.merge(config, cfg)
+
 	local succ, msg, ctx
 	-- Create the context
-	local mode = cfg.mode or "client"
-	ctx, msg = context.create(mode)
+	ctx, msg = context.create(config.mode)
 	if not ctx then
 		return nil, msg
 	end
-
-	succ, msg = context.setmode(ctx, mode)
 	-- Load the CA certificates
-	if cfg.cafile or cfg.capath or cfg.certfile or cfg.keyfile then
-		succ, msg = context.locations(ctx, cfg.cafile, cfg.capath, cfg.certfile, cfg.keyfile)
+	if config.cafile or config.capath or config.certfile or config.keyfile then
+		succ, msg = context.locations(ctx, config.cafile, config.capath, config.certfile, config.keyfile)
 		if not succ then
 			return nil, msg
 		end
 	end
-	if cfg.server_name then
-		context.sni(ctx, cfg.server_name)
+	if config.server_name then
+		context.sni(ctx, config.server_name)
 	end
-	if cfg.no_verify_mode then
-		context.no_verify_mode(ctx, cfg.no_verify_mode)
+	if config.no_verify_mode then
+		context.no_verify_mode(ctx, config.no_verify_mode)
 	end
 	return ctx
 end
 
 local function wrap(sock, cfg)
-	local cfg = cfg
-		or {
-			mode = "client",
-			cafile = "/etc/ssl/certs/ca-certificates.crt",
-			no_verify_mode = false,
-		}
-	local ctx, msg = newcontext(cfg)
+	local config = std.tbl.copy(default_config)
+	config = std.tbl.merge(config, cfg)
+	local ctx, msg = newcontext(config)
 	if not ctx then
 		return nil, msg
 	end
-
 	local s, msg = core.create(ctx)
 	if s then
 		core.setfd(s, sock:getfd())

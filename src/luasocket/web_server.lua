@@ -224,7 +224,6 @@ local server_serve = function(self)
 					local count = 1
 					local cfg = {
 						mode = "server",
-						cafile = self.__config.cafile,
 						keyfile = self.__config.keyfile,
 						certfile = self.__config.certfile,
 					}
@@ -277,7 +276,6 @@ local server_new = function(ip, port, handle, certfile, keyfile)
 			port = port,
 			backlog = 256,
 			fork_limit = 64,
-			cafile = "/etc/ssl/certs/ca-certificates.crt",
 			certfile = certfile,
 			keyfile = keyfile,
 			requests_per_fork = 512,
