@@ -222,25 +222,28 @@ local server_serve = function(self)
 
 				if pid == 0 and client then
 					local count = 1
-					local cfg = {
-						mode = "server",
-						keyfile = self.__config.keyfile,
-						certfile = self.__config.certfile,
-					}
-					local ssl_client, err = ssl.wrap(client, cfg)
-					if not ssl_client then
-						self.logger:log("failed to wrap client with SSL: " .. err, "error")
-						client:close()
-						os.exit(1)
-					end
-					local status, err = ssl_client:dohandshake()
-					if not status then
-						self.logger:log("SSL handshake failed: " .. err, "error")
-						ssl_client:close()
-						os.exit(1)
+					local ssl_client, err
+					if self.__config.keyfile then
+						local cfg = {
+							mode = "server",
+							keyfile = self.__config.keyfile,
+							certfile = self.__config.certfile,
+						}
+						ssl_client, err = ssl.wrap(client, cfg)
+						if not ssl_client then
+							self.logger:log("failed to wrap client with SSL: " .. err, "error")
+							client:close()
+							os.exit(1)
+						end
+						local status, err = ssl_client:dohandshake()
+						if not status then
+							self.logger:log("SSL handshake failed: " .. err, "error")
+							ssl_client:close()
+							os.exit(1)
+						end
 					end
 					repeat
-						local state, err = self:process_request(ssl_client, count)
+						local state, err = self:process_request(ssl_client or client, count)
 						if err then
 							if err == "closed" then
 								self.logger:log("client closed connection", "debug")
@@ -251,7 +254,10 @@ local server_serve = function(self)
 						end
 						count = count + 1
 					until state == "close" or count > self.__config.requests_per_fork
-					ssl_client:close()
+					if ssl_client then
+						ssl_client:close()
+					end
+					client:close()
 					os.exit(0)
 				end
 			else
