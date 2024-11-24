@@ -8,6 +8,8 @@ Based on real Lua code.
 |-----------------------|--------------------------------------|--------------------------------------------------------|
 | `RELIW_SERVER_IP`     | *127.0.0.1*                          | IP to listen on                                        |
 | `RELIW_SERVER_PORT`   | *8080*                               | Port to listen on                                      |
+| `RELIW_CERTFILE`      |                                      | Path to a SSL certificate file                         |
+| `RELIW_KEYFILE`       |                                      | Path to a SSL certificate key file                     |
 | `RELIW_DATA_DIR`      | */www*                               | Path to the directory with static web assets           |      
 | `RELIW_LOG_LEVEL`     | *10*                                 | Log level (0 = debug, 10 = access, 50 = error)         |
 | `RELIW_METRICS_HOST`  | *reliw.stats*                        | Virtual host name for Prometheus metrics               |
