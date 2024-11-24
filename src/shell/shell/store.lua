@@ -76,8 +76,6 @@ local get_snippet = function(self, snippet)
 	return std.fs.read_file(self.storage_dir .. "/snippets/" .. snippet)
 end
 
-local add_llm_cost = function(self) end
-
 local save_llm_chat = function(self, name, payload)
 	local encoded, err = json.encode(payload)
 	if err then
@@ -140,7 +138,6 @@ local new = function(options)
 		get_snippet = get_snippet,
 		get_json_file = get_json_file,
 		get_file = get_file,
-		add_llm_cost = add_llm_cost,
 		save_llm_chat = save_llm_chat,
 		load_llm_chat = load_llm_chat,
 		list_llm_chats = list_llm_chats,
