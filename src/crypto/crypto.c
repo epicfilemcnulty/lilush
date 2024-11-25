@@ -4,6 +4,7 @@
 
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
+#include <wolfssl/wolfcrypt/asn.h>
 #include <wolfssl/wolfcrypt/coding.h>
 #include <wolfssl/wolfcrypt/ecc.h>
 #include <wolfssl/wolfcrypt/ed25519.h>
@@ -127,6 +128,8 @@ int lua_hmac(lua_State *L) {
     return 1;
 }
 
+#define POINT_SIZE 32
+
 int lua_ecc_generate_key(lua_State *L) {
     WC_RNG rng;
     ecc_key key;
@@ -135,6 +138,9 @@ int lua_ecc_generate_key(lua_State *L) {
     word32 key_size     = sizeof(private_key);
     word32 pub_key_size = sizeof(public_key);
     int ret;
+
+    uint8_t Qx[POINT_SIZE], Qy[POINT_SIZE];
+    uint32_t qxlen = POINT_SIZE, qylen = POINT_SIZE;
 
     ret = wc_InitRng(&rng);
     if (ret != 0) {
@@ -172,11 +178,20 @@ int lua_ecc_generate_key(lua_State *L) {
     }
     pub_key_size = ret;
 
+    ret = wc_ecc_export_public_raw(&key, Qx, &qxlen, Qy, &qylen);
+    if (ret != MP_OKAY) {
+        wc_ecc_free(&key);
+        wc_FreeRng(&rng);
+        RETURN_CUSTOM_ERR(L, "failed to export public ECC key to DER");
+    }
+
     lua_pushlstring(L, (char *)private_key, key_size);
     lua_pushlstring(L, (char *)public_key, pub_key_size);
+    lua_pushlstring(L, (char *)Qx, qxlen);
+    lua_pushlstring(L, (char *)Qy, qylen);
     wc_ecc_free(&key);
     wc_FreeRng(&rng);
-    return 2;
+    return 4;
 }
 
 int lua_ecc_sign(lua_State *L) {
