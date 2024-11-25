@@ -43,6 +43,18 @@ local ecc_verify = function(pub_key, msg, sig)
 	return core.ecc_verify(pub_key, msg, sig)
 end
 
+local ed25519_generate_key = function()
+	return core.ed25519_generate_key()
+end
+
+local ed25519_sign = function(key, msg)
+	return core.ed25519_sign(key, msg)
+end
+
+local ed25519_verify = function(pub_key, msg, sig)
+	return core.ed25519_verify(pub_key, msg, sig)
+end
+
 _M.bin_to_hex = bin_to_hex
 _M.sha256 = sha256
 _M.hmac = hmac
@@ -52,4 +64,7 @@ _M.b64_decode = b64_decode
 _M.ecc_generate_key = ecc_generate_key
 _M.ecc_sign = ecc_sign
 _M.ecc_verify = ecc_verify
+_M.ed25519_generate_key = ed25519_generate_key
+_M.ed25519_sign = ed25519_sign
+_M.ed25519_verify = ed25519_verify
 return _M
