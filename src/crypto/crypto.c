@@ -42,7 +42,6 @@ int lua_base64_decode(lua_State *L) {
     return 1;
 }
 
-// Lua interface for Base64_Encode
 int lua_base64_encode(lua_State *L) {
     size_t inLen;
     const char *in = lua_tolstring(L, 1, &inLen);
@@ -57,38 +56,6 @@ int lua_base64_encode(lua_State *L) {
         RETURN_CUSTOM_ERR(L, "failed to encode base64");
     }
     out[outLen] = '\0'; // Add null terminator
-    lua_pushstring(L, (char *)out);
-    free(out);
-    return 1;
-}
-
-int lua_base64url_encode(lua_State *L) {
-    size_t inLen;
-    const char *in = lua_tolstring(L, 1, &inLen);
-    word32 outLen  = (inLen / 3) * 4 + 128;      // Conservative output length
-    byte *out      = (byte *)malloc(outLen + 1); // Add space for null terminator
-    if (out == NULL) {
-        RETURN_CUSTOM_ERR(L, "memory allocation failed");
-    }
-    int ret = Base64_Encode((byte *)in, inLen, out, &outLen);
-    if (ret != 0) {
-        free(out);
-        RETURN_CUSTOM_ERR(L, "failed to encode base64");
-    }
-    out[outLen] = '\0'; // Add null terminator
-
-    // Replace '+' with '-', '/' with '_', and remove '='
-    for (word32 i = 0; i < outLen; i++) {
-        if (out[i] == '+') {
-            out[i] = '-';
-        } else if (out[i] == '/') {
-            out[i] = '_';
-        } else if (out[i] == '=') {
-            out[i] = '\0';
-            outLen--;
-            break;
-        }
-    }
     lua_pushstring(L, (char *)out);
     free(out);
     return 1;
@@ -408,7 +375,6 @@ static luaL_Reg funcs[] = {
     {"hmac",                 lua_hmac                },
     {"base64_decode",        lua_base64_decode       },
     {"base64_encode",        lua_base64_encode       },
-    {"base64url_encode",     lua_base64url_encode    },
     {"ecc_generate_key",     lua_ecc_generate_key    },
     {"ecc_sign",             lua_ecc_sign            },
     {"ecc_verify",           lua_ecc_verify          },

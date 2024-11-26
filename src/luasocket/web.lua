@@ -120,7 +120,6 @@ local request = function(uri, options, timeout)
 		options.headers["content-length"] = string.len(options.body)
 		options.source = ltn12.source.string(options.body)
 	end
-
 	local result, status, headers, status_line = http.request(options)
 	if result == 1 then
 		return { body = table.concat(body), status = status, headers = headers }
