@@ -6,6 +6,15 @@ local style = require("term.tss")
 local buffer = require("string.buffer")
 local socket = require("socket")
 
+--[[
+ Our terminal input relies on the [Kitty's keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/), 
+ `kkbp` prefix in variable/function names stands for `Kitty KeyBoard Protocol`. Initially this module
+ was built around the legacy input protocol, but it is really not good enough for any serious terminal application,
+ and it seemed too much of a hassle to maintain both implementations. Yet it'd be nice to have a minimal implementation
+ of the legacy one as a fallback, so there is a chance it will be added in the future...
+]]
+--
+
 local kkbp_codes = {
 	["57441"] = "LEFT_SHIFT",
 	["57442"] = "LEFT_CTRL",
@@ -82,7 +91,7 @@ local get = function()
 	end
 	if string.byte(csi) ~= 27 then
 		-- Sequence does not start from the ESC,
-		-- so it must be paste terminal event
+		-- so it must be "paste" terminal event
 		return csi .. io.read("*a")
 	end
 	csi = io.read(1)
@@ -224,6 +233,7 @@ local simple_get = function()
 	end
 	return nil
 end
+
 --[[
     Input Object functions & methods.
     For the object definition see `new_input_obj` function below.

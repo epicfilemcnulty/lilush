@@ -129,7 +129,7 @@ local server_process_request = function(self, client, count)
 			and self.__config.compression.types[response_headers["content-type"]]
 			and #content >= self.__config.compression.min_size
 		then
-			--[[ replace with gzip as soon as uzlib integration is ready...
+			--[[ replace with gzip as soon as we integrate some lib for gzip support...
               ```old code  
 			  content = libdeflate:CompressDeflate(content)
 			  response_headers["content-encoding"] = "deflate"

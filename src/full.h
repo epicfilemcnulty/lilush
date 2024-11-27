@@ -7,7 +7,7 @@ typedef struct mod_lua {
     const size_t *const size;
 } mod_lua__t;
 
-// LuaSocket modules
+// LuaSocketWolfSSL
 #include "../build/luasocket/mod_lua_headers.h"
 #include "../build/luasocket/mod_lua_http.h"
 #include "../build/luasocket/mod_lua_https.h"
@@ -36,9 +36,9 @@ typedef struct mod_lua {
 #include "../build/dns/mod_lua_dns.dig.h"
 #include "../build/dns/mod_lua_dns.parser.h"
 #include "../build/dns/mod_lua_dns.resolver.h"
-// HMAC-SHA256
+// Crypto primitives from WolfSSL
 #include "../build/crypto/mod_lua_crypto.h"
-// term
+// Term
 #include "../build/term/mod_lua_term.h"
 #include "../build/term/mod_lua_term.input.completion.h"
 #include "../build/term/mod_lua_term.input.h"
@@ -46,7 +46,7 @@ typedef struct mod_lua {
 #include "../build/term/mod_lua_term.input.prompt.h"
 #include "../build/term/mod_lua_term.tss.h"
 #include "../build/term/mod_lua_term.widgets.h"
-// djot
+// Djot
 #include "../build/djot/mod_lua_djot.ast.h"
 #include "../build/djot/mod_lua_djot.attributes.h"
 #include "../build/djot/mod_lua_djot.block.h"
@@ -54,9 +54,9 @@ typedef struct mod_lua {
 #include "../build/djot/mod_lua_djot.h"
 #include "../build/djot/mod_lua_djot.html.h"
 #include "../build/djot/mod_lua_djot.inline.h"
-// redis
+// Redis
 #include "../build/redis/mod_lua_redis.h"
-// shell
+// Shell
 #include "../build/shell/mod_lua_shell.builtins.h"
 #include "../build/shell/mod_lua_shell.completion.shell.h"
 #include "../build/shell/mod_lua_shell.completion.source.bin.h"
