@@ -116,19 +116,7 @@ local fetch_content = function(self, host, query, metadata)
 			"title",
 			title
 		)
-		self.red:cmd(
-			"HEXPIRE",
-			self.prefix .. ":FILES:" .. host .. ":" .. filename,
-			3600,
-			"NX",
-			"FIELDS",
-			5,
-			"content",
-			"hash",
-			"size",
-			"mime",
-			"title"
-		)
+		self.red:cmd("EXPIRE", self.prefix .. ":FILES:" .. host .. ":" .. filename, 3600)
 	end
 	if mime_type == "application/lua" then
 		content = load(content)()
@@ -308,7 +296,7 @@ local new = function()
 		fetch_userinfo = fetch_userinfo,
 		fetch_entry_metadata = fetch_entry_metadata,
 		fetch_content = fetch_content,
-		fetch_hash_and_size = fetch_static_content,
+		fetch_hash_and_size = fetch_hash_and_size,
 		fetch_userdata = fetch_userdata,
 		check_rate_limit = check_rate_limit,
 		check_waf = check_waf,
