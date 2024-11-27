@@ -38,29 +38,12 @@ end
 
 local b64url_encode = function(str)
 	local b64_str = core.base64_encode(str)
-	local b64_url_str = b64_str:gsub("[+/=%s\r\n]", function(c)
-		if c == "+" then
-			return "-"
-		end
-		if c == "/" then
-			return "_"
-		end
-		return ""
-	end)
-	return b64_url_str
+	return b64_str:gsub("[+/= \r\n]", { ["+"] = "-", ["/"] = "_", [" "] = "", ["\r"] = "", ["\n"] = "", ["="] = "" })
 end
 
 local b64url_decode = function(str)
-	local b64_str = str:gsub("[-_]", function(c)
-		if c == "-" then
-			return "+"
-		end
-		return "/"
-	end)
-	while (#b64_str % 4) ~= 0 do
-		b64_str = b64_str .. "="
-	end
-	return core.base64_decode(b64_str)
+	str = str .. string.rep("=", (4 - (#str % 4)) % 4)
+	return b64_decode(str:gsub("[-_]", { ["-"] = "+", ["_"] = "/" }))
 end
 
 local b64url_encode_json = function(tbl)
@@ -84,8 +67,6 @@ local save_ecc_key = function(key_obj, name)
 	std.fs.write_file(
 		name .. ".jwk",
 		json.encode({
-			kty = "EC",
-			crv = "P-256",
 			x = b64url_encode(key_obj.x),
 			y = b64url_encode(key_obj.y),
 			d = b64url_encode(key_obj.private),
@@ -99,11 +80,18 @@ local load_ecc_key = function(key_file)
 	if not content then
 		return nil, err
 	end
-	return json.decode(content)
+	local jwk = json.decode(content)
+	local key_obj = {
+		private = b64url_decode(jwk.d),
+		public = b64url_decode(jwk.pub),
+		x = b64url_decode(jwk.x),
+		y = b64url_decode(jwk.y),
+	}
+	return key_obj
 end
 
-local ecc_sign = function(key, msg)
-	return core.ecc_sign(key, msg)
+local ecc_sign = function(key, pub_key, msg)
+	return core.ecc_sign(key, pub_key, msg)
 end
 
 local ecc_verify = function(pub_key, msg, sig)

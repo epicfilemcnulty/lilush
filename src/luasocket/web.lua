@@ -7,6 +7,8 @@ local ltn12 = require("ltn12")
 local socket = require("socket")
 local json = require("cjson")
 
+local debug_mode = os.getenv("LILUSH_DEBUG")
+
 local url_escape = function(str)
 	if str then
 		str = string.gsub(str, "\n", "\r\n")
@@ -119,6 +121,11 @@ local request = function(uri, options, timeout)
 	if #options.body > 0 then
 		options.headers["content-length"] = string.len(options.body)
 		options.source = ltn12.source.string(options.body)
+	end
+	if debug_mode then
+		print("--web.request DEBUG: request options table--")
+		std.tbl.print(options)
+		print("--web.request END of requst options table--")
 	end
 	local result, status, headers, status_line = http.request(options)
 	if result == 1 then

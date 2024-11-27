@@ -127,29 +127,25 @@ int lua_ecc_generate_key(lua_State *L) {
         RETURN_CUSTOM_ERR(L, "failed to generate ECC key");
     }
 
-    memset(private_key, 0, key_size);
-    ret = wc_EccKeyToDer(&key, private_key, key_size);
-    if (ret < 0) {
+    ret = wc_ecc_export_private_only(&key, private_key, &key_size);
+    if (ret != 0) {
         wc_ecc_free(&key);
         wc_FreeRng(&rng);
-        RETURN_CUSTOM_ERR(L, "failed to export ECC key to DER");
+        RETURN_CUSTOM_ERR(L, "failed to export private key");
     }
-    key_size = ret;
 
-    memset(public_key, 0, pub_key_size);
-    ret = wc_EccPublicKeyToDer(&key, public_key, pub_key_size, 1);
-    if (ret < 0) {
+    ret = wc_ecc_export_x963(&key, public_key, &pub_key_size);
+    if (ret != 0) {
         wc_ecc_free(&key);
         wc_FreeRng(&rng);
-        RETURN_CUSTOM_ERR(L, "failed to export public ECC key to DER");
+        RETURN_CUSTOM_ERR(L, "failed to export public key");
     }
-    pub_key_size = ret;
 
     ret = wc_ecc_export_public_raw(&key, Qx, &qxlen, Qy, &qylen);
-    if (ret != MP_OKAY) {
+    if (ret != 0) {
         wc_ecc_free(&key);
         wc_FreeRng(&rng);
-        RETURN_CUSTOM_ERR(L, "failed to export public ECC key to DER");
+        RETURN_CUSTOM_ERR(L, "failed to export X and Y");
     }
 
     lua_pushlstring(L, (char *)private_key, key_size);
@@ -162,14 +158,13 @@ int lua_ecc_generate_key(lua_State *L) {
 }
 
 int lua_ecc_sign(lua_State *L) {
-    size_t secret_size, msg_size;
-    const char *secret = lua_tolstring(L, 1, &secret_size);
-    const char *msg    = lua_tolstring(L, 2, &msg_size);
+    size_t key_size, pub_key_size, msg_size;
+    const char *private_key = lua_tolstring(L, 1, &key_size);
+    const char *public_key  = lua_tolstring(L, 2, &pub_key_size);
+    const char *msg         = lua_tolstring(L, 3, &msg_size);
     WC_RNG rng;
     ecc_key key;
     byte hash[WC_SHA256_DIGEST_SIZE];
-    byte sig[ECC_MAX_SIG_SIZE];
-    word32 sigLen = ECC_MAX_SIG_SIZE;
     int ret, idx = 0;
 
     ret = wc_InitRng(&rng);
@@ -183,7 +178,8 @@ int lua_ecc_sign(lua_State *L) {
         RETURN_CUSTOM_ERR(L, "failed to initialize ECC key");
     }
 
-    ret = wc_EccPrivateKeyDecode((byte *)secret, &idx, &key, (word32)secret_size);
+    ret = wc_ecc_import_private_key((byte *)private_key, (word32)key_size, (byte *)public_key, (word32)pub_key_size,
+                                    &key);
     if (ret != 0) {
         wc_ecc_free(&key);
         wc_FreeRng(&rng);
@@ -197,16 +193,33 @@ int lua_ecc_sign(lua_State *L) {
         RETURN_CUSTOM_ERR(L, "failed to calculate SHA256 hash");
     }
 
-    ret = wc_ecc_sign_hash(hash, sizeof(hash), sig, &sigLen, &rng, &key);
+    mp_int r, s;
+    mp_init(&r);
+    mp_init(&s);
+
+    ret = wc_ecc_sign_hash_ex(hash, sizeof(hash), &rng, &key, &r, &s);
     if (ret != 0) {
+        mp_free(&r);
+        mp_free(&s);
         wc_ecc_free(&key);
         wc_FreeRng(&rng);
         RETURN_CUSTOM_ERR(L, "failed to sign hash");
     }
 
-    lua_pushlstring(L, (char *)sig, sigLen);
+    byte raw_sig[64]; // 32 bytes for r + 32 bytes for s
+    int r_size = mp_unsigned_bin_size(&r);
+    int s_size = mp_unsigned_bin_size(&s);
+    // Pad with zeros if needed
+    memset(raw_sig, 0, 64);
+    mp_to_unsigned_bin(&r, raw_sig + (32 - r_size));
+    mp_to_unsigned_bin(&s, raw_sig + 32 + (32 - s_size));
+
+    mp_free(&r);
+    mp_free(&s);
     wc_ecc_free(&key);
     wc_FreeRng(&rng);
+
+    lua_pushlstring(L, (char *)raw_sig, 64);
     return 1;
 }
 
@@ -224,7 +237,7 @@ int lua_ecc_verify(lua_State *L) {
         RETURN_CUSTOM_ERR(L, "failed to initialize ECC key");
     }
 
-    ret = wc_EccPublicKeyDecode((byte *)public, &idx, &key, (word32)public_size);
+    ret = wc_ecc_import_x963((byte *)public, (word32)public_size, &key);
     if (ret != 0) {
         wc_ecc_free(&key);
         RETURN_CUSTOM_ERR(L, "failed to decode ECC public key");
@@ -235,15 +248,49 @@ int lua_ecc_verify(lua_State *L) {
         wc_ecc_free(&key);
         RETURN_CUSTOM_ERR(L, "failed to calculate SHA256 hash");
     }
-
-    ret = wc_ecc_verify_hash((byte *)sig, sig_size, hash, sizeof(hash), &is_valid_sig, &key);
+    // Initialize mp_int for r and s
+    mp_int r, s;
+    ret = mp_init(&r);
     if (ret != 0) {
         wc_ecc_free(&key);
+        RETURN_CUSTOM_ERR(L, "failed to initialize r");
+    }
+    ret = mp_init(&s);
+    if (ret != 0) {
+        mp_free(&r);
+        wc_ecc_free(&key);
+        RETURN_CUSTOM_ERR(L, "failed to initialize s");
+    }
+
+    // Convert first 32 bytes to r
+    ret = mp_read_unsigned_bin(&r, (byte *)sig, 32);
+    if (ret != 0) {
+        mp_free(&r);
+        mp_free(&s);
+        wc_ecc_free(&key);
+        RETURN_CUSTOM_ERR(L, "failed to read r value");
+    }
+
+    // Convert last 32 bytes to s
+    ret = mp_read_unsigned_bin(&s, (byte *)sig + 32, 32);
+    if (ret != 0) {
+        mp_free(&r);
+        mp_free(&s);
+        wc_ecc_free(&key);
+        RETURN_CUSTOM_ERR(L, "failed to read s value");
+    }
+
+    ret = wc_ecc_verify_hash_ex(&r, &s, hash, sizeof(hash), &is_valid_sig, &key);
+
+    mp_free(&r);
+    mp_free(&s);
+    wc_ecc_free(&key);
+
+    if (ret != 0) {
         RETURN_CUSTOM_ERR(L, "failed to verify signature");
     }
 
     lua_pushboolean(L, is_valid_sig);
-    wc_ecc_free(&key);
     return 1;
 }
 
