@@ -5,7 +5,8 @@
 - [ ] Djot rendering refactor: add divs and quotes support; navigation
 - [ ] Kitty graphics protocol support
 - [ ] Add basic `curl` alternative to shell builtins
-- [ ] Digital signatures from WolfCrypt for proper packaging/plugins support
+- [x] Digital signatures from WolfCrypt for proper packaging/plugins support
+- [ ] Curve25519 & session keys
 - [ ] Vault API library
 - [ ] AWS lib integration
 - [ ] OIDC Client
