@@ -76,6 +76,7 @@ end
 
 local ts_to_str = function(ts, fmt)
 	local ts = ts or os.time()
+	-- Use ISO 8601 (well, without `T` in between the date and time) by default. See RFC3339 for details on ISO 8601.
 	local fmt = fmt or "%Y-%m-%d %H:%M:%S"
 	return os.date(fmt, ts)
 end

@@ -62,17 +62,21 @@ local ecc_generate_key = function()
 	return key_obj
 end
 
-local save_ecc_key = function(key_obj, name)
-	local name = name or bin_to_hex(std.salt(4))
-	std.fs.write_file(
-		name .. ".jwk",
-		json.encode({
-			x = b64url_encode(key_obj.x),
-			y = b64url_encode(key_obj.y),
-			d = b64url_encode(key_obj.private),
-			pub = b64url_encode(key_obj.public),
-		})
-	)
+local save_ecc_key = function(key_obj, key_file)
+	if not key_file then
+		return nil, "no filename provided"
+	end
+	local jwk, err = json.encode({
+		x = b64url_encode(key_obj.x),
+		y = b64url_encode(key_obj.y),
+		d = b64url_encode(key_obj.private),
+		pub = b64url_encode(key_obj.public),
+		kid = key_obj.kid,
+	})
+	if not jwk then
+		return nil, "failed to encode key: " .. err
+	end
+	return std.fs.write_file(key_file, jwk)
 end
 
 local load_ecc_key = function(key_file)
@@ -80,12 +84,16 @@ local load_ecc_key = function(key_file)
 	if not content then
 		return nil, err
 	end
-	local jwk = json.decode(content)
+	local jwk, err = json.decode(content)
+	if not jwk then
+		return nil, "failed to decode the key: " .. err
+	end
 	local key_obj = {
 		private = b64url_decode(jwk.d),
 		public = b64url_decode(jwk.pub),
 		x = b64url_decode(jwk.x),
 		y = b64url_decode(jwk.y),
+		kid = jwk.kid,
 	}
 	return key_obj
 end
