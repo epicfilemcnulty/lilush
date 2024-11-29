@@ -108,11 +108,11 @@ local request = function(uri, options, timeout)
 	local parsed_url = url.parse(uri)
 
 	defaults.headers["Host"] = parsed_url.host
-	if parsed_url.scheme == "https" then
-		defaults.server_name = parsed_url.host
-	end
 	defaults.scheme = parsed_url.scheme
 	options = std.tbl.merge(defaults, options)
+	if parsed_url.scheme == "https" and not options.no_sni then
+		options.server_name = options.headers["Host"]
+	end
 	options.url = uri
 	http.TIMEOUT = timeout
 	local body = {}

@@ -104,7 +104,7 @@ static int load_locations(lua_State *L) {
     const char *keyfile  = luaL_optstring(L, 5, NULL);
 
     if (certfile && keyfile) {
-        int ret = wolfSSL_CTX_use_certificate_file(ctx, certfile, WOLFSSL_FILETYPE_PEM);
+        int ret = wolfSSL_CTX_use_certificate_chain_file(ctx, certfile);
         if (ret != 1) {
             const char *err = wolfSSL_ERR_reason_error_string(wolfSSL_get_error(ctx, ret));
             lua_pushboolean(L, 0);

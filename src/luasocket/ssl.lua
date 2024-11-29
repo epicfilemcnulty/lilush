@@ -38,7 +38,7 @@ local function newcontext(cfg)
 			return nil, msg
 		end
 	end
-	if config.server_name then
+	if config.server_name and not config.no_sni then
 		context.sni(ctx, config.server_name)
 	end
 	if config.no_verify_mode then
