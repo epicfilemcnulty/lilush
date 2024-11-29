@@ -59,6 +59,47 @@ static const char *ssl_ioerror(void *ctx, int err) {
     return socket_strerror(err);
 }
 
+static WOLFSSL_CTX *find_sni_context(sni_list *list, const char *name) {
+    for (size_t i = 0; i < list->count; i++) {
+        if (strcmp(list->entries[i].servername, name) == 0) {
+            return list->entries[i].ctx;
+        }
+    }
+    return NULL;
+}
+
+static WOLFSSL_CTX *check_client_sni(p_ssl ssl, const unsigned char *buffer, size_t len) {
+    if (len < 5) {
+        return NULL; // Need at least TLS record header
+    }
+    // Check if it's a handshake message (type 22)
+    if (buffer[0] != 0x16) {
+        return NULL;
+    }
+    // Get handshake message length
+    size_t msg_len = (buffer[3] << 8) | buffer[4];
+    if (len < msg_len + 5) {
+        return NULL;
+    }
+    // Check if it's a ClientHello (type 1)
+    if (buffer[5] != 0x01) {
+        return NULL;
+    }
+    char sni_name[256];
+    unsigned int sni_size = sizeof(sni_name);
+
+    int ret = wolfSSL_SNI_GetFromBuffer(buffer,
+                                        msg_len + 5, // TLS Header lenght + ClientHello Length
+                                        WOLFSSL_SNI_HOST_NAME, (unsigned char *)sni_name, &sni_size);
+
+    if (ret == WOLFSSL_SUCCESS && sni_size > 0) {
+        sni_name[sni_size] = '\0';
+        return find_sni_context(ssl->sni_contexts, sni_name);
+    }
+
+    return NULL;
+}
+
 /**
  * Close the connection before the GC collect the object.
  */
@@ -88,6 +129,22 @@ static int handshake(p_ssl ssl) {
 
     for (;;) {
         if (ssl->mode == LSEC_MODE_SERVER) {
+            // Before accepting, peek at the ClientHello
+            char peek_buf[16384]; // Max TLS message size
+            int peek_len = recv(ssl->sock, peek_buf, sizeof(peek_buf), MSG_PEEK);
+
+            if (peek_len > 0) {
+                WOLFSSL_CTX *new_ctx = check_client_sni(ssl, (unsigned char *)peek_buf, peek_len);
+                if (new_ctx) {
+                    // Create new SSL object with the new context
+                    WOLFSSL *new_ssl = wolfSSL_new(new_ctx);
+                    if (new_ssl) {
+                        wolfSSL_free(ssl->ssl);
+                        ssl->ssl = new_ssl;
+                        wolfSSL_set_fd(ssl->ssl, ssl->sock);
+                    }
+                }
+            }
             err = wolfSSL_accept(ssl->ssl);
         } else {
             err = wolfSSL_connect(ssl->ssl);
@@ -252,7 +309,6 @@ static int meth_create(lua_State *L) {
         }
         ssl->mode = mode;
     } else {
-        printf("Invalid context passed to meth_create\n"); // Debug print
         return luaL_argerror(L, 1, "invalid context");
     }
     ssl->state = LSEC_STATE_NEW;
@@ -264,6 +320,36 @@ static int meth_create(lua_State *L) {
 
     luaL_getmetatable(L, "SSL:Connection");
     lua_setmetatable(L, -2);
+    return 1;
+}
+
+static int meth_add_sni_context(lua_State *L) {
+    p_ssl ssl              = (p_ssl)luaL_checkudata(L, 1, "SSL:Connection");
+    const char *servername = luaL_checkstring(L, 2);
+    WOLFSSL_CTX *ctx       = lsec_checkcontext(L, 3);
+
+    if (!ssl->sni_contexts) {
+        ssl->sni_contexts = malloc(sizeof(sni_list));
+        if (!ssl->sni_contexts) {
+            return luaL_error(L, "out of memory");
+        }
+        ssl->sni_contexts->entries = NULL;
+        ssl->sni_contexts->count   = 0;
+    }
+
+    sni_list_entry *new_entries =
+        realloc(ssl->sni_contexts->entries, (ssl->sni_contexts->count + 1) * sizeof(sni_list_entry));
+
+    if (!new_entries) {
+        return luaL_error(L, "out of memory");
+    }
+
+    ssl->sni_contexts->entries                                      = new_entries;
+    ssl->sni_contexts->entries[ssl->sni_contexts->count].servername = strdup(servername);
+    ssl->sni_contexts->entries[ssl->sni_contexts->count].ctx        = ctx;
+    ssl->sni_contexts->count++;
+
+    lua_pushboolean(L, 1);
     return 1;
 }
 
@@ -408,17 +494,18 @@ static int meth_tostring(lua_State *L) {
  * SSL methods
  */
 static luaL_Reg methods[] = {
-    {"close",       meth_close     },
-    {"getfd",       meth_getfd     },
-    {"getstats",    meth_getstats  },
-    {"dohandshake", meth_handshake },
-    {"setstats",    meth_setstats  },
-    {"dirty",       meth_dirty     },
-    {"receive",     meth_receive   },
-    {"send",        meth_send      },
-    {"settimeout",  meth_settimeout},
-    {"want",        meth_want      },
-    {NULL,          NULL           }
+    {"close",           meth_close          },
+    {"getfd",           meth_getfd          },
+    {"getstats",        meth_getstats       },
+    {"dohandshake",     meth_handshake      },
+    {"setstats",        meth_setstats       },
+    {"dirty",           meth_dirty          },
+    {"receive",         meth_receive        },
+    {"send",            meth_send           },
+    {"add_sni_context", meth_add_sni_context},
+    {"settimeout",      meth_settimeout     },
+    {"want",            meth_want           },
+    {NULL,              NULL                }
 };
 
 /**

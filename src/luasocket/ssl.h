@@ -24,6 +24,16 @@
 
 #define LSEC_IO_SSL -100
 
+typedef struct {
+    const char *servername;
+    WOLFSSL_CTX *ctx;
+} sni_list_entry;
+
+typedef struct {
+    sni_list_entry *entries;
+    size_t count;
+} sni_list;
+
 typedef struct t_ssl_ {
     t_socket sock;
     t_io io;
@@ -33,6 +43,7 @@ typedef struct t_ssl_ {
     int state;
     int error;
     int mode;
+    sni_list *sni_contexts;
 } t_ssl;
 typedef t_ssl *p_ssl;
 

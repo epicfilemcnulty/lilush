@@ -223,17 +223,33 @@ local server_serve = function(self)
 				if pid == 0 and client then
 					local count = 1
 					local ssl_client, err
-					if self.__config.keyfile then
+					if self.__config.ssl then
 						local cfg = {
 							mode = "server",
-							keyfile = self.__config.keyfile,
-							certfile = self.__config.certfile,
+							keyfile = self.__config.ssl.default.key,
+							certfile = self.__config.ssl.default.cert,
 						}
+						-- Create the default context and wrap socket
+						local default_ctx = ssl.newcontext(cfg)
 						ssl_client, err = ssl.wrap(client, cfg)
+
 						if not ssl_client then
 							self.logger:log("failed to wrap client with SSL: " .. err, "error")
 							client:close()
 							os.exit(1)
+						end
+
+						-- Add additional contexts for SNI
+						if self.__config.ssl.hosts then
+							for hostname, cert_config in pairs(self.__config.ssl.hosts) do
+								local host_cfg = {
+									mode = "server",
+									keyfile = cert_config.key,
+									certfile = cert_config.cert,
+								}
+								local host_ctx = ssl.newcontext(host_cfg)
+								ssl_client:add_sni_context(hostname, host_ctx)
+							end
 						end
 						local status, err = ssl_client:dohandshake()
 						if not status then
@@ -271,7 +287,20 @@ local sample_handle = function()
 	return "Hi there!", 200, {}
 end
 
-local server_new = function(ip, port, handle, certfile, keyfile)
+--[[
+
+    ssl_config format:
+    {
+       default = { cert = "path/to/cert", key = "path/to/key" },
+       hosts = {
+           ["domain1.com"] = { cert = "path/to/cert1", key = "path/to/key1" },
+           ["domain2.com"] = { cert = "path/to/cert2", key = "path/to/key2" }
+       }
+    }
+
+]]
+
+local server_new = function(ip, port, handle, ssl_config)
 	local ip = ip or "127.0.0.1"
 	local port = port or 8443
 	local handle = handle or sample_handle
@@ -282,8 +311,7 @@ local server_new = function(ip, port, handle, certfile, keyfile)
 			port = port,
 			backlog = 256,
 			fork_limit = 64,
-			certfile = certfile,
-			keyfile = keyfile,
+			ssl = ssl_config,
 			requests_per_fork = 512,
 			max_body_size = 1024 * 1024 * 5, -- 5 megabytes is plenty.
 			request_line_limit = 1024 * 8, -- 8Kb for the request line or a single header is HUGE! I'm too generous here.
