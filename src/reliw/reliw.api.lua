@@ -92,6 +92,14 @@ local check_waf = function(host, query, headers)
 	return store:check_waf(host, query, headers)
 end
 
+local add_waffer = function(ip)
+	local store, err = store.new()
+	if err then
+		return nil, err
+	end
+	return store:add_waffer(ip)
+end
+
 local check_rate_limit = function(host, method, query, remote_ip, period)
 	local store, err = store.new()
 	if err then
@@ -107,5 +115,6 @@ local api = {
 	get_userdata = get_userdata,
 	check_rate_limit = check_rate_limit,
 	check_waf = check_waf,
+	add_waffer = add_waffer,
 }
 return api

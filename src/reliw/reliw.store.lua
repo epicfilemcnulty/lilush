@@ -183,6 +183,10 @@ local check_waf = function(self, host, query, headers)
 	return nil
 end
 
+local add_waffer = function(self, ip)
+	return self.red:cmd("PUBLISH", self.prefix .. ":WAFFERS", ip)
+end
+
 local check_rate_limit = function(self, host, method, query, remote_ip, period)
 	local count =
 		self.red:cmd("INCR", self.prefix .. ":LIMITS:" .. host .. ":" .. method .. ":" .. query .. ":" .. remote_ip)
@@ -300,6 +304,7 @@ local new = function()
 		fetch_userdata = fetch_userdata,
 		check_rate_limit = check_rate_limit,
 		check_waf = check_waf,
+		add_waffer = add_waffer,
 		set_session_data = set_session_data,
 		destroy_session = destroy_session,
 		fetch_session_user = fetch_session_user,
