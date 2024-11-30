@@ -302,7 +302,7 @@ end
 
 local server_new = function(ip, port, handle, ssl_config)
 	local ip = ip or "127.0.0.1"
-	local port = port or 8443
+	local port = port or 8080
 	local handle = handle or sample_handle
 
 	return {

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#define RELIW_VERSION "0.5.5-16-g3405122"
+#define RELIW_VERSION "0.5.5-18-gb07476a"
 
 static const char START_RELIW[] =
     "local ws = require('web_server')\n"
@@ -10,8 +10,9 @@ static const char START_RELIW[] =
     "local handle = require('reliw.handle')\n"
     "local config_file = os.getenv('RELIW_CONFIG_FILE') or "
     "'/etc/reliw/config.json'\n"
+    "if not std.fs.file_exists(config_file) then print('no config file found') os.exit(-1) end\n"
     "local config = json.decode(std.fs.read_file(config_file))\n"
-    "if not config then print('failed to read config file ' .. config_file) "
+    "if not config then print('failed to read/decode config file ' .. config_file) "
     "os.exit(-1) end\n"
     "local ip = config.ip or '127.0.0.1'\n"
     "local port = config.port or 8080\n"
