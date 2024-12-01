@@ -118,6 +118,23 @@ local ed25519_verify = function(pub_key, msg, sig)
 	return core.ed25519_verify(pub_key, msg, sig)
 end
 
+local generate_csr = function(key, pub_key, domain)
+	if not key or not pub_key then
+		return nil, "you must provide a key"
+	end
+	if not domain then
+		return nil, "domain name is required"
+	end
+	return core.generate_csr(key, pub_key, domain)
+end
+
+local der_to_pem_ecc_key = function(key_obj)
+	if not key_obj or not key_obj.private or not key_obj.public then
+		return nil, "invalid key object"
+	end
+	return core.der_to_pem_ecc_key(key_obj.private, key_obj.public)
+end
+
 _M.bin_to_hex = bin_to_hex
 _M.hex_to_bin = hex_to_bin
 _M.b64_encode = b64_encode
@@ -135,4 +152,6 @@ _M.ecc_verify = ecc_verify
 _M.ed25519_generate_key = ed25519_generate_key
 _M.ed25519_sign = ed25519_sign
 _M.ed25519_verify = ed25519_verify
+_M.generate_csr = generate_csr
+_M.der_to_pem_ecc_key = der_to_pem_ecc_key
 return _M

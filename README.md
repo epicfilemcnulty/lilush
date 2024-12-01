@@ -7,18 +7,19 @@ compiled for Linux [LuaJIT](https://luajit.org/) interpreter that comes bundled 
 curated collection of Lua modules and C libraries for
 
 * File system operations
+* Process manipulation
+* TCP/UDP networking with SSL support; HTTP(S) client, HTTP(S)/1.1 server
+* Modern cryptography
 * Terminal I/O with UTF-8 support, styling with *TSS* (Terminal Style Sheets)
 * A set of terminal widgets for use in CLI apps
-* Process manipulation
 * [djot](https://djot.net/) processing/rendering
-* TCP/UDP networking with SSL support; HTTP(S) client, HTTP(S)/1.1 server
 * Redis protocol support
 * Embedded [WireGuard](https://www.wireguard.com/embedding/) client
 * JSON, Base64, HMAC, ...
 
-For networking, _lilush_ includes [Luasocket](https://github.com/lunarmodules/luasocket) library,
-which has been merged with [LuaSec](https://github.com/lunarmodules/luasec) and customized 
-to work seamlessly with [WolfSSL](https://www.wolfssl.com/).
+For networking, _lilush_ uses [LuaSocketWolfSSL](https://github.com/epicfilemcnulty/lilush/blob/master/src/luasocket/README.md) library,
+which is based on [Luasocket](https://github.com/lunarmodules/luasocket) and [LuaSec](https://github.com/lunarmodules/luasec) modules
+merged into one and refactored to work seamlessly with [WolfSSL](https://www.wolfssl.com/).
 WolfSSL is also statically compiled and incorporated into the _lilush_ binary.
 
 The binary is fewer than *2MB*, and should work fine on any *x86_64 Linux*

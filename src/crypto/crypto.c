@@ -417,6 +417,122 @@ int lua_ed25519_verify(lua_State *L) {
     return 1;
 }
 
+int lua_generate_csr(lua_State *L) {
+    size_t key_size, pub_key_size, domain_size;
+    const char *private_key = lua_tolstring(L, 1, &key_size);
+    const char *public_key  = lua_tolstring(L, 2, &pub_key_size);
+    const char *domain      = lua_tolstring(L, 3, &domain_size);
+
+    WC_RNG rng;
+    ecc_key key;
+    Cert req;
+    byte der[4096];
+    int ret, derSz;
+
+    /* Initialize RNG */
+    ret = wc_InitRng(&rng);
+    if (ret != 0) {
+        RETURN_CUSTOM_ERR(L, "failed to initialize RNG");
+    }
+
+    /* Initialize key */
+    ret = wc_ecc_init(&key);
+    if (ret != 0) {
+        wc_FreeRng(&rng);
+        RETURN_CUSTOM_ERR(L, "failed to initialize ECC key");
+    }
+
+    /* Import the private key */
+    ret = wc_ecc_import_private_key((byte *)private_key, (word32)key_size, (byte *)public_key, (word32)pub_key_size,
+                                    &key);
+    if (ret != 0) {
+        wc_ecc_free(&key);
+        wc_FreeRng(&rng);
+        RETURN_CUSTOM_ERR(L, "failed to import private key");
+    }
+
+    /* Initialize certificate request */
+    ret = wc_InitCert(&req);
+    if (ret != 0) {
+        wc_ecc_free(&key);
+        wc_FreeRng(&rng);
+        RETURN_CUSTOM_ERR(L, "failed to initialize certificate request");
+    }
+
+    /* Set certificate request fields */
+    strncpy(req.subject.commonName, domain, CTC_NAME_SIZE);
+    req.sigType = CTC_SHA256wECDSA;
+
+    /* Generate CSR */
+    ret = wc_MakeCertReq_ex(&req, der, sizeof(der), ECC_TYPE, &key);
+    if (ret <= 0) {
+        wc_ecc_free(&key);
+        wc_FreeRng(&rng);
+        RETURN_CUSTOM_ERR(L, "failed to generate certificate request");
+    }
+    derSz = ret;
+
+    /* Sign the CSR */
+    ret = wc_SignCert_ex(req.bodySz, req.sigType, der, sizeof(der), ECC_TYPE, &key, &rng);
+    if (ret <= 0) {
+        wc_ecc_free(&key);
+        wc_FreeRng(&rng);
+        RETURN_CUSTOM_ERR(L, "failed to sign certificate request");
+    }
+    derSz = ret;
+
+    lua_pushlstring(L, (char *)der, derSz);
+
+    wc_ecc_free(&key);
+    wc_FreeRng(&rng);
+    return 1;
+}
+
+int lua_der_to_pem_ecc_key(lua_State *L) {
+    size_t key_size, pub_key_size;
+    const char *private_key = lua_tolstring(L, 1, &key_size);
+    const char *public_key  = lua_tolstring(L, 2, &pub_key_size);
+
+    ecc_key key;
+    byte der[4096];
+    byte pem[4096];
+    word32 derSz;
+    int ret;
+
+    /* Initialize key */
+    ret = wc_ecc_init(&key);
+    if (ret != 0) {
+        RETURN_CUSTOM_ERR(L, "failed to initialize ECC key");
+    }
+
+    /* Import the private key */
+    ret = wc_ecc_import_private_key((byte *)private_key, (word32)key_size, (byte *)public_key, (word32)pub_key_size,
+                                    &key);
+    if (ret != 0) {
+        wc_ecc_free(&key);
+        RETURN_CUSTOM_ERR(L, "failed to import private key");
+    }
+
+    /* Convert key to DER */
+    ret = wc_EccKeyToDer(&key, der, sizeof(der));
+    if (ret <= 0) {
+        wc_ecc_free(&key);
+        RETURN_CUSTOM_ERR(L, "failed to convert key to DER");
+    }
+    derSz = ret;
+
+    /* Convert DER to PEM */
+    ret = wc_DerToPem(der, derSz, pem, sizeof(pem), ECC_PRIVATEKEY_TYPE);
+    if (ret <= 0) {
+        wc_ecc_free(&key);
+        RETURN_CUSTOM_ERR(L, "failed to convert DER to PEM");
+    }
+
+    lua_pushlstring(L, (char *)pem, ret);
+    wc_ecc_free(&key);
+    return 1;
+}
+
 static luaL_Reg funcs[] = {
     {"sha256",               lua_sha256              },
     {"hmac",                 lua_hmac                },
@@ -428,6 +544,8 @@ static luaL_Reg funcs[] = {
     {"ed25519_generate_key", lua_ed25519_generate_key},
     {"ed25519_sign",         lua_ed25519_sign        },
     {"ed25519_verify",       lua_ed25519_verify      },
+    {"generate_csr",         lua_generate_csr        },
+    {"der_to_pem_ecc_key",   lua_der_to_pem_ecc_key  },
     {NULL,                   NULL                    }
 };
 
