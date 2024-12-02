@@ -11,7 +11,6 @@ local json = require("cjson.safe")
        the ACME software in addition to the name and version of the
        underlying HTTP client software."
 ]]
-
 local common_headers = {
 	["Content-Type"] = "application/jose+json",
 	["User-Agent"] = "RELIW-ACME-CLIENT/0.5",
