@@ -287,10 +287,6 @@ local server_configure = function(self, config)
 	local config = config or {}
 	self.__config = std.tbl.merge(self.__config, config)
 	self.logger:set_level(self.__config.log_level)
-	std.ps.setenv("RELIW_DATA_DIR", self.__config.data_dir)
-	std.ps.setenv("RELIW_REDIS_PREFIX", self.__config.redis_prefix)
-	std.ps.setenv("RELIW_REDIS_URL", self.__config.redis_url)
-	std.ps.setenv("RELIW_CACHE_MAX", self.__config.cache_max)
 end
 
 local sample_handle = function()
@@ -318,10 +314,6 @@ local server_new = function(config, handle)
 		__config = {
 			ip = "127.0.0.1",
 			port = 8080,
-			data_dir = "/www",
-			redis_url = "127.0.0.1:6379/13",
-			redis_prefix = "RLW",
-			cache_max = 5242880,
 			backlog = 256,
 			fork_limit = 64,
 			requests_per_fork = 512,

@@ -3,20 +3,11 @@
 
 #define RELIW_VERSION "0.5.5-18-gb07476a"
 
-static const char START_RELIW[] = "local ws = require('web_server')\n"
-                                  "local std = require('std')\n"
-                                  "local json = require('cjson.safe')\n"
-                                  "local handle = require('reliw.handle')\n"
-                                  "local config_file = os.getenv('RELIW_CONFIG_FILE') or "
-                                  "'/etc/reliw/config.json'\n"
-                                  "if not std.fs.file_exists(config_file) then print('no config file found') "
-                                  "os.exit(-1) end\n"
-                                  "local config = json.decode(std.fs.read_file(config_file))\n"
-                                  "if not config then print('failed to read/decode config file ' .. "
-                                  "config_file) "
-                                  "os.exit(-1) end\n"
-                                  "local server = ws.new(config, handle.func)\n"
-                                  "server:serve()\n";
+static const char START_RELIW[] = "local reliw = require('reliw')\n"
+                                  "local reliw_srv, err = reliw.new()\n"
+                                  "if not reliw_srv then print('failed to init "
+                                  "RELIW: ' .. err) os.exit(-1) end\n"
+                                  "reliw_srv:serve()\n";
 
 typedef struct mod_lua {
     const char *const name;
@@ -63,6 +54,7 @@ typedef struct mod_lua {
 // Reliw
 #include "../build/reliw/mod_lua_reliw.api.h"
 #include "../build/reliw/mod_lua_reliw.auth.h"
+#include "../build/reliw/mod_lua_reliw.h"
 #include "../build/reliw/mod_lua_reliw.handle.h"
 #include "../build/reliw/mod_lua_reliw.metrics.h"
 #include "../build/reliw/mod_lua_reliw.store.h"
@@ -99,6 +91,7 @@ const mod_lua__t lua_preload[] = {
     {"djot.html",       mod_lua_djot_html,       &mod_lua_djot_html_SIZE      },
     {"djot.inline",     mod_lua_djot_inline,     &mod_lua_djot_inline_SIZE    },
     {"redis",           mod_lua_redis,           &mod_lua_redis_SIZE          },
+    {"reliw",           mod_lua_reliw,           &mod_lua_reliw_SIZE          },
     {"reliw.api",       mod_lua_reliw_api,       &mod_lua_reliw_api_SIZE      },
     {"reliw.auth",      mod_lua_reliw_auth,      &mod_lua_reliw_auth_SIZE     },
     {"reliw.handle",    mod_lua_reliw_handle,    &mod_lua_reliw_handle_SIZE   },
