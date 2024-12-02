@@ -6,7 +6,7 @@
 static const char START_RELIW[] = "local reliw = require('reliw')\n"
                                   "local reliw_srv, err = reliw.new()\n"
                                   "if not reliw_srv then print('failed to init "
-                                  "RELIW: ' .. err) os.exit(-1) end\n"
+                                  "RELIW: ' .. tostring(err)) os.exit(-1) end\n"
                                   "reliw_srv:serve()\n";
 
 typedef struct mod_lua {

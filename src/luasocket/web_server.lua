@@ -283,12 +283,6 @@ local server_serve = function(self)
 	end
 end
 
-local server_configure = function(self, config)
-	local config = config or {}
-	self.__config = std.tbl.merge(self.__config, config)
-	self.logger:set_level(self.__config.log_level)
-end
-
 local sample_handle = function()
 	return "Hi there!", 200, {}
 end
@@ -305,6 +299,30 @@ end
     }
 
 ]]
+
+local server_configure = function(self, config)
+	local config = config or {}
+	self.__config = std.tbl.merge(self.__config, config)
+	self.logger:set_level(self.__config.log_level)
+	if self.__config.ssl then
+		if self.__config.ssl.default then
+			if
+				not std.fs.file_exists(self.__config.ssl.default.cert)
+				or not std.fs.file_exists(self.__config.ssl.default.key)
+			then
+				return nil, "can't find default SSL cert/key"
+			end
+		end
+		if self.__config.ssl.hosts then
+			for domain, ssl in pairs(self.__config.ssl.hosts) do
+				if not std.fs.file_exists(ssl.cert) or not std.fs.file_exists(ssl.key) then
+					return nil, "Can't find SSL cert for the " .. domain .. " domain"
+				end
+			end
+		end
+	end
+	return true
+end
 
 local server_new = function(config, handle)
 	local config = config or {}
@@ -342,7 +360,10 @@ local server_new = function(config, handle)
 		configure = server_configure,
 		serve = server_serve,
 	}
-	srv:configure(config)
+	local ok, err = srv:configure(config)
+	if not ok then
+		return nil, err
+	end
 	return srv
 end
 

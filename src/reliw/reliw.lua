@@ -19,7 +19,10 @@ local new = function()
 	if not config then
 		return nil, "failed to read/decode config file"
 	end
-	local srv = ws.new(config, handle.func)
+	local srv, err = ws.new(config, handle.func)
+	if not srv then
+		return nil, err
+	end
 	configure(srv.__config)
 	return srv
 end
