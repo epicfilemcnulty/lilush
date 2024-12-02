@@ -135,6 +135,25 @@ local der_to_pem_ecc_key = function(key_obj)
 	return core.der_to_pem_ecc_key(key_obj.private, key_obj.public)
 end
 
+local parse_x509_cert = function(cert)
+	if not cert then
+		return nil, "certificate is required"
+	end
+	local pem_start = std.escape_magic_chars("-----BEGIN CERTIFICATE-----")
+	local pem_end = std.escape_magic_chars("-----END CERTIFICATE-----")
+	local cert_der = cert
+	if cert:match("^" .. pem_start) then
+		local cert_b64 = cert:match("^" .. pem_start .. "(.-)" .. pem_end)
+		cert_b64 = cert_b64:gsub("[\r\n%s]", "")
+		cert_der = b64_decode(cert_b64)
+	end
+	local cert_info = core.parse_x509_cert(cert_der)
+	if not cert_info then
+		return nil, "failed to parse certificate"
+	end
+	return cert_info
+end
+
 _M.bin_to_hex = bin_to_hex
 _M.hex_to_bin = hex_to_bin
 _M.b64_encode = b64_encode
@@ -154,4 +173,5 @@ _M.ed25519_sign = ed25519_sign
 _M.ed25519_verify = ed25519_verify
 _M.generate_csr = generate_csr
 _M.der_to_pem_ecc_key = der_to_pem_ecc_key
+_M.parse_x509_cert = parse_x509_cert
 return _M

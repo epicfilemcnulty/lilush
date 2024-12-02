@@ -299,7 +299,7 @@ end
 
 --[[
 
-    ssl_config format:
+    Format of the config.ssl section:
     {
        default = { cert = "path/to/cert", key = "path/to/key" },
        hosts = {
@@ -324,7 +324,6 @@ local server_new = function(config, handle)
 			cache_max = 5242880,
 			backlog = 256,
 			fork_limit = 64,
-			ssl = ssl_config,
 			requests_per_fork = 512,
 			max_body_size = 1024 * 1024 * 5, -- 5 megabytes is plenty.
 			request_line_limit = 1024 * 8, -- 8Kb for the request line or a single header is HUGE! I'm too generous here.

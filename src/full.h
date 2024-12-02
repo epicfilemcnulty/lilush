@@ -28,6 +28,9 @@ typedef struct mod_lua {
 #include "../build/std/mod_lua_std.tbl.h"
 #include "../build/std/mod_lua_std.txt.h"
 #include "../build/std/mod_lua_std.utf.h"
+// ACME
+#include "../build/acme/mod_lua_acme.dns.vultr.h"
+#include "../build/acme/mod_lua_acme.h"
 // Text
 #include "../build/text/mod_lua_text.h"
 // Argparser
@@ -91,6 +94,8 @@ const mod_lua__t lua_preload[] = {
     {"std.mime",                         mod_lua_std_mime,                         &mod_lua_std_mime_SIZE                    },
     {"std.logger",                       mod_lua_std_logger,                       &mod_lua_std_logger_SIZE                  },
     {"std.utf",                          mod_lua_std_utf,                          &mod_lua_std_utf_SIZE                     },
+    {"acme",                             mod_lua_acme,                             &mod_lua_acme_SIZE                        },
+    {"acme.dns.vultr",                   mod_lua_acme_dns_vultr,                   &mod_lua_acme_dns_vultr_SIZE              },
     {"argparser",                        mod_lua_argparser,                        &mod_lua_argparser_SIZE                   },
     {"crypto",                           mod_lua_crypto,                           &mod_lua_crypto_SIZE                      },
     {"term",                             mod_lua_term,                             &mod_lua_term_SIZE                        },

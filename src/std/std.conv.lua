@@ -35,8 +35,12 @@ local date_to_ts = function(date_str)
 	local date_ts
 	if tonumber(date_str) then
 		date_ts = date_str
-	elseif date_str:match("%d%dT%d%d") then
-		local y, m, d, h, min, s = date_str:match("^([%d]+)%-(%d%d)%-(%d%d)T(%d%d):(%d%d):(%d%d)")
+	elseif date_str:match("%d%d") then
+		local y, m, d, h, min, s = date_str:match("(%d%d)(%d%d)(%d%d)(%d%d)(%d%d)(%d%d)")
+		y = "20" .. y
+		if date_str:match("%d%dT%d%d") then
+			y, m, d, h, min, s = date_str:match("^([%d]+)%-(%d%d)%-(%d%d)T(%d%d):(%d%d):(%d%d)")
+		end
 		date_ts = os.time({
 			year = tonumber(y),
 			month = tonumber(m),
@@ -76,8 +80,8 @@ end
 
 local ts_to_str = function(ts, fmt)
 	local ts = ts or os.time()
-	-- Use ISO 8601 (well, without `T` in between the date and time) by default. See RFC3339 for details on ISO 8601.
-	local fmt = fmt or "%Y-%m-%d %H:%M:%S"
+	-- Use ISO 8601 by default. See RFC3339 for details on ISO 8601.
+	local fmt = fmt or "%Y-%m-%dT%H:%M:%S"
 	return os.date(fmt, ts)
 end
 

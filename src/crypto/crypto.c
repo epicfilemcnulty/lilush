@@ -533,6 +533,50 @@ int lua_der_to_pem_ecc_key(lua_State *L) {
     return 1;
 }
 
+int lua_parse_x509_cert(lua_State *L) {
+    size_t cert_der_size;
+    const char *cert_der = lua_tolstring(L, 1, &cert_der_size);
+
+    if (!cert_der) {
+        RETURN_CUSTOM_ERR(L, "no certificate provided");
+    }
+
+    DecodedCert cert;
+    wc_InitDecodedCert(&cert, cert_der, cert_der_size, NULL);
+
+    int ret = wc_ParseCert(&cert, CERT_TYPE, NO_VERIFY, NULL);
+    if (ret != 0) {
+        wc_FreeDecodedCert(&cert);
+        RETURN_CUSTOM_ERR(L, "failed to parse certificate");
+    }
+
+    // Create result table
+    lua_createtable(L, 0, 3);
+
+    // Add common name
+    if (cert.subjectCN && cert.subjectCNLen > 0) {
+        lua_pushstring(L, "common_name");
+        lua_pushlstring(L, cert.subjectCN, cert.subjectCNLen);
+        lua_settable(L, -3);
+    }
+
+    // Add validity dates
+    if (cert.beforeDate && cert.beforeDateLen > 0) {
+        lua_pushstring(L, "not_before");
+        lua_pushlstring(L, (const char *)cert.beforeDate, cert.beforeDateLen);
+        lua_settable(L, -3);
+    }
+
+    if (cert.afterDate && cert.afterDateLen > 0) {
+        lua_pushstring(L, "not_after");
+        lua_pushlstring(L, (const char *)cert.afterDate, cert.afterDateLen);
+        lua_settable(L, -3);
+    }
+
+    wc_FreeDecodedCert(&cert);
+    return 1;
+}
+
 static luaL_Reg funcs[] = {
     {"sha256",               lua_sha256              },
     {"hmac",                 lua_hmac                },
@@ -546,6 +590,7 @@ static luaL_Reg funcs[] = {
     {"ed25519_verify",       lua_ed25519_verify      },
     {"generate_csr",         lua_generate_csr        },
     {"der_to_pem_ecc_key",   lua_der_to_pem_ecc_key  },
+    {"parse_x509_cert",      lua_parse_x509_cert     },
     {NULL,                   NULL                    }
 };
 

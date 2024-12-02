@@ -45,6 +45,9 @@ typedef struct mod_lua {
 #include "../build/std/mod_lua_std.tbl.h"
 #include "../build/std/mod_lua_std.txt.h"
 #include "../build/std/mod_lua_std.utf.h"
+// ACME
+#include "../build/acme/mod_lua_acme.dns.vultr.h"
+#include "../build/acme/mod_lua_acme.h"
 // Crypto primitives from WolfSSL
 #include "../build/crypto/mod_lua_crypto.h"
 // Djot
@@ -85,6 +88,8 @@ const mod_lua__t lua_preload[] = {
     {"std.mime",        mod_lua_std_mime,        &mod_lua_std_mime_SIZE       },
     {"std.logger",      mod_lua_std_logger,      &mod_lua_std_logger_SIZE     },
     {"std.utf",         mod_lua_std_utf,         &mod_lua_std_utf_SIZE        },
+    {"acme",            mod_lua_acme,            &mod_lua_acme_SIZE           },
+    {"acme.dns.vultr",  mod_lua_acme_dns_vultr,  &mod_lua_acme_dns_vultr_SIZE },
     {"crypto",          mod_lua_crypto,          &mod_lua_crypto_SIZE         },
     {"djot",            mod_lua_djot,            &mod_lua_djot_SIZE           },
     {"djot.ast",        mod_lua_djot_ast,        &mod_lua_djot_ast_SIZE       },
