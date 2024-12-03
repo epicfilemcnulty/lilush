@@ -78,18 +78,12 @@ local refresh_nonce = function(self)
 end
 
 local load_key = function(self)
-	local full_key_path = self.__storage_dir .. "/accounts/" .. self.__email .. ".jwk"
-	if not std.fs.file_exists(full_key_path) then
-		local key_obj = crypto.ecc_generate_key()
-		self.__key = key_obj
-		return true
-	end
-	local key_obj, err = crypto.ecc_load_key(full_key_path)
+	local account_key, err = self.store:load_account_key()
 	if err then
-		return nil, "error loading the key: " .. err
+		return nil, err
 	end
-	self.__key = key_obj
-	self.__kid = key_obj.kid
+	self.__key = account_key
+	self.__kid = account_key.kid
 	return true
 end
 
@@ -106,8 +100,7 @@ local register_account = function(self)
 		if resp.status == 201 or resp.status == 200 then
 			self.__kid = resp.headers.location
 			self.__key.kid = resp.headers.location
-			local ok, err =
-				crypto.ecc_save_key(self.__key, self.__storage_dir .. "/accounts/" .. self.__email .. ".jwk")
+			local ok, err = self.store:save_account_key(self.__key)
 			if not ok then
 				return nil, "failed to save account key: " .. err
 			end
@@ -133,6 +126,7 @@ local new_order = function(self, domains)
 			local order_url = resp.headers.location
 			local order_info = json.decode(resp.body)
 			self.orders[order_url] = order_info
+			self.store:save_order_info(payload.identifiers[1].value, order_info)
 			return order_url
 		end
 	end
@@ -147,14 +141,16 @@ local order_info = function(self, order_url)
 		if resp.status == 201 or resp.status == 200 then
 			local order_info = json.decode(resp.body)
 			self.orders[order_url] = order_info
-			std.fs.write_file(self.__storage_dir .. "/orders/" .. crypto.b64url_encode(order_url) .. ".json", resp.body)
+			self.store:save_order_info(order_info.identifiers[1].value, order_info)
 			return order_info
 		end
 	end
 	return nil, resp, err
 end
 
-local get_authorization = function(self, authorization_url)
+local get_authorization = function(self, order_url, idx)
+	local idx = idx or 1
+	local authorization_url = self.orders[order_url].authorizations[idx]
 	local jws = self:acme_frame(authorization_url)
 	local resp, err =
 		web.request(authorization_url, { method = "POST", headers = common_headers, body = json.encode(jws) })
@@ -162,18 +158,23 @@ local get_authorization = function(self, authorization_url)
 		self.__nonce = resp.headers["replay-nonce"]
 		if resp.status == 201 or resp.status == 200 then
 			local authorization_info, err = json.decode(resp.body)
-			return authorization_info, err
+			if err then
+				return nil, err
+			end
+			self.authorizations[order_url] = authorization_info
+			return authorization_info
 		end
 	end
 	return nil, resp, err
 end
 
-local accept_dns_challenge = function(self, auth_obj, dns_provider)
+local accept_dns_challenge = function(self, order_url, dns_provider)
 	if not std.module_available("acme.dns." .. dns_provider) then
 		return nil, "no DNS plugin for " .. dns_provider .. " found"
 	end
 	local dns = require("acme.dns." .. dns_provider)
 
+	local auth_obj = self.authorizations[order_url]
 	local challenge_url, token
 	for i, challenge in ipairs(auth_obj.challenges) do
 		if challenge.type == "dns-01" then
@@ -187,25 +188,39 @@ local accept_dns_challenge = function(self, auth_obj, dns_provider)
 	end
 	local domain = auth_obj.identifier.value
 
-	local record_id, err = dns.provision(domain, token .. "." .. self:key_thumbprint())
-	if not record_id then
+	local provision_state, err = dns.provision(domain, token .. "." .. self:key_thumbprint())
+	if err then
 		return nil, err
 	end
+	self.store:save_order_provision(domain, provision_state)
 	local jws = self:acme_frame(challenge_url, {})
 	local resp, err = web.request(challenge_url, { method = "POST", headers = common_headers, body = json.encode(jws) })
 	if resp then
 		self.__nonce = resp.headers["replay-nonce"]
 		if resp.status == 201 or resp.status == 200 then
-			return record_id
+			return true
 		end
 	end
 	return nil, resp, err
 end
 
-local finalize = function(self, finalize_url, domain)
+local cleanup = function(self, order_url)
+	local domain = self.orders[order_url].identifiers[1].value
+	local provision_state = self.store:load_order_provision(domain)
+	if provision_state and provision_state.provider then
+		local dns = require("acme.dns." .. provision_state.provider)
+		dns.cleanup(provision_state)
+		self.store:delete_order_provision(domain)
+	end
+	return true
+end
+
+local finalize = function(self, order_url, idx)
+	local idx = idx or 1
+	local domain = self.orders[order_url].identifiers[idx].value
+	local finalize_url = self.orders[order_url].finalize
 	local cert_key = crypto.ecc_generate_key()
-	local cert_key_pem = crypto.der_to_pem_ecc_key(cert_key)
-	std.fs.write_file(self.__storage_dir .. "/certs/" .. domain .. ".key", cert_key_pem)
+	self.store:save_cert_key(domain, cert_key)
 	local csr = crypto.generate_csr(cert_key.private, cert_key.public, domain)
 	local payload = { csr = crypto.b64url_encode(csr) }
 	local jws = self:acme_frame(finalize_url, payload)
@@ -220,7 +235,7 @@ local finalize = function(self, finalize_url, domain)
 end
 
 local fetch_certificate = function(self, order_url)
-	local info = self:order_info(order_url)
+	local info = self.orders[order_url]
 	if info and info.certificate then
 		local jws = self:acme_frame(info.certificate)
 		local resp, err = web.request(info.certificate, {
@@ -231,8 +246,8 @@ local fetch_certificate = function(self, order_url)
 		if resp then
 			self.__nonce = resp.headers["replay-nonce"]
 			if resp.status == 200 then
-				local domain_name = info.identifiers[1].value
-				std.fs.write_file(self.__storage_dir .. "/certs/" .. domain_name .. ".crt", resp.body)
+				local domain = info.identifiers[1].value
+				self.store:save_certificate(domain, resp.body)
 				return resp.body
 			end
 		end
@@ -253,7 +268,7 @@ local init = function(self)
 	return self:register_account()
 end
 
-local acme_new = function(email, directory_url, storage_dir)
+local acme_new = function(email, directory_url, storage_provider_cfg)
 	if not email or not email:match("[^@+]@[^.]+%..*") then
 		return nil, "you must provide a valid email as the account id"
 	end
@@ -266,23 +281,26 @@ local acme_new = function(email, directory_url, storage_dir)
 	if not directory then
 		return nil, err
 	end
-	local storage_dir = storage_dir or (os.getenv("HOME") or "/tmp") .. "/.acme"
-
-	if not std.fs.dir_exists(storage_dir) then
-		if not std.fs.mkdir(storage_dir) then
-			return nil, "failed to create storage dir"
-		end
+	local storage_provider_cfg = storage_provider_cfg or {
+		plugin = "file",
+	}
+	if not std.module_available("acme.store." .. storage_provider_cfg.plugin) then
+		return nil, "no such storage plugin found: " .. storage_provider_cfg.plugin
 	end
-	std.fs.mkdir(storage_dir .. "/accounts")
-	std.fs.mkdir(storage_dir .. "/orders")
-	std.fs.mkdir(storage_dir .. "/certs")
+	local stp = require("acme.store." .. storage_provider_cfg.plugin)
+	local store, err = stp.new(email, storage_provider_cfg)
+	if err then
+		return nil, "failed to initialize storage provider: " .. err
+	end
+
 	return {
 		__dir = directory,
 		__nonce = "",
 		__kid = nil,
 		__email = email,
-		__storage_dir = storage_dir,
+		store = store,
 		orders = {},
+		authorizations = {},
 		generate_header = generate_header,
 		sign_jws = sign_jws,
 		acme_frame = acme_frame,
@@ -297,27 +315,8 @@ local acme_new = function(email, directory_url, storage_dir)
 		accept_dns_challenge = accept_dns_challenge,
 		finalize = finalize,
 		fetch_certificate = fetch_certificate,
+		cleanup = cleanup,
 	}
 end
 
 return { new = acme_new }
-
---[[
-order_url, err = client:new_order({ "test22.deviant.guru" })
-handle_response(order_url, err)
-handle_response(client:order_info(order_url))
-
-handle_response(client:fetch_certificate(order_url))
-local auth, err = client:get_authorization(client.orders[order_url].authorizations[1])
-handle_response(auth, err)
-
-local resp, err = client:finalize(client.orders[order_url].finalize, "test22.deviant.guru")
-handle_response(resp, err)
-
-local record_id, err = client:accept_dns_challenge(auth)
-handle_response(record_id, err)
-
-std.sleep(2)
-local auth, err = client:get_authorization(client.orders[order_url].authorizations[1])
-handle_response(auth, err)
-]]

@@ -10,7 +10,7 @@ local configure = function(server_config)
 	std.ps.setenv("RELIW_CACHE_MAX", server_config.cache_max or 5242880)
 end
 
-local new = function()
+local new_server = function()
 	local config_file = os.getenv("RELIW_CONFIG_FILE") or "/etc/reliw/config.json"
 	if not std.fs.file_exists(config_file) then
 		return nil, "no config file found"

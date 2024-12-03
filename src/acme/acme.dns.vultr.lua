@@ -26,13 +26,16 @@ local provision = function(domain, key_authorization)
 		if not info then
 			return nil, err
 		end
-		return info.record.id
+		return { provider = "vultr", domain = base_domain, record_id = info.record.id }
 	end
 	return nil, resp, err
 end
 
-local cleanup = function(domain, record_id)
-	local api_endpoint = "https://api.vultr.com/v2/domains/" .. domain .. "/records/" .. record_id
+local cleanup = function(provision_state)
+	local api_endpoint = "https://api.vultr.com/v2/domains/"
+		.. provision_state.domain
+		.. "/records/"
+		.. provision_state.record_id
 	local resp, err = web.request(api_endpoint, { method = "DELETE", headers = vultr_headers })
 	if resp and resp.status == 204 then
 		return true
