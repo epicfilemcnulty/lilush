@@ -4,6 +4,9 @@ local json = require("cjson.safe")
 local crypto = require("crypto")
 
 local fetch_host_schema = function(self, host)
+	if not host or type(host) ~= "string" then
+		return nil, "no host/invalid type provided"
+	end
 	local paths, err = self.red:cmd("GET", self.prefix .. ":API:" .. host)
 	self.red:close()
 	if err then
@@ -13,15 +16,21 @@ local fetch_host_schema = function(self, host)
 end
 
 local fetch_entry_metadata = function(self, host, entry_id)
+	if not host or not entry_id then
+		return nil, "host or entry_id not provided"
+	end
 	local metadata, err = self.red:cmd("GET", self.prefix .. ":API:" .. host .. ":" .. entry_id)
 	self.red:close()
 	if err then
-		return nil, "metadata: " .. err
+		return nil, "metadata: " .. tostring(err)
 	end
 	return json.decode(metadata)
 end
 
 local fetch_userinfo = function(self, host, user)
+	if not host or not user then
+		return nil, "host/user not provided"
+	end
 	local user_info, err = self.red:cmd("HGET", self.prefix .. ":USERS:" .. host, user)
 	self.red:close()
 	if err then
@@ -31,6 +40,9 @@ local fetch_userinfo = function(self, host, user)
 end
 
 local fetch_userdata = function(self, host, file)
+	if not host or not file then
+		return nil, "host/file not provided"
+	end
 	local userdata, err = self.red:cmd("GET", self.prefix .. ":DATA:" .. host .. ":" .. file)
 	if err then
 		userdata, err = self.red:cmd("GET", self.prefix .. ":DATA:__:" .. file)
@@ -46,6 +58,12 @@ local fetch_userdata = function(self, host, file)
 end
 
 local fetch_content = function(self, host, query, metadata)
+	if not metadata or type(metadata) ~= "table" then
+		return nil, "invalid metadata"
+	end
+	if not host or not query then
+		return nil, "host/query not provided"
+	end
 	local filename = metadata.file
 	local prefix = self.data_dir .. "/" .. host
 	if not filename then
@@ -126,6 +144,9 @@ local fetch_content = function(self, host, query, metadata)
 end
 
 local fetch_hash_and_size = function(self, host, file)
+	if not host or not file then
+		return nil, "host/file not provided"
+	end
 	local target = self.prefix .. ":FILES:" .. host .. ":" .. file
 	local resp, err = self.red:cmd("HMGET", target, "hash", "size")
 	self.red:close()
@@ -136,6 +157,12 @@ local fetch_hash_and_size = function(self, host, file)
 end
 
 local check_waf = function(self, host, query, headers)
+	if not headers or type(headers) ~= "table" then
+		return nil
+	end
+	if not host or not query then
+		return nil
+	end
 	local global = self.red:cmd("HGET", self.prefix .. ":WAF", "__")
 	local per_host = self.red:cmd("HGET", self.prefix .. ":WAF", host)
 	self.red:close()
@@ -184,10 +211,16 @@ local check_waf = function(self, host, query, headers)
 end
 
 local add_waffer = function(self, ip)
+	if not ip then
+		return nil, "no IP provided"
+	end
 	return self.red:cmd("PUBLISH", self.prefix .. ":WAFFERS", ip)
 end
 
 local check_rate_limit = function(self, host, method, query, remote_ip, period)
+	if not host or not method or not query or not remote_ip then
+		return nil, "not all required args provided"
+	end
 	local count =
 		self.red:cmd("INCR", self.prefix .. ":LIMITS:" .. host .. ":" .. method .. ":" .. query .. ":" .. remote_ip)
 	if not count then
@@ -206,6 +239,9 @@ local check_rate_limit = function(self, host, method, query, remote_ip, period)
 end
 
 local set_session_data = function(self, host, user, ttl)
+	if not host or not user or not ttl then
+		return nil, "required args not present"
+	end
 	local uuid = std.uuid()
 	local ok, err = self.red:cmd("SET", self.prefix .. ":SESSIONS:" .. host .. ":" .. uuid, user, "EX", ttl)
 	self.red:close()
@@ -216,12 +252,18 @@ local set_session_data = function(self, host, user, ttl)
 end
 
 local destroy_session = function(self, host, token)
+	if not host or not token then
+		return nil, "required args not provided"
+	end
 	local ok, err = self.red:cmd("DEL", self.prefix .. ":SESSIONS:" .. host .. ":" .. token)
 	self.red:close()
 	return ok, err
 end
 
 local fetch_session_user = function(self, host, token)
+	if not host or not token then
+		return nil, "required args not provided"
+	end
 	local session_user, err = self.red:cmd("GET", self.prefix .. ":SESSIONS:" .. host .. ":" .. token)
 	if err then
 		self.red:close()
