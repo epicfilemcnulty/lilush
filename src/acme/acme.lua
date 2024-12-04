@@ -168,13 +168,14 @@ local get_authorization = function(self, order_url, idx)
 	return nil, resp, err
 end
 
-local accept_dns_challenge = function(self, order_url, dns_provider)
-	local dns_provider = dns_provider or "unknown"
+local accept_dns_challenge = function(self, order_url, dns_cfg)
+	local dns_cfg = dns_cfg or {}
+	local dns_provider = dns_cfg.name or "unknown"
 	if not std.module_available("acme.dns." .. dns_provider) then
 		return nil, "no DNS plugin for " .. dns_provider .. " found"
 	end
-	local dns = require("acme.dns." .. dns_provider)
-
+	local provider = require("acme.dns." .. dns_provider)
+	local dns = provider.new(dns_cfg)
 	local auth_obj = self.authorizations[order_url]
 	local challenge_url, token
 	for i, challenge in ipairs(auth_obj.challenges) do
@@ -189,7 +190,7 @@ local accept_dns_challenge = function(self, order_url, dns_provider)
 	end
 	local domain = auth_obj.identifier.value
 
-	local provision_state, err = dns.provision(domain, token .. "." .. self:key_thumbprint())
+	local provision_state, err = dns:provision(domain, token .. "." .. self:key_thumbprint())
 	if err then
 		return nil, err
 	end
@@ -205,12 +206,13 @@ local accept_dns_challenge = function(self, order_url, dns_provider)
 	return nil, resp, err
 end
 
-local cleanup = function(self, order_url, purge)
+local cleanup = function(self, order_url, dns_cfg, purge)
 	local domain = self.orders[order_url].identifiers[1].value
 	local provision_state = self.store:load_order_provision(domain)
-	if provision_state and provision_state.provider then
-		local dns = require("acme.dns." .. provision_state.provider)
-		dns.cleanup(provision_state)
+	if provision_state then
+		local provider = require("acme.dns." .. provision_state.provider)
+		local dns = provider.new(dns_cfg)
+		dns:cleanup(provision_state)
 		self.store:delete_order_provision(domain)
 	end
 	if purge then

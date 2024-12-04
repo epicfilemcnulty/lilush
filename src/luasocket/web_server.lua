@@ -37,9 +37,10 @@ end
         handling all the dirty work of request validation.
 ]]
 
-local server_process_request = function(self, client, count)
+local server_process_request = function(self, client, client_ip, count)
 	local start_time = os.clock()
 	local lines = {}
+	local client_ip = client_ip or "n/a"
 	local line = ""
 	repeat
 		line, err = client:receive()
@@ -110,6 +111,7 @@ local server_process_request = function(self, client, count)
 	then
 		compress_output = true
 	end
+	headers["x-real-ip"] = client_ip
 
 	local content, status, response_headers = self.handle(
 		method,
@@ -221,6 +223,7 @@ local server_serve = function(self)
 				end
 
 				if pid == 0 and client then
+					local client_ip = client:getpeername()
 					local count = 1
 					local ssl_client, err
 					if self.__config.ssl then
@@ -253,13 +256,13 @@ local server_serve = function(self)
 						end
 						local status, err = ssl_client:dohandshake()
 						if not status then
-							self.logger:log("SSL handshake failed: " .. err, "error")
+							self.logger:log("SSL handshake failed: " .. err, "debug")
 							ssl_client:close()
 							os.exit(1)
 						end
 					end
 					repeat
-						local state, err = self:process_request(ssl_client or client, count)
+						local state, err = self:process_request(ssl_client or client, client_ip, count)
 						if err then
 							if err == "closed" then
 								self.logger:log("client closed connection", "debug")

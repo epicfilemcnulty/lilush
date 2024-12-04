@@ -72,8 +72,10 @@ local request_certificate = function(self, domain, provider)
 		self.logger:log({ process = "acme", msg = "authorization request failed", domain = domain }, "error")
 		return nil
 	end
-	local ok, err = self.client:accept_dns_challenge(order_url, provider)
+	local dns_cfg = self.__config.providers[provider]
+	local ok, err = self.client:accept_dns_challenge(order_url, dns_cfg)
 	if not ok then
+		std.tbl.print(err)
 		self.logger:log({ process = "acme", msg = "accept dns challenge failed", domain = domain }, "error")
 		return nil
 	end
@@ -97,13 +99,24 @@ local send_csr = function(self, order_urls)
 	return true
 end
 
+local provider_by_domain = function(self, domain)
+	for _, d in ipairs(self.__config.domains) do
+		if d.name == domain then
+			return d.provider
+		end
+	end
+	return nil
+end
+
 local get_certificates = function(self, order_urls)
 	for _, order_url in ipairs(order_urls) do
 		local ok, err = self.client:fetch_certificate(order_url)
 		local domain = self.client.orders[order_url].identifiers[1].value
 		if ok then
 			self.logger:log({ process = "acme", msg = "certificate fetched", domain = domain })
-			self.client:cleanup(order_url)
+			local provider = self:provider_by_domain(domain)
+			local dns_cfg = self.__config.providers[provider]
+			self.client:cleanup(order_url, dns_cfg)
 			self.state[domain] = nil
 		else
 			self.logger:log({ process = "acme", msg = "certificate fetch failed", domain = domain }, "error")
@@ -182,6 +195,7 @@ local acme_manager_new = function(srv_cfg, logger)
 		request_certificate = request_certificate,
 		send_csr = send_csr,
 		get_certificates = get_certificates,
+		provider_by_domain = provider_by_domain,
 		manage = manage,
 	}
 	manager.__config.renew_time = manager.__config.renew_time or 2592000 -- one month
