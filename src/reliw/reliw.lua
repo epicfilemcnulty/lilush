@@ -2,15 +2,21 @@ local std = require("std")
 local ws = require("web_server")
 local json = require("cjson.safe")
 local handle = require("reliw.handle")
+local acme_manager = require("reliw.acme")
+local store = require("reliw.store")
 
-local configure = function(server_config)
-	std.ps.setenv("RELIW_DATA_DIR", server_config.data_dir or "/www")
-	std.ps.setenv("RELIW_REDIS_PREFIX", server_config.redis_prefix or "RLW")
-	std.ps.setenv("RELIW_REDIS_URL", server_config.redis_url or "127.0.0.1:6379/13")
-	std.ps.setenv("RELIW_CACHE_MAX", server_config.cache_max or 5242880)
+local configure = function(srv_cfg)
+	srv_cfg.data_dir = srv_cfg.data_dir or "/www"
+	srv_cfg.redis_prefix = srv_cfg.redis_prefix or "RLW"
+	srv_cfg.redis_url = srv_cfg.redis_url or "127.0.0.1:6379/13"
+	srv_cfg.cache_max = srv_cfg.cache_max or 5242880
+	std.ps.setenv("RELIW_DATA_DIR", srv_cfg.data_dir)
+	std.ps.setenv("RELIW_REDIS_PREFIX", srv_cfg.redis_prefix)
+	std.ps.setenv("RELIW_REDIS_URL", srv_cfg.redis_url)
+	std.ps.setenv("RELIW_CACHE_MAX", srv_cfg.cache_max)
 end
 
-local new_server = function()
+local get_server_config = function()
 	local config_file = os.getenv("RELIW_CONFIG_FILE") or "/etc/reliw/config.json"
 	if not std.fs.file_exists(config_file) then
 		return nil, "no config file found"
@@ -19,12 +25,107 @@ local new_server = function()
 	if not config then
 		return nil, "failed to read/decode config file"
 	end
-	local srv, err = ws.new(config, handle.func)
+	configure(config)
+	return config
+end
+
+local new_server = function(srv_cfg)
+	local srv, err = ws.new(srv_cfg, handle.func)
 	if not srv then
 		return nil, err
 	end
-	configure(srv.__config)
 	return srv
+end
+
+local ssl_config_from_acme = function(srv_cfg)
+	local certs_dir = srv_cfg.data_dir .. "/.acme/certs/"
+	local ssl = {}
+	for i, domain in ipairs(srv_cfg.ssl.acme.domains) do
+		if i == 1 then
+			ssl.default = { cert = certs_dir .. domain.name .. ".crt", key = certs_dir .. domain.name .. ".key" }
+		else
+			if not ssl.hosts then
+				ssl.hosts = {}
+			end
+			ssl.hosts[domain.name] =
+				{ cert = certs_dir .. domain.name .. ".crt", key = certs_dir .. domain.name .. ".key" }
+		end
+	end
+	return ssl
+end
+
+local spawn_server = function(self, srv_cfg)
+	local reliw_srv = new_server(srv_cfg)
+	local reliw_pid = std.ps.fork()
+	if reliw_pid < 0 then
+		self.logger:log({ msg = "server spawn failed", process = "manager" }, "error")
+	end
+	if reliw_pid == 0 then
+		reliw_srv:serve()
+	end
+	self.logger:log({ msg = "server spawned", process = "manager", pid = reliw_pid })
+	self.reliw_pid = reliw_pid
+	return true
+end
+
+local spawn_acme_manager = function(self)
+	local acme_manager, err = acme_manager.new(self.cfg, self.logger)
+	if err then
+		return nil, "failed to init ACME manager: " .. err
+	end
+	acme_pid = std.ps.fork()
+	if acme_pid < 0 then
+		self.logger:log({ msg = "ACME manager spawn failed", process = "manager" }, "error")
+	end
+	if acme_pid == 0 then
+		acme_manager:manage()
+	end
+	self.logger:log({ msg = "ACME manager spawned", process = "manager", pid = acme_pid })
+	self.acme_pid = acme_pid
+	return true
+end
+
+local run = function(self)
+	local cfg = self.cfg
+	if cfg.ssl and cfg.ssl.acme then
+		self:spawn_acme_manager()
+	end
+	if not cfg.ssl or not cfg.ssl.acme then
+		self:spawn_server(cfg)
+	end
+	self.store.red:cmd("SUBSCRIBE", cfg.redis_prefix .. ":CTL")
+	while true do
+		local resp, err = self.store.red:read()
+		if resp and resp.value then
+			local msg = resp.value[3]
+			if msg == "ACME READY" and not self.reliw_pid then
+				local real_cfg = get_server_config()
+				local ssl_config = ssl_config_from_acme(cfg)
+				real_cfg.ssl = ssl_config
+				self:spawn_server(real_cfg)
+			end
+		end
+	end
+end
+
+local new = function()
+	local cfg, err = get_server_config()
+	if err then
+		return nil, "failed to get reliw server config: " .. err
+	end
+	local store, err = store.new()
+	if err then
+		return nil, "failed to init store: " .. err
+	end
+
+	return {
+		logger = std.logger.new(cfg.log_level),
+		cfg = cfg,
+		store = store,
+		run = run,
+		spawn_server = spawn_server,
+		spawn_acme_manager = spawn_acme_manager,
+	}
 end
 
 return { new = new }

@@ -282,6 +282,11 @@ local update_metrics = function(self, host, method, query, status)
 	return resp, err
 end
 
+local send_ctl_msg = function(self, msg)
+	local resp, err = self.red:cmd("PUBLISH", self.prefix .. ":CTL", msg)
+	return resp, err
+end
+
 local new = function()
 	local static_data_dir = os.getenv("RELIW_DATA_DIR") or "/www"
 	local data_prefix = os.getenv("RELIW_REDIS_PREFIX") or "RLW"
@@ -310,6 +315,7 @@ local new = function()
 		fetch_session_user = fetch_session_user,
 		fetch_metrics = fetch_metrics,
 		update_metrics = update_metrics,
+		send_ctl_msg = send_ctl_msg,
 	}
 end
 

@@ -20,6 +20,23 @@ local load_account_key = function(self)
 	return key_obj
 end
 
+local save_cert_key = function(self, domain, key)
+	local key_pem, err = crypto.der_to_pem_ecc_key(key)
+	if err then
+		return nil, "failed to convert cert's key to PEM: " .. err
+	end
+	local ok, err = std.fs.write_file(self.__storage_dir .. "/certs/" .. domain .. ".key", key_pem)
+	if err then
+		return nil, "failed to save certificate's key: " .. err
+	end
+	return crypto.ecc_save_key(key, self.__storage_dir .. "/certs/" .. domain .. ".jwk")
+end
+
+local load_cert_key = function(self, domain)
+	local full_key_path = self.__storage_dir .. "/certs/" .. domain .. ".jwk"
+	return crypto.ecc_load_key(full_key_path)
+end
+
 local save_order_info = function(self, domain, order_info)
 	if not std.fs.dir_exists(self.__storage_dir .. "/orders/" .. self.__email) then
 		std.fs.mkdir(self.__storage_dir .. "/orders/" .. self.__email)
@@ -36,6 +53,10 @@ local load_order_info = function(self, domain)
 		return nil, err
 	end
 	return json.decode(content)
+end
+
+local delete_order_info = function(self, domain)
+	return std.fs.remove(self.__storage_dir .. "/orders/" .. self.__email .. "/" .. domain .. ".json")
 end
 
 local save_order_provision = function(self, domain, provision)
@@ -62,14 +83,6 @@ local save_certificate = function(self, domain, cert_pem)
 	return std.fs.write_file(self.__storage_dir .. "/certs/" .. domain .. ".crt", cert_pem)
 end
 
-local save_cert_key = function(self, domain, key)
-	local key_pem, err = crypto.der_to_pem_ecc_key(key)
-	if err then
-		return nil, "failed to save certificate's key: " .. err
-	end
-	return std.fs.write_file(self.__storage_dir .. "/certs/" .. domain .. ".key", key_pem)
-end
-
 local store_new = function(email, config)
 	local storage_dir = config.storage_dir or (os.getenv("HOME") or "/tmp") .. "/.acme"
 	if not std.fs.dir_exists(storage_dir) then
@@ -88,11 +101,13 @@ local store_new = function(email, config)
 		load_account_key = load_account_key,
 		save_account_key = save_account_key,
 		save_order_info = save_order_info,
+		delete_order_info = delete_order_info,
 		load_order_info = load_order_info,
 		save_order_provision = save_order_provision,
 		load_order_provision = load_order_provision,
 		delete_order_provision = delete_order_provision,
 		save_cert_key = save_cert_key,
+		load_cert_key = load_cert_key,
 		save_certificate = save_certificate,
 	}
 end

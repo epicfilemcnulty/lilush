@@ -11,6 +11,13 @@ local vultr_headers = {
 local provision = function(domain, key_authorization)
 	local base_domain = domain:match("([^.]+%.[^.]+)$")
 	local sub_domain = domain:match("^([^.]+)%.")
+	local dots = 0
+	for dot in domain:gmatch("%.") do
+		dots = dots + 1
+	end
+	if dots == 1 then
+		sub_domain = base_domain
+	end
 	local api_endpoint = "https://api.vultr.com/v2/domains/" .. base_domain .. "/records"
 	local dns_txt_value = crypto.b64url_encode(crypto.sha256(key_authorization))
 	local vultr_payload = {

@@ -169,6 +169,7 @@ local get_authorization = function(self, order_url, idx)
 end
 
 local accept_dns_challenge = function(self, order_url, dns_provider)
+	local dns_provider = dns_provider or "unknown"
 	if not std.module_available("acme.dns." .. dns_provider) then
 		return nil, "no DNS plugin for " .. dns_provider .. " found"
 	end
@@ -204,7 +205,7 @@ local accept_dns_challenge = function(self, order_url, dns_provider)
 	return nil, resp, err
 end
 
-local cleanup = function(self, order_url)
+local cleanup = function(self, order_url, purge)
 	local domain = self.orders[order_url].identifiers[1].value
 	local provision_state = self.store:load_order_provision(domain)
 	if provision_state and provision_state.provider then
@@ -212,6 +213,10 @@ local cleanup = function(self, order_url)
 		dns.cleanup(provision_state)
 		self.store:delete_order_provision(domain)
 	end
+	if purge then
+		self.store:delete_order_info(domain)
+	end
+	self.orders[order_url] = nil
 	return true
 end
 
@@ -219,8 +224,11 @@ local finalize = function(self, order_url, idx)
 	local idx = idx or 1
 	local domain = self.orders[order_url].identifiers[idx].value
 	local finalize_url = self.orders[order_url].finalize
-	local cert_key = crypto.ecc_generate_key()
-	self.store:save_cert_key(domain, cert_key)
+	local cert_key = self.store:load_cert_key(domain)
+	if not cert_key then
+		cert_key = crypto.ecc_generate_key()
+		self.store:save_cert_key(domain, cert_key)
+	end
 	local csr = crypto.generate_csr(cert_key.private, cert_key.public, domain)
 	local payload = { csr = crypto.b64url_encode(csr) }
 	local jws = self:acme_frame(finalize_url, payload)
@@ -268,11 +276,35 @@ local init = function(self)
 	return self:register_account()
 end
 
+local ready_to_finalize = function(self)
+	local results = {}
+	for order_url, order_info in pairs(self.orders) do
+		auth_info = self:get_authorization(order_url)
+		if auth_info and auth_info.status == "valid" then
+			table.insert(results, order_url)
+		end
+	end
+	return results
+end
+
+local ready_to_fetch = function(self)
+	local results = {}
+	for order_url, order_info in pairs(self.orders) do
+		self:order_info(order_url)
+		if self.orders[order_url].status == "valid" then
+			table.insert(results, order_url)
+		end
+	end
+	return results
+end
+
 local acme_new = function(email, directory_url, storage_provider_cfg)
 	if not email or not email:match("[^@+]@[^.]+%..*") then
 		return nil, "you must provide a valid email as the account id"
 	end
-	local directory_url = directory_url or "https://acme-staging-v02.api.letsencrypt.org/directory"
+	if not directory_url then
+		return nil, "you must provide the directory URL of an ACMEv2 provider"
+	end
 	local resp, err = web.request(directory_url)
 	if not resp or resp.status ~= 200 then
 		return nil, resp, err
@@ -315,8 +347,18 @@ local acme_new = function(email, directory_url, storage_provider_cfg)
 		accept_dns_challenge = accept_dns_challenge,
 		finalize = finalize,
 		fetch_certificate = fetch_certificate,
+		ready_to_finalize = ready_to_finalize,
+		ready_to_fetch = ready_to_fetch,
 		cleanup = cleanup,
 	}
 end
 
-return { new = acme_new }
+local acme_new_le_prod = function(email, storage_provider_cfg)
+	return acme_new(email, "https://acme-v02.api.letsencrypt.org/directory", storage_provider_cfg)
+end
+
+local acme_new_le_stage = function(email, storage_provider_cfg)
+	return acme_new(email, "https://acme-staging-v02.api.letsencrypt.org/directory", storage_provider_cfg)
+end
+
+return { new = acme_new, le_prod = acme_new_le_prod, le_stage = acme_new_le_stage }
