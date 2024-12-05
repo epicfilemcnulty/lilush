@@ -58,9 +58,9 @@ RELIW will try to load `/etc/reliw/config.json` file if there is any.
             }
         },
         "domains": [
-            { "name": "deviant.guru", "provider": "vultr" },
-            { "name": "lilush.link", "provider": "vultr" },
-            { "name": "dbg.deviant.guru", "provider": "vultr" }
+            { "name": "example.com", "provider": "vultr" },
+            { "name": "sample.net", "provider": "vultr" },
+            { "name": "folks.online", "provider": "vultr" }
         ]
       }
     }
