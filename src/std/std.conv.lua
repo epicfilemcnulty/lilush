@@ -36,10 +36,12 @@ local date_to_ts = function(date_str)
 	if tonumber(date_str) then
 		date_ts = date_str
 	elseif date_str:match("%d%d") then
-		local y, m, d, h, min, s = date_str:match("(%d%d)(%d%d)(%d%d)(%d%d)(%d%d)(%d%d)")
-		y = "20" .. y
+		local y, m, d, h, min, s
 		if date_str:match("%d%dT%d%d") then
 			y, m, d, h, min, s = date_str:match("^([%d]+)%-(%d%d)%-(%d%d)T(%d%d):(%d%d):(%d%d)")
+		else
+			y, m, d, h, min, s = date_str:match("(%d%d)(%d%d)(%d%d)(%d%d)(%d%d)(%d%d)")
+			y = "20" .. y
 		end
 		date_ts = os.time({
 			year = tonumber(y),
