@@ -1,4 +1,4 @@
 - [x] HTTPS support
-- [ ] Certificate management with ACME
+- [x] Certificate management with ACME
 - [ ] Auth refactoring (OIDC client?)
 - [ ] Better metrics (request times etc)

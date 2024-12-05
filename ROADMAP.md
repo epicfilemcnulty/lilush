@@ -1,6 +1,6 @@
 # Roadmap
 
-- [ ] ACME client
+- [x] ACME client
 - [ ] postgreSQL library
 - [ ] Djot rendering refactor: add divs and quotes support; navigation
 - [ ] Kitty graphics protocol support

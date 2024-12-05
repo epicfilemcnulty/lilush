@@ -183,6 +183,8 @@ local server_serve = function(self)
 	local server_fork_count = 0
 
 	local server = assert(socket.tcp())
+	server:setoption("reuseaddr", true)
+	server:setoption("reuseport", true)
 	assert(server:bind(self.__config.ip, self.__config.port))
 	server:listen(self.__config.backlog)
 	server:settimeout(0)
