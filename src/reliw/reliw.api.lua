@@ -41,6 +41,14 @@ local store = require("reliw.store")
         { pass = hashed_password, salt = unique_salt }
 ]]
 
+local proxy_config = function(host)
+	local store, err = store.new()
+	if err then
+		return nil, err
+	end
+	return store:fetch_proxy_config(host)
+end
+
 local entry_index = function(host, query)
 	local store, err = store.new()
 	if err then
@@ -109,6 +117,7 @@ local check_rate_limit = function(host, method, query, remote_ip, period)
 end
 
 local api = {
+	proxy_config = proxy_config,
 	entry_index = entry_index,
 	entry_metadata = entry_metadata,
 	get_content = get_content,

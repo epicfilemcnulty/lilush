@@ -3,6 +3,18 @@ local redis = require("redis")
 local json = require("cjson.safe")
 local crypto = require("crypto")
 
+local fetch_proxy_config = function(self, host)
+	if not host or type(host) ~= "string" then
+		return nil, "no host/invalid type provided"
+	end
+	local paths, err = self.red:cmd("GET", self.prefix .. ":PROXY:" .. host)
+	self.red:close()
+	if err then
+		return nil, "proxy config not found"
+	end
+	return json.decode(paths)
+end
+
 local fetch_host_schema = function(self, host)
 	if not host or type(host) ~= "string" then
 		return nil, "no host/invalid type provided"
@@ -344,6 +356,7 @@ local new = function()
 		data_dir = static_data_dir,
 		cache_max_size = cache_max_size,
 		fetch_host_schema = fetch_host_schema,
+		fetch_proxy_config = fetch_proxy_config,
 		fetch_userinfo = fetch_userinfo,
 		fetch_entry_metadata = fetch_entry_metadata,
 		fetch_content = fetch_content,

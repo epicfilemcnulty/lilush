@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#define RELIW_VERSION "0.5.6"
+#define RELIW_VERSION "0.5.6-2-g4896ca1"
 
 static const char START_RELIW[] = "local reliw = require('reliw')\n"
                                   "local reliw_srv, err = reliw.new()\n"
@@ -59,6 +59,7 @@ typedef struct mod_lua {
 #include "../build/reliw/mod_lua_reliw.h"
 #include "../build/reliw/mod_lua_reliw.handle.h"
 #include "../build/reliw/mod_lua_reliw.metrics.h"
+#include "../build/reliw/mod_lua_reliw.proxy.h"
 #include "../build/reliw/mod_lua_reliw.store.h"
 #include "../build/reliw/mod_lua_reliw.templates.h"
 
@@ -101,6 +102,7 @@ const mod_lua__t lua_preload[] = {
     {"reliw.handle",    mod_lua_reliw_handle,    &mod_lua_reliw_handle_SIZE   },
     {"reliw.metrics",   mod_lua_reliw_metrics,   &mod_lua_reliw_metrics_SIZE  },
     {"reliw.store",     mod_lua_reliw_store,     &mod_lua_reliw_store_SIZE    },
+    {"reliw.proxy",     mod_lua_reliw_proxy,     &mod_lua_reliw_proxy_SIZE    },
     {"reliw.templates", mod_lua_reliw_templates, &mod_lua_reliw_templates_SIZE},
     {NULL,              NULL,                    NULL                         }
 };

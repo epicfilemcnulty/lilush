@@ -6,6 +6,7 @@ local metrics = require("reliw.metrics")
 
 local handle = function(method, query, args, headers, body, ctx)
 	local host = headers.host or "localhost"
+	local client = ctx.client -- Get the client socket
 	local ctx = ctx or {}
 	host = host:match("^([^:]+)") -- make sure to remove port from the host header
 	if ctx.metrics_host and host == ctx.metrics_host and query == "/metrics" and method == "GET" then
@@ -20,6 +21,45 @@ local handle = function(method, query, args, headers, body, ctx)
 			["Location"] = "http://127.0.0.1/Fuck_Off",
 			["Content-Type"] = "text/rude",
 		}
+	end
+	local proxy_config = api.proxy_config(host)
+	if proxy_config then
+		local proxy = require("reliw.proxy")
+		local target = {
+			scheme = proxy_config.scheme or "http",
+			host = proxy_config.target,
+			port = proxy_config.port,
+		}
+
+		ctx.logger:log({
+			msg = "proxying request",
+			target_host = target.host,
+			target_port = target.port,
+			method = method,
+			query = query,
+		}, "debug")
+
+		local content, status, headers = proxy.handle(client, method, query, headers, body, target)
+		if not content then
+			ctx.logger:log("proxy error: " .. tostring(status), "error")
+			return "proxy failed: " .. tostring(status), 502
+		end
+
+		-- Remove any transfer-encoding headers and set correct content-length
+		if headers then
+			if headers["transfer-encoding"] then
+				headers["transfer-encoding"] = nil
+			end
+			headers["content-length"] = tostring(#content)
+		end
+
+		ctx.logger:log({
+			msg = "proxy response",
+			status = status,
+			content_length = #content,
+		}, "debug")
+
+		return content, status, headers
 	end
 	local response_headers = { ["content-type"] = "text/html" }
 	local status = 200

@@ -18,6 +18,41 @@ local premature_error = function(client, status, msg)
 	client:send(resp)
 end
 
+local read_chunked_body = function(client)
+	local body = {}
+	while true do
+		-- Read chunk size
+		local size_line = client:receive()
+		if not size_line then
+			return nil, "connection closed"
+		end
+
+		local chunk_size = tonumber(size_line:match("^%x+"), 16)
+		if not chunk_size then
+			return nil, "invalid chunk size"
+		end
+
+		-- End of chunked data
+		if chunk_size == 0 then
+			-- Read final CRLF
+			client:receive()
+			break
+		end
+
+		-- Read chunk data
+		local chunk = client:receive(chunk_size)
+		if not chunk then
+			return nil, "connection closed"
+		end
+		table.insert(body, chunk)
+
+		-- Read trailing CRLF
+		client:receive()
+	end
+
+	return table.concat(body)
+end
+
 --[[ 
         This is a very naive implementation of HTTP request parsing.
 
@@ -84,14 +119,17 @@ local server_process_request = function(self, client, client_ip, count)
 		end
 	end
 	if headers["transfer-encoding"] then
-		premature_error(client, 501, "Sorry, can't handle transfer-encoding yet\n")
-		return nil, "transfer-encoding"
+		body, err = read_chunked_body(client)
+		if err then
+			premature_error(client, 501, "handle transfer-encoding failed\n")
+			return nil, "failed to read chunked body: " .. err
+		end
 	end
 	if not headers.host then
 		premature_error(client, 400, "No Host header\n")
 		return nil, "no Host header"
 	end
-	local host = headers.host or "localhost"
+	local host = headers.host
 	if content_length > 0 then
 		if content_length > self.__config.max_body_size then
 			premature_error(client, 413, "A body too fat\n")
@@ -113,14 +151,17 @@ local server_process_request = function(self, client, client_ip, count)
 	end
 	headers["x-real-ip"] = client_ip
 
-	local content, status, response_headers = self.handle(
-		method,
-		query,
-		args,
-		headers,
-		body,
-		{ logger = self.logger, metrics_host = self.__config.metrics_host }
-	)
+	local content, status, response_headers = self.handle(method, query, args, headers, body, {
+		logger = self.logger,
+		metrics_host = self.__config.metrics_host,
+		client = client,
+		is_ssl = self.__config.ssl ~= nil,
+	})
+	if content == nil and status == nil and response_headers == nil then
+		-- request was proxied, so we just return the connection state...
+		return "keep-alive"
+	end
+
 	response_headers = response_headers or {}
 	if not response_headers["content-type"] then
 		response_headers["content-type"] = "text/html"
@@ -141,7 +182,6 @@ local server_process_request = function(self, client, client_ip, count)
 		end
 		response_headers["content-length"] = tostring(#content)
 	end
-
 	response_headers["connection"] = "keep-alive"
 	if (headers["connection"] and headers["connection"] == "close") or count == self.__config.requests_per_fork then
 		response_headers["connection"] = "close"
@@ -150,7 +190,14 @@ local server_process_request = function(self, client, client_ip, count)
 	local buf = buffer.new()
 	buf:put("HTTP/1.1 ", tostring(status), " \n")
 	for h, v in pairs(response_headers) do
-		buf:put(h, ": ", v, "\n")
+		if h == "set-cookie" and type(v) == "table" then
+			-- Handle multiple Set-Cookie headers
+			for _, cookie in ipairs(v) do
+				buf:put("Set-Cookie: ", cookie, "\n")
+			end
+		else
+			buf:put(h, ": ", v, "\n")
+		end
 	end
 	buf:put("\n", content or "")
 	local _, err = client:send(buf:get())
