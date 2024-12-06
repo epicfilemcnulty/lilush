@@ -463,6 +463,51 @@ int lua_generate_csr(lua_State *L) {
     strncpy(req.subject.commonName, domain, CTC_NAME_SIZE);
     req.sigType = CTC_SHA256wECDSA;
 
+    /* Add alternative names if provided */
+    if (lua_gettop(L) >= 4 && !lua_isnil(L, 4)) {
+        if (!lua_istable(L, 4)) {
+            wc_ecc_free(&key);
+            wc_FreeRng(&rng);
+            RETURN_CUSTOM_ERR(L, "alternative names must be a table");
+        }
+
+        byte alt_names[1024]; // Increased buffer size for multiple names
+        int idx = 0;
+
+        // Start SEQUENCE
+        alt_names[idx++] = 0x30; // SEQUENCE
+        alt_names[idx++] = 0x00; // Length (will be filled later)
+
+        // Iterate through the table of alternative names
+        lua_pushnil(L); // First key
+        while (lua_next(L, 4) != 0) {
+            size_t alt_name_size;
+            const char *alt_name = lua_tolstring(L, -1, &alt_name_size);
+
+            if (idx + alt_name_size + 4 > sizeof(alt_names)) { // Check buffer space
+                lua_pop(L, 2);                                 // Remove key and value
+                wc_ecc_free(&key);
+                wc_FreeRng(&rng);
+                RETURN_CUSTOM_ERR(L, "alternative names too long");
+            }
+
+            // Add DNS name
+            alt_names[idx++] = 0x82; // DNSName tag
+            alt_names[idx++] = (byte)alt_name_size;
+            memcpy(&alt_names[idx], alt_name, alt_name_size);
+            idx += alt_name_size;
+
+            lua_pop(L, 1); // Remove value, keep key for next iteration
+        }
+
+        // Fill in the sequence length
+        alt_names[1] = (byte)(idx - 2);
+
+        // Copy to cert request
+        memcpy(req.altNames, alt_names, idx);
+        req.altNamesSz = idx;
+    }
+
     /* Generate CSR */
     ret = wc_MakeCertReq_ex(&req, der, sizeof(der), ECC_TYPE, &key);
     if (ret <= 0) {

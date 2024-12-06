@@ -161,22 +161,26 @@ local get_authorization = function(self, order_url, idx)
 			if err then
 				return nil, err
 			end
-			self.authorizations[order_url] = authorization_info
+			if not self.authorizations[order_url] then
+				self.authorizations[order_url] = {}
+			end
+			self.authorizations[order_url][idx] = authorization_info
 			return authorization_info
 		end
 	end
 	return nil, resp, err
 end
 
-local accept_dns_challenge = function(self, order_url, dns_cfg)
+local accept_dns_challenge = function(self, order_url, dns_cfg, auth_idx)
 	local dns_cfg = dns_cfg or {}
+	local auth_idx = auth_idx or 1
 	local dns_provider = dns_cfg.name or "unknown"
 	if not std.module_available("acme.dns." .. dns_provider) then
 		return nil, "no DNS plugin for " .. dns_provider .. " found"
 	end
 	local provider = require("acme.dns." .. dns_provider)
 	local dns = provider.new(dns_cfg)
-	local auth_obj = self.authorizations[order_url]
+	local auth_obj = self.authorizations[order_url][auth_idx]
 	local challenge_url, token
 	for i, challenge in ipairs(auth_obj.challenges) do
 		if challenge.type == "dns-01" then
@@ -219,22 +223,48 @@ local cleanup = function(self, order_url, dns_cfg, purge)
 		self.store:delete_order_info(domain)
 	end
 	self.orders[order_url] = nil
+	self.authorizations[order_url] = nil
 	return true
 end
 
-local finalize = function(self, order_url, idx)
-	local idx = idx or 1
-	local domain = self.orders[order_url].identifiers[idx].value
-	local finalize_url = self.orders[order_url].finalize
-	local cert_key = self.store:load_cert_key(domain)
+local finalize = function(self, order_url)
+	local order_info = self.orders[order_url]
+	local finalize_url = order_info.finalize
+
+	-- Get the primary domain (first identifier)
+	local primary_domain = order_info.identifiers[1].value
+
+	local cert_key = self.store:load_cert_key(primary_domain)
 	if not cert_key then
 		cert_key = crypto.ecc_generate_key()
-		self.store:save_cert_key(domain, cert_key)
+		self.store:save_cert_key(primary_domain, cert_key)
 	end
-	local csr = crypto.generate_csr(cert_key.private, cert_key.public, domain)
+
+	-- Collect all domains for the certificate
+	local alt_names = {}
+	local common_name = primary_domain
+
+	-- Check if primary domain is wildcard
+	local is_wildcard = primary_domain:match("^%*%.")
+	if is_wildcard then
+		-- Add base domain as SAN
+		table.insert(alt_names, primary_domain:gsub("^%*%.", ""))
+	end
+
+	for i = 2, #order_info.identifiers do
+		table.insert(alt_names, order_info.identifiers[i].value)
+	end
+
+	-- Generate CSR with all domains
+	local csr = crypto.generate_csr(cert_key.private, cert_key.public, common_name, #alt_names > 0 and alt_names or nil)
+
 	local payload = { csr = crypto.b64url_encode(csr) }
 	local jws = self:acme_frame(finalize_url, payload)
-	local resp, err = web.request(finalize_url, { method = "POST", headers = common_headers, body = json.encode(jws) })
+	local resp, err = web.request(finalize_url, {
+		method = "POST",
+		headers = common_headers,
+		body = json.encode(jws),
+	})
 	if resp then
 		self.__nonce = resp.headers["replay-nonce"]
 		if resp.status == 201 or resp.status == 200 then
@@ -281,8 +311,14 @@ end
 local ready_to_finalize = function(self)
 	local results = {}
 	for order_url, order_info in pairs(self.orders) do
-		auth_info = self:get_authorization(order_url)
-		if auth_info and auth_info.status == "valid" then
+		local valid_auths = 0
+		for i, authorization in ipairs(order_info.authorizations) do
+			auth_info = self:get_authorization(order_url, i)
+			if auth_info and auth_info.status == "valid" then
+				valid_auths = valid_auths + 1
+			end
+		end
+		if valid_auths == #order_info.authorizations then
 			table.insert(results, order_url)
 		end
 	end

@@ -118,14 +118,17 @@ local ed25519_verify = function(pub_key, msg, sig)
 	return core.ed25519_verify(pub_key, msg, sig)
 end
 
-local generate_csr = function(key, pub_key, domain)
+local generate_csr = function(key, pub_key, domain, alt_names)
 	if not key or not pub_key then
 		return nil, "you must provide a key"
 	end
 	if not domain then
 		return nil, "domain name is required"
 	end
-	return core.generate_csr(key, pub_key, domain)
+	if alt_names and type(alt_names) ~= "table" then
+		return nil, "alternative names must be a table"
+	end
+	return core.generate_csr(key, pub_key, domain, alt_names)
 end
 
 local der_to_pem_ecc_key = function(key_obj)

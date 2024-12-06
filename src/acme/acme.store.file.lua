@@ -21,6 +21,10 @@ local load_account_key = function(self)
 end
 
 local save_cert_key = function(self, domain, key)
+	local domain = domain
+	if domain:match("^%*%.") then
+		domain = domain:gsub("^%*", "_")
+	end
 	local key_pem, err = crypto.der_to_pem_ecc_key(key)
 	if err then
 		return nil, "failed to convert cert's key to PEM: " .. err
@@ -33,11 +37,19 @@ local save_cert_key = function(self, domain, key)
 end
 
 local load_cert_key = function(self, domain)
+	local domain = domain
+	if domain:match("^%*%.") then
+		domain = domain:gsub("^%*", "_")
+	end
 	local full_key_path = self.__storage_dir .. "/certs/" .. domain .. ".jwk"
 	return crypto.ecc_load_key(full_key_path)
 end
 
 local save_order_info = function(self, domain, order_info)
+	local domain = domain
+	if domain:match("^%*%.") then
+		domain = domain:gsub("^%*", "_")
+	end
 	if not std.fs.dir_exists(self.__storage_dir .. "/orders/" .. self.__email) then
 		std.fs.mkdir(self.__storage_dir .. "/orders/" .. self.__email)
 	end
@@ -48,6 +60,10 @@ local save_order_info = function(self, domain, order_info)
 end
 
 local load_order_info = function(self, domain)
+	local domain = domain
+	if domain:match("^%*%.") then
+		domain = domain:gsub("^%*", "_")
+	end
 	local content, err = std.fs.read_file(self.__storage_dir .. "/orders/" .. self.__email .. "/" .. domain .. ".json")
 	if not content then
 		return nil, err
@@ -56,10 +72,18 @@ local load_order_info = function(self, domain)
 end
 
 local delete_order_info = function(self, domain)
+	local domain = domain
+	if domain:match("^%*%.") then
+		domain = domain:gsub("^%*", "_")
+	end
 	return std.fs.remove(self.__storage_dir .. "/orders/" .. self.__email .. "/" .. domain .. ".json")
 end
 
 local save_order_provision = function(self, domain, provision)
+	local domain = domain
+	if domain:match("^%*%.") then
+		domain = domain:gsub("^%*", "_")
+	end
 	return std.fs.write_file(
 		self.__storage_dir .. "/orders/" .. self.__email .. "/" .. domain .. ".provision.json",
 		json.encode(provision)
@@ -67,6 +91,10 @@ local save_order_provision = function(self, domain, provision)
 end
 
 local load_order_provision = function(self, domain)
+	local domain = domain
+	if domain:match("^%*%.") then
+		domain = domain:gsub("^%*", "_")
+	end
 	local content, err =
 		std.fs.read_file(self.__storage_dir .. "/orders/" .. self.__email .. "/" .. domain .. ".provision.json")
 	if err then
@@ -76,10 +104,18 @@ local load_order_provision = function(self, domain)
 end
 
 local delete_order_provision = function(self, domain)
+	local domain = domain
+	if domain:match("^%*%.") then
+		domain = domain:gsub("^%*", "_")
+	end
 	return std.fs.remove(self.__storage_dir .. "/orders/" .. self.__email .. "/" .. domain .. ".provision.json")
 end
 
 local save_certificate = function(self, domain, cert_pem)
+	local domain = domain
+	if domain:match("^%*%.") then
+		domain = domain:gsub("^%*", "_")
+	end
 	return std.fs.write_file(self.__storage_dir .. "/certs/" .. domain .. ".crt", cert_pem)
 end
 
