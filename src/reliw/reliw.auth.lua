@@ -1,4 +1,3 @@
-local store = require("reliw.store")
 local json = require("cjson")
 local crypto = require("crypto")
 local web = require("web")
@@ -7,11 +6,7 @@ local web = require("web")
 -- local expires = os.date("%a, %d-%b-%Y %H:%M:%S GMT", os.time())
 -- local expires = os.date("%a, %d-%b-%Y %H:%M:%S GMT", os.time() + 60*60*24*7) 7 days in the future
 
-local login = function(host, user, pass)
-	local store, err = store.new()
-	if not store then
-		return nil, err
-	end
+local login = function(store, host, user, pass)
 	local host = host:match("^([^:]+)")
 	local user = user or ""
 	local pass = pass or ""
@@ -25,12 +20,8 @@ local login = function(host, user, pass)
 	return nil, "wrong login/pass"
 end
 
-local start_session = function(host, user, ttl)
+local start_session = function(store, host, user, ttl)
 	local host = host:match("^([^:]+)")
-	local store, err = store.new()
-	if not store then
-		return nil, err
-	end
 	local ttl = ttl or "600"
 	local uuid, err = store:set_session_data(host, user, ttl)
 	if uuid then
@@ -39,11 +30,7 @@ local start_session = function(host, user, ttl)
 	return nil, err
 end
 
-local get_session_user = function(headers)
-	local store, err = store.new()
-	if not store then
-		return nil, err
-	end
+local get_session_user = function(store, headers)
 	local token = ""
 	local host = headers.host
 	host = host:match("^([^:]+)")
@@ -54,11 +41,7 @@ local get_session_user = function(headers)
 	return store:fetch_session_user(host, token)
 end
 
-local logout = function(headers)
-	local store, err = store.new()
-	if not store then
-		return nil, err
-	end
+local logout = function(store, headers)
 	local token = ""
 	local host = headers.host
 	host = host:match("^([^:]+)")
@@ -76,8 +59,8 @@ local logout = function(headers)
 		}
 end
 
-local authorized = function(headers, allowed_users)
-	local user = get_session_user(headers) or ""
+local authorized = function(store, headers, allowed_users)
+	local user = get_session_user(store, headers) or ""
 	for _, u in ipairs(allowed_users) do
 		if u == user then
 			return true
@@ -97,13 +80,13 @@ local login_form = [[<form id="login_form" method="post">
 </div>
 <button type="submit">Submit</button></form>]]
 
-local login_page = function(method, query, args, headers, body)
+local login_page = function(store, method, query, args, headers, body)
 	if method == "GET" then
 		return login_form, 200
 	end
 	local args = web.parse_args(body)
-	if login(headers["host"], args.login, args.password) then
-		local session_cookie = start_session(headers["host"], args.login, 10800) -- 3 hours TTL by default
+	if login(store, headers["host"], args.login, args.password) then
+		local session_cookie = start_session(store, headers["host"], args.login, 10800) -- 3 hours TTL by default
 		if session_cookie then
 			return "We're all good, babe.",
 				303,

@@ -5,15 +5,26 @@ local handle = require("reliw.handle")
 local acme_manager = require("reliw.acme")
 local store = require("reliw.store")
 
+local default_reliw_config = {
+	ip = "127.0.0.1",
+	port = 8080,
+	data_dir = "/www",
+	cache_max_size = 5242880, -- 5 megabyte by default
+	redis = {
+		host = "127.0.0.1",
+		port = 6379,
+		db = 13,
+		prefix = "RLW",
+	},
+	metrics = {
+		ip = "127.0.0.1",
+		port = 9101,
+	},
+}
+
 local configure = function(srv_cfg)
-	srv_cfg.data_dir = srv_cfg.data_dir or "/www"
-	srv_cfg.redis_prefix = srv_cfg.redis_prefix or "RLW"
-	srv_cfg.redis_url = srv_cfg.redis_url or "127.0.0.1:6379/13"
-	srv_cfg.cache_max = srv_cfg.cache_max or 5242880
-	std.ps.setenv("RELIW_DATA_DIR", srv_cfg.data_dir)
-	std.ps.setenv("RELIW_REDIS_PREFIX", srv_cfg.redis_prefix)
-	std.ps.setenv("RELIW_REDIS_URL", srv_cfg.redis_url)
-	std.ps.setenv("RELIW_CACHE_MAX", srv_cfg.cache_max)
+	local cfg = std.tbl.copy(default_reliw_config)
+	return std.tbl.merge(cfg, srv_cfg)
 end
 
 local get_server_config = function()
@@ -25,8 +36,7 @@ local get_server_config = function()
 	if not config then
 		return nil, "failed to read/decode config file"
 	end
-	configure(config)
-	return config
+	return configure(config)
 end
 
 local new_server = function(srv_cfg)
@@ -55,6 +65,32 @@ local ssl_config_from_acme = function(srv_cfg)
 		end
 	end
 	return ssl
+end
+
+local spawn_metrics_server = function(self)
+	local cfg = get_server_config()
+	if not cfg.metrics then
+		return nil, "metrics are disabled"
+	end
+	cfg.ip = cfg.metrics.ip
+	cfg.port = cfg.metrics.port
+	cfg.ssl = nil
+	cfg.log_level = 100
+	local metrics = require("reliw.metrics")
+	local srv, err = ws.new(cfg, metrics.show)
+	if err then
+		return nil, err
+	end
+	local metrics_pid = std.ps.fork()
+	if metrics_pid < 0 then
+		self.logger:log({ msg = "metrics server spawn failed", process = "manager" }, "error")
+	end
+	if metrics_pid == 0 then
+		srv:serve()
+	end
+	self.logger:log({ msg = "metrics server spawned", process = "manager", pid = metrics_pid })
+	self.metrics_pid = metrics_pid
+	return true
 end
 
 local spawn_server = function(self, srv_cfg)
@@ -99,6 +135,9 @@ local run = function(self)
 	if not cfg.ssl or not cfg.ssl.acme then
 		self:spawn_server(cfg)
 	end
+	if cfg.metrics then
+		self:spawn_metrics_server()
+	end
 	local pause = 60
 	while not self.reliw_pid do
 		local real_cfg = get_server_config()
@@ -117,7 +156,7 @@ local run = function(self)
 			end
 		end
 	end
-	self.store.red:cmd("SUBSCRIBE", cfg.redis_prefix .. ":CTL")
+	self.store.red:cmd("SUBSCRIBE", cfg.redis.prefix .. ":CTL")
 	while true do
 		local resp, err = self.store.red:read()
 		if resp and resp.value then
@@ -135,7 +174,7 @@ local new = function()
 	if err then
 		return nil, "failed to get reliw server config: " .. err
 	end
-	local store, err = store.new()
+	local store, err = store.new(cfg)
 	if err then
 		return nil, "failed to init store: " .. err
 	end
@@ -146,6 +185,7 @@ local new = function()
 		store = store,
 		run = run,
 		spawn_server = spawn_server,
+		spawn_metrics_server = spawn_metrics_server,
 		spawn_acme_manager = spawn_acme_manager,
 	}
 end

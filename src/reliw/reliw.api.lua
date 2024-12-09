@@ -1,5 +1,4 @@
 local std = require("std")
-local store = require("reliw.store")
 --[[ 
      RELIW assumes the following data schema in the redis DB:
 
@@ -41,19 +40,11 @@ local store = require("reliw.store")
         { pass = hashed_password, salt = unique_salt }
 ]]
 
-local proxy_config = function(host)
-	local store, err = store.new()
-	if err then
-		return nil, err
-	end
+local proxy_config = function(store, host)
 	return store:fetch_proxy_config(host)
 end
 
-local entry_index = function(host, query)
-	local store, err = store.new()
-	if err then
-		return nil, err
-	end
+local entry_index = function(store, host, query)
 	local schema = store:fetch_host_schema(host) or {}
 	for _, path in ipairs(schema) do
 		-- path is an indexed array of 2 (optionally 3) elements: pattern, idx, is_exact_match
@@ -68,51 +59,27 @@ local entry_index = function(host, query)
 	return nil, "page not found"
 end
 
-local entry_metadata = function(host, entry_id)
-	local store, err = store.new()
-	if err then
-		return nil, err
-	end
+local entry_metadata = function(store, host, entry_id)
 	return store:fetch_entry_metadata(host, entry_id)
 end
 
-local get_userdata = function(host, file)
-	local store, err = store.new()
-	if err then
-		return nil, err
-	end
+local get_userdata = function(store, host, file)
 	return store:fetch_userdata(host, file)
 end
 
-local get_content = function(host, query, metadata)
-	local store, err = store.new()
-	if err then
-		return nil, err
-	end
+local get_content = function(store, host, query, metadata)
 	return store:fetch_content(host, query, metadata)
 end
 
-local check_waf = function(host, query, headers)
-	local store, err = store.new()
-	if err then
-		return nil, err
-	end
+local check_waf = function(store, host, query, headers)
 	return store:check_waf(host, query, headers)
 end
 
-local add_waffer = function(ip)
-	local store, err = store.new()
-	if err then
-		return nil, err
-	end
+local add_waffer = function(store, ip)
 	return store:add_waffer(ip)
 end
 
-local check_rate_limit = function(host, method, query, remote_ip, period)
-	local store, err = store.new()
-	if err then
-		return nil, err
-	end
+local check_rate_limit = function(store, host, method, query, remote_ip, period)
 	return store:check_rate_limit(host, method, query, remote_ip, period)
 end
 

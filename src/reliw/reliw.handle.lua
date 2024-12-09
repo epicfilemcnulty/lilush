@@ -3,26 +3,27 @@ local api = require("reliw.api")
 local auth = require("reliw.auth")
 local tmpls = require("reliw.templates")
 local metrics = require("reliw.metrics")
+local store = require("reliw.store")
 
 local handle = function(method, query, args, headers, body, ctx)
 	local host = headers.host or "localhost"
-	local client = ctx.client -- Get the client socket
 	local ctx = ctx or {}
+	local client = ctx.client -- Get the client socket
+	local srv_cfg = ctx.cfg
+	local store = store.new(srv_cfg)
+
 	host = host:match("^([^:]+)") -- make sure to remove port from the host header
-	if ctx.metrics_host and host == ctx.metrics_host and query == "/metrics" and method == "GET" then
-		return metrics.show()
-	end
-	local blocked, rule = api.check_waf(host, query, headers)
+	local blocked, rule = api.check_waf(store, host, query, headers)
 	if blocked then
 		local ip = headers["x-real-ip"]
-		api.add_waffer(ip)
+		api.add_waffer(store, ip)
 		ctx.logger:log({ msg = "blocked by WAF", waf_rule = rule, query = query, vhost = host, ip = ip }, 30)
 		return "Fuck Off", 301, {
 			["Location"] = "http://127.0.0.1/Fuck_Off",
 			["Content-Type"] = "text/rude",
 		}
 	end
-	local proxy_config = api.proxy_config(host)
+	local proxy_config = api.proxy_config(store, host)
 	if proxy_config then
 		local proxy = require("reliw.proxy")
 		local target = {
@@ -64,16 +65,16 @@ local handle = function(method, query, args, headers, body, ctx)
 	local response_headers = { ["content-type"] = "text/html" }
 	local status = 200
 	local default_css_file = "/css/default.css"
-	local user_tmpl = api.get_userdata(host, "template.lua")
-	local index = api.entry_index(host, query)
+	local user_tmpl = api.get_userdata(store, host, "template.lua")
+	local index = api.entry_index(store, host, query)
 	if not index then
-		local hit_count = metrics.update(host, method, query, 404)
+		local hit_count = metrics.update(store, host, method, query, 404)
 		return tmpls.error_page(404, hit_count, user_tmpl), 404, response_headers
 	end
-	local metadata = api.entry_metadata(host, index)
+	local metadata = api.entry_metadata(store, host, index)
 	if not metadata then
 		ctx.logger:log("no metadata found for query " .. query, 0)
-		local hit_count = metrics.update(host, method, query, 500)
+		local hit_count = metrics.update(store, host, method, query, 500)
 		return tmpls.error_page(500, hit_count, user_tmpl), 500, response_headers
 	end
 
@@ -81,9 +82,9 @@ local handle = function(method, query, args, headers, body, ctx)
 	-- Require valid auth first
 	if metadata.auth then
 		if metadata.auth.logout then
-			return auth.logout(headers)
+			return auth.logout(store, headers)
 		end
-		local authorized = auth.authorized(headers, metadata.auth)
+		local authorized = auth.authorized(store, headers, metadata.auth)
 		if not authorized then
 			local vars = {
 				css_file = metadata.css_file or default_css_file,
@@ -91,13 +92,13 @@ local handle = function(method, query, args, headers, body, ctx)
 				title = "May we see your papers, please?",
 				class = "login",
 			}
-			local resp, status, r_headers = auth.login_page(method, query, args, headers, body)
+			local resp, status, r_headers = auth.login_page(store, method, query, args, headers, body)
 			if not r_headers then
 				resp = tmpls.render_page(resp, vars, user_tmpl)
 			else
 				response_headers = r_headers
 			end
-			local hit_count = metrics.update(host, method, query, status)
+			local hit_count = metrics.update(store, host, method, query, status)
 			if status >= 400 then
 				return tmpls.error_page(status, hit_count, user_tmpl, err_img[tostring(status)]),
 					status,
@@ -108,7 +109,7 @@ local handle = function(method, query, args, headers, body, ctx)
 	end
 	-- See if the method is allowed
 	if not metadata.methods[method] then
-		local hit_count = metrics.update(host, method, query, 405)
+		local hit_count = metrics.update(store, host, method, query, 405)
 		local allow = ""
 		for method, _ in pairs(metadata.methods) do
 			allow = allow .. method .. ", "
@@ -122,17 +123,18 @@ local handle = function(method, query, args, headers, body, ctx)
 		-- better move all this whitelist stuff into a dedicated func
 		local whitelisted = metadata.rate_limit.whitelisted_ip or "127.0.66.6"
 		if remote_ip ~= whitelisted then
-			local count = api.check_rate_limit(host, method, query, remote_ip, metadata.rate_limit[method].period)
+			local count =
+				api.check_rate_limit(store, host, method, query, remote_ip, metadata.rate_limit[method].period)
 			if count and count > metadata.rate_limit[method].limit then
-				local hit_count = metrics.update(host, method, query, 429)
+				local hit_count = metrics.update(store, host, method, query, 429)
 				return tmpls.error_page(429, hit_count, user_tmpl, err_img["429"]), 429, response_headers
 			end
 		end
 	end
 
-	local content, hash, size, mime, title = api.get_content(host, query, metadata)
+	local content, hash, size, mime, title = api.get_content(store, host, query, metadata)
 	if not content then
-		local hit_count = metrics.update(host, method, query, 404)
+		local hit_count = metrics.update(store, host, method, query, 404)
 		return tmpls.error_page(404, hit_count, user_tmpl, err_img["404"]), 404, response_headers
 	end
 	local ttl = metadata.cache_control or "max-age=86400"
@@ -148,7 +150,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		end
 		response_headers["etag"] = hash
 		response_headers["cache-control"] = ttl
-		metrics.update(host, method, query, status)
+		metrics.update(store, host, method, query, status)
 		return "", status, response_headers
 	end
 
@@ -163,7 +165,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		local r_headers
 		content, status, r_headers = content(method, query, args, headers, body)
 		if not status then
-			local hit_count = metrics.update(host, method, query, 500)
+			local hit_count = metrics.update(store, host, method, query, 500)
 			return tmpls.error_page(500, hit_count, user_tmpl, err_img["500"]), 500, response_headers
 		end
 		if r_headers then
@@ -184,7 +186,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		response_headers["etag"] = hash
 		response_headers["cache-control"] = ttl
 	end
-	metrics.update(host, method, query, status)
+	metrics.update(store, host, method, query, status)
 	return content, status, response_headers
 end
 

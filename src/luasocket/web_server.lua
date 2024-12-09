@@ -154,7 +154,7 @@ local server_process_request = function(self, client, client_ip, count)
 	local content, status, response_headers = self.handle(method, query, args, headers, body, {
 		logger = self.logger,
 		client = client,
-		is_ssl = self.__config.ssl ~= nil,
+		cfg = self.__config,
 	})
 	if content == nil and status == nil and response_headers == nil then
 		-- request was proxied, so we just return the connection state...

@@ -1,7 +1,6 @@
 local std = require("std")
 local json = require("cjson.safe")
 local acme = require("acme")
-local store = require("reliw.store")
 local crypto = require("crypto")
 
 --[[
@@ -89,7 +88,6 @@ local place_order = function(self, domain_names)
 		return true
 	end
 
-	-- Initialize state for this order
 	self.state[primary_domain] = {
 		idx = 1,
 		count = #domain_names,
@@ -105,7 +103,7 @@ local place_order = function(self, domain_names)
 	for _, identifier in ipairs(order.identifiers) do
 		table.insert(self.state[primary_domain].domains, identifier.value)
 	end
-	-- Initialize challenge status for each domain
+
 	for _, domain in ipairs(domain_names) do
 		self.state[primary_domain].challenges[domain] = "new"
 	end
@@ -144,7 +142,7 @@ local solve_challenge = function(self, primary_domain)
 			primary_domain = primary_domain,
 			domain = domain,
 			status = auth.status,
-		})
+		}, "warn")
 		return nil
 	end
 
@@ -277,7 +275,6 @@ local provider_by_domain = function(self, domain)
 end
 
 local manage = function(self)
-	local store = store.new()
 	math.randomseed(os.time())
 
 	while true do

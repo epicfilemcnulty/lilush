@@ -7,12 +7,12 @@ local fetch_proxy_config = function(self, host)
 	if not host or type(host) ~= "string" then
 		return nil, "no host/invalid type provided"
 	end
-	local paths, err = self.red:cmd("GET", self.prefix .. ":PROXY:" .. host)
+	local config, err = self.red:cmd("GET", self.prefix .. ":PROXY:" .. host)
 	self.red:close()
 	if err then
 		return nil, "proxy config not found"
 	end
-	return json.decode(paths)
+	return json.decode(config)
 end
 
 local fetch_host_schema = function(self, host)
@@ -341,20 +341,16 @@ local send_ctl_msg = function(self, msg)
 	return resp, err
 end
 
-local new = function()
-	local static_data_dir = os.getenv("RELIW_DATA_DIR") or "/www"
-	local data_prefix = os.getenv("RELIW_REDIS_PREFIX") or "RLW"
-	local redis_url = os.getenv("RELIW_REDIS_URL") or "127.0.0.1:6379/13"
-	local cache_max_size = tonumber(os.getenv("RELIW_CACHE_MAX")) or 5242880 -- 5 megabyte by default
-	local red, err = redis.connect(redis_url)
+local new = function(srv_cfg)
+	local red, err = redis.connect(srv_cfg.redis)
 	if err then
 		return nil, err
 	end
 	return {
-		prefix = data_prefix,
+		prefix = srv_cfg.redis.prefix,
+		data_dir = srv_cfg.data_dir,
+		cache_max_size = srv_cfg.cache_max_size,
 		red = red,
-		data_dir = static_data_dir,
-		cache_max_size = cache_max_size,
 		fetch_host_schema = fetch_host_schema,
 		fetch_proxy_config = fetch_proxy_config,
 		fetch_userinfo = fetch_userinfo,
