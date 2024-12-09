@@ -153,7 +153,6 @@ local server_process_request = function(self, client, client_ip, count)
 
 	local content, status, response_headers = self.handle(method, query, args, headers, body, {
 		logger = self.logger,
-		metrics_host = self.__config.metrics_host,
 		client = client,
 		is_ssl = self.__config.ssl ~= nil,
 	})
@@ -205,7 +204,7 @@ local server_process_request = function(self, client, client_ip, count)
 		return nil, "failed to send response: " .. err
 	end
 
-	if self.logger:level() <= 10 and not host:match("^" .. self.__config.metrics_host) then
+	if self.logger:level() <= 10 then
 		local elapsed_time = os.clock() - start_time
 		local log_msg = {
 			vhost = host,
@@ -389,7 +388,6 @@ local server_new = function(config, handle)
 			requests_per_fork = 512,
 			max_body_size = 1024 * 1024 * 5, -- 5 megabytes is plenty.
 			request_line_limit = 1024 * 8, -- 8Kb for the request line or a single header is HUGE! I'm too generous here.
-			metrics_host = "reliw.stats",
 			compression = {
 				enabled = true,
 				min_size = 4096, -- Do not compress files smaller than 4Kb
