@@ -15,14 +15,17 @@ RELIW will try to load `/etc/reliw/config.json` file if there is any.
 }
 ```
 
-### A more explicit one
+### A more complex one, with metrics server
 
 ```json
 {
     "ip": "127.0.0.1",
     "port": 8080,
     "data_dir": "/var/www",
-    "metrics_host": "reliw.stats",
+    "metrics": {
+        "ip": "127.0.0.1",
+        "port": 9101
+    },
     "log_headers": [ "user-agent", "x-real-ip" ]
 }
 ```
@@ -57,10 +60,10 @@ RELIW will try to load `/etc/reliw/config.json` file if there is any.
                 "token": "VULTR-API-TOKEN"
             }
         },
-        "domains": [
-            { "name": "example.com", "provider": "vultr" },
-            { "name": "sample.net", "provider": "vultr" },
-            { "name": "folks.online", "provider": "vultr" }
+        "certificates": [
+            { "names": { "example.com" }, "provider": "vultr" },
+            { "names": { "*.sample.net", "sample.net" }, "provider": "vultr" },
+            { "names": { "folks.online", "my.folks.online" }, "provider": "vultr" }
         ]
       }
     }

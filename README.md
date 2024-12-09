@@ -14,7 +14,7 @@ curated collection of Lua modules and C libraries for
 * A set of terminal widgets for use in CLI apps
 * [djot](https://djot.net/) processing/rendering
 * Redis protocol support
-* Embedded [WireGuard](https://www.wireguard.com/embedding/) client
+* Embedded [WireGuard](https://www.wireguard.com/embedding/) and [ACMEv2](https://datatracker.ietf.org/doc/rfc8555/) clients
 * JSON, Base64, HMAC, ...
 
 For networking, _lilush_ uses [LuaSocketWolfSSL](https://github.com/epicfilemcnulty/lilush/blob/master/src/luasocket/README.md) library,
