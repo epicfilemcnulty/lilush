@@ -40,22 +40,28 @@ end
 local ssl_config_from_acme = function(srv_cfg)
 	local certs_dir = srv_cfg.data_dir .. "/.acme/certs/"
 	local ssl = {}
-	for i, domain in ipairs(srv_cfg.ssl.acme.domains) do
-		if i == 1 then
-			ssl.default = { cert = certs_dir .. domain.name .. ".crt", key = certs_dir .. domain.name .. ".key" }
-		else
-			if not ssl.hosts then
-				ssl.hosts = {}
+	for i, cert in ipairs(srv_cfg.ssl.acme.certificates) do
+		for j, name in ipairs(cert.names) do
+			local primary = cert.names[1]:gsub("%*", "_")
+			local name = name:gsub("%*", "_")
+			if i == 1 and j == 1 then
+				ssl.default = { cert = certs_dir .. name .. ".crt", key = certs_dir .. name .. ".key" }
+			else
+				if not ssl.hosts then
+					ssl.hosts = {}
+				end
+				ssl.hosts[name] = { cert = certs_dir .. primary .. ".crt", key = certs_dir .. primary .. ".key" }
 			end
-			ssl.hosts[domain.name] =
-				{ cert = certs_dir .. domain.name .. ".crt", key = certs_dir .. domain.name .. ".key" }
 		end
 	end
 	return ssl
 end
 
 local spawn_server = function(self, srv_cfg)
-	local reliw_srv = new_server(srv_cfg)
+	local reliw_srv, err = new_server(srv_cfg)
+	if err then
+		return nil, err
+	end
 	local reliw_pid = std.ps.fork()
 	if reliw_pid < 0 then
 		self.logger:log({ msg = "server spawn failed", process = "manager" }, "error")
@@ -93,16 +99,32 @@ local run = function(self)
 	if not cfg.ssl or not cfg.ssl.acme then
 		self:spawn_server(cfg)
 	end
+	local pause = 60
+	while not self.reliw_pid do
+		local real_cfg = get_server_config()
+		local ssl_config = ssl_config_from_acme(cfg)
+		real_cfg.ssl = ssl_config
+		local ok, err = self:spawn_server(real_cfg)
+		if err then
+			self.logger:log({
+				process = "manager",
+				msg = "RELIW failed to start, will try relaunch in " .. pause .. " seconds",
+				err = err,
+			}, "warn")
+			std.sleep(pause)
+			if pause < 300 then
+				pause = pause + 60
+			end
+		end
+	end
 	self.store.red:cmd("SUBSCRIBE", cfg.redis_prefix .. ":CTL")
 	while true do
 		local resp, err = self.store.red:read()
 		if resp and resp.value then
 			local msg = resp.value[3]
-			if msg == "ACME READY" and not self.reliw_pid then
-				local real_cfg = get_server_config()
-				local ssl_config = ssl_config_from_acme(cfg)
-				real_cfg.ssl = ssl_config
-				self:spawn_server(real_cfg)
+			if msg == "RESTART" then
+				-- TO DO:
+				--
 			end
 		end
 	end

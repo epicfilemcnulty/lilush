@@ -114,6 +114,7 @@ local new_order = function(self, domains)
 	local payload = {
 		identifiers = {},
 	}
+	local primary_domain = domains[1]
 	for _, domain in ipairs(domains) do
 		table.insert(payload.identifiers, { type = "dns", value = domain })
 	end
@@ -124,33 +125,49 @@ local new_order = function(self, domains)
 		self.__nonce = resp.headers["replay-nonce"]
 		if resp.status == 201 or resp.status == 200 then
 			local order_url = resp.headers.location
-			local order_info = json.decode(resp.body)
-			self.orders[order_url] = order_info
-			self.store:save_order_info(payload.identifiers[1].value, order_info)
-			return order_url
+			local order = json.decode(resp.body)
+			self.orders[primary_domain] = { info = order, url = order_url, challenges = {} }
+			self.store:save_order_info(primary_domain, order)
+			return order
 		end
 	end
 	return nil, resp, err
 end
 
-local order_info = function(self, order_url)
+local order_info = function(self, primary_domain, order_url)
+	local order_url = order_url or self.orders[primary_domain].url
+	if not order_url then
+		return nil, "order_url not found nor provided"
+	end
 	local jws = self:acme_frame(order_url)
 	local resp, err = web.request(order_url, { method = "POST", headers = common_headers, body = json.encode(jws) })
 	if resp then
 		self.__nonce = resp.headers["replay-nonce"]
 		if resp.status == 201 or resp.status == 200 then
-			local order_info = json.decode(resp.body)
-			self.orders[order_url] = order_info
-			self.store:save_order_info(order_info.identifiers[1].value, order_info)
-			return order_info
+			local order = json.decode(resp.body)
+			if not self.orders[primary_domain] then
+				self.orders[primary_domain] = { url = order_url, challenges = {} }
+			end
+			self.orders[primary_domain].info = order
+			self.store:save_order_info(primary_domain, order)
+			return order
 		end
 	end
 	return nil, resp, err
 end
 
-local get_authorization = function(self, order_url, idx)
-	local idx = idx or 1
-	local authorization_url = self.orders[order_url].authorizations[idx]
+local get_authorization = function(self, primary_domain, domain)
+	local idx = 1
+	for i, identifier in ipairs(self.orders[primary_domain].info.identifiers) do
+		if identifier.value == domain then
+			idx = i
+			break
+		end
+	end
+	if domain ~= self.orders[primary_domain].info.identifiers[idx].value then
+		return nil, "subdomain not found"
+	end
+	local authorization_url = self.orders[primary_domain].info.authorizations[idx]
 	local jws = self:acme_frame(authorization_url)
 	local resp, err =
 		web.request(authorization_url, { method = "POST", headers = common_headers, body = json.encode(jws) })
@@ -161,44 +178,58 @@ local get_authorization = function(self, order_url, idx)
 			if err then
 				return nil, err
 			end
-			if not self.authorizations[order_url] then
-				self.authorizations[order_url] = {}
-			end
-			self.authorizations[order_url][idx] = authorization_info
 			return authorization_info
 		end
 	end
 	return nil, resp, err
 end
 
-local accept_dns_challenge = function(self, order_url, dns_cfg, auth_idx)
+local get_auth_by_url = function(self, url)
+	local jws = self:acme_frame(url)
+	local resp, err = web.request(url, { method = "POST", headers = common_headers, body = json.encode(jws) })
+	if resp then
+		self.__nonce = resp.headers["replay-nonce"]
+		if resp.status == 201 or resp.status == 200 then
+			local authorization_info, err = json.decode(resp.body)
+			if err then
+				return nil, err
+			end
+			return authorization_info
+		end
+	end
+	return nil, resp, err
+end
+
+local solve_dns_challenge = function(self, primary_domain, domain, dns_cfg)
 	local dns_cfg = dns_cfg or {}
-	local auth_idx = auth_idx or 1
 	local dns_provider = dns_cfg.name or "unknown"
 	if not std.module_available("acme.dns." .. dns_provider) then
 		return nil, "no DNS plugin for " .. dns_provider .. " found"
 	end
 	local provider = require("acme.dns." .. dns_provider)
 	local dns = provider.new(dns_cfg)
-	local auth_obj = self.authorizations[order_url][auth_idx]
-	local challenge_url, token
-	for i, challenge in ipairs(auth_obj.challenges) do
+	local auth = self:get_authorization(primary_domain, domain)
+	local url, token
+	for _, challenge in ipairs(auth.challenges) do
 		if challenge.type == "dns-01" then
-			challenge_url = challenge.url
 			token = challenge.token
+			url = challenge.url
 			break
 		end
 	end
-	if not challenge_url or not token then
-		return nil, "can't parse auth object"
+	if not domain or not token then
+		return nil, "can't get challenge info"
 	end
-	local domain = auth_obj.identifier.value
-
 	local provision_state, err = dns:provision(domain, token .. "." .. self:key_thumbprint())
 	if err then
 		return nil, err
 	end
-	self.store:save_order_provision(domain, provision_state)
+	self.orders[primary_domain].challenges[domain] = url
+	return self.store:save_order_provision(primary_domain, domain, provision_state)
+end
+
+local mark_challenge_as_ready = function(self, primary_domain, domain)
+	local challenge_url = self.orders[primary_domain].challenges[domain]
 	local jws = self:acme_frame(challenge_url, {})
 	local resp, err = web.request(challenge_url, { method = "POST", headers = common_headers, body = json.encode(jws) })
 	if resp then
@@ -210,29 +241,32 @@ local accept_dns_challenge = function(self, order_url, dns_cfg, auth_idx)
 	return nil, resp, err
 end
 
-local cleanup = function(self, order_url, dns_cfg, purge)
-	local domain = self.orders[order_url].identifiers[1].value
-	local provision_state = self.store:load_order_provision(domain)
+local cleanup_dns = function(self, primary_domain, domain, dns_cfg)
+	local provision_state, err = self.store:load_order_provision(primary_domain, domain)
 	if provision_state then
 		local provider = require("acme.dns." .. provision_state.provider)
 		local dns = provider.new(dns_cfg)
-		dns:cleanup(provision_state)
-		self.store:delete_order_provision(domain)
+		local ok, err = dns:cleanup(provision_state)
+		if err then
+			return nil, err
+		end
+		self.store:delete_order_provision(primary_domain, domain)
+		return true
 	end
+	return nil, err
+end
+
+local cleanup = function(self, primary_domain, purge)
 	if purge then
-		self.store:delete_order_info(domain)
+		self.store:delete_order_info(primary_domain)
 	end
-	self.orders[order_url] = nil
-	self.authorizations[order_url] = nil
+	self.orders[primary_domain] = nil
 	return true
 end
 
-local finalize = function(self, order_url)
-	local order_info = self.orders[order_url]
-	local finalize_url = order_info.finalize
-
-	-- Get the primary domain (first identifier)
-	local primary_domain = order_info.identifiers[1].value
+local finalize = function(self, primary_domain)
+	local order = self.orders[primary_domain].info
+	local finalize_url = order.finalize
 
 	local cert_key = self.store:load_cert_key(primary_domain)
 	if not cert_key then
@@ -242,21 +276,15 @@ local finalize = function(self, order_url)
 
 	-- Collect all domains for the certificate
 	local alt_names = {}
-	local common_name = primary_domain
 
-	-- Check if primary domain is wildcard
-	local is_wildcard = primary_domain:match("^%*%.")
-	if is_wildcard then
-		-- Add base domain as SAN
-		table.insert(alt_names, primary_domain:gsub("^%*%.", ""))
+	for _, identifier in ipairs(order.identifiers) do
+		if identifier ~= primary_domain then
+			table.insert(alt_names, identifier.value)
+		end
 	end
-
-	for i = 2, #order_info.identifiers do
-		table.insert(alt_names, order_info.identifiers[i].value)
-	end
-
 	-- Generate CSR with all domains
-	local csr = crypto.generate_csr(cert_key.private, cert_key.public, common_name, #alt_names > 0 and alt_names or nil)
+	local csr =
+		crypto.generate_csr(cert_key.private, cert_key.public, primary_domain, #alt_names > 0 and alt_names or nil)
 
 	local payload = { csr = crypto.b64url_encode(csr) }
 	local jws = self:acme_frame(finalize_url, payload)
@@ -274,11 +302,11 @@ local finalize = function(self, order_url)
 	return nil, resp, err
 end
 
-local fetch_certificate = function(self, order_url)
-	local info = self.orders[order_url]
-	if info and info.certificate then
-		local jws = self:acme_frame(info.certificate)
-		local resp, err = web.request(info.certificate, {
+local fetch_certificate = function(self, primary_domain)
+	local order = self.orders[primary_domain].info
+	if order and order.certificate then
+		local jws = self:acme_frame(order.certificate)
+		local resp, err = web.request(order.certificate, {
 			method = "POST",
 			headers = std.tbl.merge({ ["Accept"] = "application/pem-certificate-chain" }, common_headers),
 			body = json.encode(jws),
@@ -286,8 +314,7 @@ local fetch_certificate = function(self, order_url)
 		if resp then
 			self.__nonce = resp.headers["replay-nonce"]
 			if resp.status == 200 then
-				local domain = info.identifiers[1].value
-				self.store:save_certificate(domain, resp.body)
+				self.store:save_certificate(primary_domain, resp.body)
 				return resp.body
 			end
 		end
@@ -306,34 +333,6 @@ local init = function(self)
 		return nil, err
 	end
 	return self:register_account()
-end
-
-local ready_to_finalize = function(self)
-	local results = {}
-	for order_url, order_info in pairs(self.orders) do
-		local valid_auths = 0
-		for i, authorization in ipairs(order_info.authorizations) do
-			auth_info = self:get_authorization(order_url, i)
-			if auth_info and auth_info.status == "valid" then
-				valid_auths = valid_auths + 1
-			end
-		end
-		if valid_auths == #order_info.authorizations then
-			table.insert(results, order_url)
-		end
-	end
-	return results
-end
-
-local ready_to_fetch = function(self)
-	local results = {}
-	for order_url, order_info in pairs(self.orders) do
-		self:order_info(order_url)
-		if self.orders[order_url].status == "valid" then
-			table.insert(results, order_url)
-		end
-	end
-	return results
 end
 
 local acme_new = function(email, directory_url, storage_provider_cfg)
@@ -370,7 +369,6 @@ local acme_new = function(email, directory_url, storage_provider_cfg)
 		__email = email,
 		store = store,
 		orders = {},
-		authorizations = {},
 		generate_header = generate_header,
 		sign_jws = sign_jws,
 		acme_frame = acme_frame,
@@ -382,12 +380,13 @@ local acme_new = function(email, directory_url, storage_provider_cfg)
 		new_order = new_order,
 		order_info = order_info,
 		get_authorization = get_authorization,
-		accept_dns_challenge = accept_dns_challenge,
+		get_auth_by_url = get_auth_by_url,
+		solve_dns_challenge = solve_dns_challenge,
+		mark_challenge_as_ready = mark_challenge_as_ready,
 		finalize = finalize,
 		fetch_certificate = fetch_certificate,
-		ready_to_finalize = ready_to_finalize,
-		ready_to_fetch = ready_to_fetch,
 		cleanup = cleanup,
+		cleanup_dns = cleanup_dns,
 	}
 end
 

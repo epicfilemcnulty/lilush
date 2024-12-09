@@ -4,6 +4,21 @@ local acme = require("acme")
 local store = require("reliw.store")
 local crypto = require("crypto")
 
+--[[
+ State format for each order:
+
+ state[primary_domain] = {
+     domains = {domain1, domain2, ...},     -- All domains in this order
+     count = n,                             -- Total number of domains
+     idx = 1,                               -- Current authorization index being processed
+     challenges = {                         -- Challenge status for each domain
+         [domain1] = "new|solved|marked|validated",
+         [domain2] = "new|solved|marked|validated",
+         ...
+     }
+ }
+]]
+
 local get_certs_expire_time = function(self)
 	if not std.fs.dir_exists(self.__acme_dir .. "/certs") then
 		self.logger:log(
@@ -13,8 +28,10 @@ local get_certs_expire_time = function(self)
 	end
 	local min_expire_time = 0
 
-	for _, domain in ipairs(self.__config.domains) do
-		local cert_path = self.__acme_dir .. "/certs/" .. domain.name .. ".crt"
+	for _, cert in ipairs(self.__config.certificates) do
+		local primary_domain = cert.names[1]
+		local pd = primary_domain:gsub("^%*", "_")
+		local cert_path = self.__acme_dir .. "/certs/" .. pd .. ".crt"
 		local cert_pem = std.fs.read_file(cert_path)
 		local expires_at = -1 -- means we don't have a cert at all
 		if cert_pem then
@@ -28,7 +45,7 @@ local get_certs_expire_time = function(self)
 				self.logger:log({
 					process = "acme",
 					msg = "certificate found",
-					domain = domain.name,
+					domain = primary_domain,
 					certfile = cert_path,
 					expires_at = expires_at,
 				}, "debug")
@@ -37,129 +54,307 @@ local get_certs_expire_time = function(self)
 			self.logger:log({
 				process = "acme",
 				msg = "no certificate found",
-				domain = domain.name,
+				domain = primary_domain,
 				certfile = cert_path,
-			})
+			}, "debug")
 		end
-		domain.expires_at = expires_at
+		cert.expires_at = expires_at
 	end
 	return min_expire_time
 end
 
 local all_certs_present = function(self)
-	for _, domain in ipairs(self.__config.domains) do
-		if not domain.expires_at or domain.expires_at < 0 then
+	for _, cert in ipairs(self.__config.certificates) do
+		if not cert.expires_at or cert.expires_at < 0 then
 			return nil
 		end
 	end
 	return true
 end
 
-local request_certificate = function(self, domain, provider)
-	if self.state[domain] then
-		self.logger:log({ process = "acme", msg = "certificate already requested", domain = domain }, "debug")
-		return true
-	end
-	self.state[domain] = {}
-	local order_url, err = self.client:new_order({ domain })
-	if err then
-		self.logger:log({ process = "acme", msg = "certificate request failed", domain = domain }, "error")
-		return nil
-	end
-	self.state[domain].order_url = order_url
-	local ok, err = self.client:get_authorization(order_url)
-	if not ok then
-		self.logger:log({ process = "acme", msg = "authorization request failed", domain = domain }, "error")
-		return nil
-	end
-	local dns_cfg = self.__config.providers[provider]
-	local ok, err = self.client:accept_dns_challenge(order_url, dns_cfg)
-	if not ok then
-		std.tbl.print(err)
-		self.logger:log({ process = "acme", msg = "accept dns challenge failed", domain = domain }, "error")
-		return nil
-	end
-	self.logger:log({ process = "acme", msg = "certificate requested", domain = domain })
-	return true
-end
-
-local send_csr = function(self, order_urls)
-	for _, order_url in ipairs(order_urls) do
-		local domain = self.client.orders[order_url].identifiers[1].value
-		if not self.state[domain].csr_sent then
-			local ok, err = self.client:finalize(order_url)
-			if not ok then
-				self.logger:log({ process = "acme", msg = "CSR request failed", domain = domain }, "error")
-			else
-				self.logger:log({ process = "acme", msg = "CSR request sent", domain = domain })
-				self.state[domain].csr_sent = true
-			end
+local all_challenges_solved = function(self, primary_domain)
+	local state = self.state[primary_domain]
+	for _, status in pairs(state.challenges) do
+		if status ~= "validated" then
+			return false
 		end
 	end
 	return true
 end
 
+local place_order = function(self, domain_names)
+	local primary_domain = domain_names[1]
+	if self.state[primary_domain] then
+		self.logger:log({ process = "acme", msg = "order's been placed already", domain = primary_domain }, "debug")
+		return true
+	end
+
+	-- Initialize state for this order
+	self.state[primary_domain] = {
+		idx = 1,
+		count = #domain_names,
+		challenges = {},
+		domains = {},
+	}
+
+	local order, err = self.client:new_order(domain_names)
+	if not order then
+		self.logger:log({ process = "acme", msg = "order placing failed", domain = primary_domain, err = err }, "error")
+		return nil
+	end
+	for _, identifier in ipairs(order.identifiers) do
+		table.insert(self.state[primary_domain].domains, identifier.value)
+	end
+	-- Initialize challenge status for each domain
+	for _, domain in ipairs(domain_names) do
+		self.state[primary_domain].challenges[domain] = "new"
+	end
+
+	self.logger:log({ process = "acme", msg = "order successfully placed", domain = primary_domain })
+	return true
+end
+
+local solve_challenge = function(self, primary_domain)
+	local state = self.state[primary_domain]
+	local domain = self.state[primary_domain].domains[state.idx]
+
+	local auth = self.client:get_authorization(primary_domain, domain)
+	if not auth then
+		self.logger:log({
+			process = "acme",
+			msg = "failed to get authorization object",
+			primary_domain = primary_domain,
+			domain = domain,
+		}, "error")
+		return nil
+	end
+
+	self.logger:log({
+		process = "acme",
+		msg = "processing authorization",
+		primary_domain = primary_domain,
+		domain = domain,
+		auth = auth,
+	}, "debug")
+
+	if auth.status ~= "pending" then
+		self.logger:log({
+			process = "acme",
+			msg = "authorization is in wrong state",
+			primary_domain = primary_domain,
+			domain = domain,
+			status = auth.status,
+		})
+		return nil
+	end
+
+	local provider = self:provider_by_domain(primary_domain)
+	local dns_cfg = self.__config.providers[provider]
+	local ok, err = self.client:solve_dns_challenge(primary_domain, domain, dns_cfg)
+	if not ok then
+		self.logger:log({
+			process = "acme",
+			msg = "DNS provisioning failed",
+			primary_domain = primary_domain,
+			domain = domain,
+			err = err,
+		}, "error")
+		return nil
+	end
+
+	state.challenges[domain] = "solved"
+	self.logger:log({
+		process = "acme",
+		msg = "DNS provisioned",
+		primary_domain = primary_domain,
+		domain = domain,
+	})
+	return true
+end
+
+local mark_challenge_as_ready = function(self, primary_domain)
+	local state = self.state[primary_domain]
+	local domain = self.state[primary_domain].domains[state.idx]
+
+	local ok, err = self.client:mark_challenge_as_ready(primary_domain, domain)
+	if err then
+		self.logger:log({
+			process = "acme",
+			msg = "failed to mark challenge as ready",
+			primary_domain = primary_domain,
+			domain = domain,
+			err = err,
+		}, "error")
+		return nil
+	end
+
+	state.challenges[domain] = "marked"
+	self.logger:log({
+		process = "acme",
+		msg = "challenge marked as ready",
+		primary_domain = primary_domain,
+		domain = domain,
+	})
+	return true
+end
+
+local cleanup_challenge = function(self, primary_domain)
+	local state = self.state[primary_domain]
+	local domain = self.state[primary_domain].domains[state.idx]
+
+	local provider = self:provider_by_domain(primary_domain)
+	local dns_cfg = self.__config.providers[provider]
+	local ok, err = self.client:cleanup_dns(primary_domain, domain, dns_cfg)
+	if not ok then
+		self.logger:log({
+			process = "acme",
+			msg = "challenge cleanup failed",
+			primary_domain = primary_domain,
+			domain = domain,
+			err = err,
+		}, "error")
+		return nil
+	end
+
+	state.challenges[domain] = "validated"
+	-- Move to next authorization if available
+	if state.idx < state.count then
+		state.idx = state.idx + 1
+	end
+
+	self.logger:log({
+		process = "acme",
+		msg = "challenge cleaned up",
+		primary_domain = primary_domain,
+		domain = domain,
+	})
+	return true
+end
+
+local send_csr = function(self, primary_domain)
+	if not self.state[primary_domain] then
+		self.logger:log({ process = "acme", msg = "no domain info found for CSR", domain = primary_domain }, "error")
+		return nil
+	end
+	if not self.state[primary_domain].csr_sent then
+		local ok, err = self.client:finalize(primary_domain)
+		if not ok then
+			self.logger:log({
+				process = "acme",
+				msg = "CSR request failed",
+				domain = primary_domain,
+				err = err,
+			}, "error")
+			return nil
+		end
+		self.logger:log({ process = "acme", msg = "CSR request sent", domain = primary_domain })
+		self.state[primary_domain].csr_sent = true
+	end
+	return true
+end
+
+local get_certificate = function(self, primary_domain)
+	local ok, err = self.client:fetch_certificate(primary_domain)
+	if ok then
+		self.logger:log({ process = "acme", msg = "certificate fetched", domain = primary_domain })
+		self.state[primary_domain] = nil
+		self.client:cleanup(primary_domain)
+	else
+		self.logger:log({ process = "acme", msg = "certificate fetch failed", domain = primary_domain, err = err })
+	end
+	return ok, err
+end
+
 local provider_by_domain = function(self, domain)
-	for _, d in ipairs(self.__config.domains) do
-		if d.name == domain then
-			return d.provider
+	for _, cert in ipairs(self.__config.certificates) do
+		for _, cert_domain in ipairs(cert.names) do
+			if cert_domain == domain then
+				return cert.provider
+			end
 		end
 	end
 	return nil
 end
 
-local get_certificates = function(self, order_urls)
-	for _, order_url in ipairs(order_urls) do
-		local ok, err = self.client:fetch_certificate(order_url)
-		local domain = self.client.orders[order_url].identifiers[1].value
-		if ok then
-			self.logger:log({ process = "acme", msg = "certificate fetched", domain = domain })
-			local provider = self:provider_by_domain(domain)
-			local dns_cfg = self.__config.providers[provider]
-			self.client:cleanup(order_url, dns_cfg)
-			self.state[domain] = nil
-		else
-			self.logger:log({ process = "acme", msg = "certificate fetch failed", domain = domain }, "error")
-		end
-	end
-end
-
 local manage = function(self)
 	local store = store.new()
 	math.randomseed(os.time())
+
 	while true do
 		local min_expire_time = self:get_certs_expire_time()
-		for i, domain in ipairs(self.__config.domains) do
-			if domain.expires_at < 0 then
-				self:request_certificate(domain.name, domain.provider)
+
+		-- Check for certificates that need renewal
+		for _, cert in ipairs(self.__config.certificates) do
+			if cert.expires_at < 0 then
+				self:place_order(cert.names)
 			else
-				local expires_in = domain.expires_at - os.time()
+				local expires_in = cert.expires_at - os.time()
 				if expires_in <= self.__config.renew_time then
 					self.logger:log({
 						process = "acme",
 						msg = "certificate renewal",
-						domain = domain.name,
+						domain = cert.names[1],
 						expires_in = expires_in,
 					})
-					self:request_certificate(domain.name, domain.provider)
+					self:place_order(cert.names)
 				end
 			end
 		end
-		local ready_to_finalize = self.client:ready_to_finalize()
-		if #ready_to_finalize > 0 then
-			self:send_csr(ready_to_finalize)
-		end
-		local ready_to_fetch = self.client:ready_to_fetch()
-		if #ready_to_fetch > 0 then
-			self:get_certificates(ready_to_fetch)
-		end
-		local sleep_duration = math.random(1, 15)
-		if self.__ready < 2 then
-			if self:all_certs_present() then
-				store:send_ctl_msg("ACME READY")
-				self.__ready = self.__ready + 1
+
+		-- Process pending orders
+		for primary_domain, state in pairs(self.state) do
+			local order = self.client:order_info(primary_domain)
+			if order then
+				if order.status == "pending" or order.status == "ready" then
+					local domain = state.domains[state.idx]
+					local challenge_status = state.challenges[domain]
+					if challenge_status == "new" then
+						if self:solve_challenge(primary_domain) then
+							self.logger:log({
+								process = "acme",
+								msg = "waiting for DNS to propagate",
+								primary_domain = primary_domain,
+								domain = domain,
+								duration = 120,
+							})
+							std.sleep(120)
+						end
+					elseif challenge_status == "solved" then
+						self:mark_challenge_as_ready(primary_domain)
+					elseif challenge_status == "marked" then
+						local auth = self.client:get_authorization(primary_domain, domain)
+						if auth and auth.status == "valid" then
+							self:cleanup_challenge(primary_domain)
+						end
+					end
+				end
+				if order.status == "ready" and self:all_challenges_solved(primary_domain) then
+					self:send_csr(primary_domain)
+				end
+				if order.status == "valid" then
+					self:get_certificate(primary_domain)
+				end
+				if order.status == "invalid" then
+					self.logger:log(
+						{ process = "acme", primary_domain = primary_domain, msg = "order is invalid" },
+						"error"
+					)
+					for _, url in ipairs(order.authorizations) do
+						self.logger:log({
+							process = "acme",
+							primary_domain = primary_domain,
+							msg = "order's auth",
+							auth = self.client:get_auth_by_url(url),
+						}, "debug")
+					end
+					os.exit(-1)
+				end
 			end
-		elseif min_expire_time > 0 then
+		end
+
+		-- Calculate sleep duration
+		local sleep_duration = math.random(10, 30)
+		if min_expire_time > 0 then
 			local min = 1
 			local max = min_expire_time - self.__config.renew_time
 			if max > 0 then
@@ -167,6 +362,7 @@ local manage = function(self)
 			end
 			sleep_duration = math.random(min, max)
 		end
+
 		self.logger:log({ process = "acme", msg = "sleeping", duration = sleep_duration })
 		std.sleep(sleep_duration)
 	end
@@ -192,9 +388,13 @@ local acme_manager_new = function(srv_cfg, logger)
 		client = client,
 		get_certs_expire_time = get_certs_expire_time,
 		all_certs_present = all_certs_present,
-		request_certificate = request_certificate,
+		place_order = place_order,
+		solve_challenge = solve_challenge,
+		cleanup_challenge = cleanup_challenge,
+		mark_challenge_as_ready = mark_challenge_as_ready,
+		all_challenges_solved = all_challenges_solved,
 		send_csr = send_csr,
-		get_certificates = get_certificates,
+		get_certificate = get_certificate,
 		provider_by_domain = provider_by_domain,
 		manage = manage,
 	}

@@ -13,11 +13,14 @@ local provision = function(self, domain, key_authorization)
 		base_domain = domain
 		sub_domain = ""
 	end
+	if sub_domain:match("%*") then
+		sub_domain = ""
+	end
 	local api_endpoint = "https://api.vultr.com/v2/domains/" .. base_domain .. "/records"
 	local dns_txt_value = crypto.b64url_encode(crypto.sha256(key_authorization))
 	local vultr_payload = {
 		type = "TXT",
-		ttl = 300,
+		ttl = 60,
 		name = "_acme-challenge" .. sub_domain,
 		data = dns_txt_value,
 	}
