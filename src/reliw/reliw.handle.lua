@@ -187,6 +187,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		response_headers["cache-control"] = ttl
 	end
 	metrics.update(store, host, method, query, status)
+	store:close()
 	return content, status, response_headers
 end
 

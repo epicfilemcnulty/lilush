@@ -8,7 +8,6 @@ local fetch_proxy_config = function(self, host)
 		return nil, "no host/invalid type provided"
 	end
 	local config, err = self.red:cmd("GET", self.prefix .. ":PROXY:" .. host)
-	self.red:close()
 	if err then
 		return nil, "proxy config not found"
 	end
@@ -20,7 +19,6 @@ local fetch_host_schema = function(self, host)
 		return nil, "no host/invalid type provided"
 	end
 	local paths, err = self.red:cmd("GET", self.prefix .. ":API:" .. host)
-	self.red:close()
 	if err then
 		return nil, "API schema not found"
 	end
@@ -32,7 +30,6 @@ local fetch_entry_metadata = function(self, host, entry_id)
 		return nil, "host or entry_id not provided"
 	end
 	local metadata, err = self.red:cmd("GET", self.prefix .. ":API:" .. host .. ":" .. entry_id)
-	self.red:close()
 	if err then
 		return nil, "metadata: " .. tostring(err)
 	end
@@ -44,7 +41,6 @@ local fetch_userinfo = function(self, host, user)
 		return nil, "host/user not provided"
 	end
 	local user_info, err = self.red:cmd("HGET", self.prefix .. ":USERS:" .. host, user)
-	self.red:close()
 	if err then
 		return nil, err
 	end
@@ -59,7 +55,6 @@ local fetch_userdata = function(self, host, file)
 	if err then
 		userdata, err = self.red:cmd("GET", self.prefix .. ":DATA:__:" .. file)
 	end
-	self.red:close()
 	if not userdata then
 		return nil, "userdata not found"
 	end
@@ -121,7 +116,6 @@ local fetch_content = function(self, host, query, metadata)
 	end
 	local content = std.fs.read_file(prefix .. filename) or std.fs.read_file(self.data_dir .. "/__" .. filename)
 	if not content then
-		self.red:close()
 		return nil, filename .. " not found"
 	end
 	local title = metadata.title or ""
@@ -151,7 +145,6 @@ local fetch_content = function(self, host, query, metadata)
 	if mime_type == "application/lua" then
 		content = load(content)()
 	end
-	self.red:close()
 	return content, hash, size, mime_type, title
 end
 
@@ -161,7 +154,6 @@ local fetch_hash_and_size = function(self, host, file)
 	end
 	local target = self.prefix .. ":FILES:" .. host .. ":" .. file
 	local resp, err = self.red:cmd("HMGET", target, "hash", "size")
-	self.red:close()
 	if err then
 		return nil, "not found"
 	end
@@ -177,7 +169,6 @@ local check_waf = function(self, host, query, headers)
 	end
 	local global = self.red:cmd("HGET", self.prefix .. ":WAF", "__")
 	local per_host = self.red:cmd("HGET", self.prefix .. ":WAF", host)
-	self.red:close()
 	if not global and not per_host then
 		return nil
 	end
@@ -236,7 +227,6 @@ local check_rate_limit = function(self, host, method, query, remote_ip, period)
 	local count =
 		self.red:cmd("INCR", self.prefix .. ":LIMITS:" .. host .. ":" .. method .. ":" .. query .. ":" .. remote_ip)
 	if not count then
-		self.red:close()
 		return nil
 	end
 	if count == 1 then
@@ -246,7 +236,6 @@ local check_rate_limit = function(self, host, method, query, remote_ip, period)
 			period
 		)
 	end
-	self.red:close()
 	return count
 end
 
@@ -256,7 +245,6 @@ local set_session_data = function(self, host, user, ttl)
 	end
 	local uuid = std.uuid()
 	local ok, err = self.red:cmd("SET", self.prefix .. ":SESSIONS:" .. host .. ":" .. uuid, user, "EX", ttl)
-	self.red:close()
 	if ok then
 		return uuid
 	end
@@ -268,7 +256,6 @@ local destroy_session = function(self, host, token)
 		return nil, "required args not provided"
 	end
 	local ok, err = self.red:cmd("DEL", self.prefix .. ":SESSIONS:" .. host .. ":" .. token)
-	self.red:close()
 	return ok, err
 end
 
@@ -278,11 +265,9 @@ local fetch_session_user = function(self, host, token)
 	end
 	local session_user, err = self.red:cmd("GET", self.prefix .. ":SESSIONS:" .. host .. ":" .. token)
 	if err then
-		self.red:close()
 		return nil
 	end
 	local user = self.red:cmd("HEXISTS", self.prefix .. ":USERS:" .. host, session_user)
-	self.red:close()
 	if not user or user <= 0 then
 		return nil
 	end
@@ -324,7 +309,6 @@ local fetch_metrics = function(self)
 			end
 		end
 	end
-	self.red:close()
 	return metrics_total .. metrics_by_method
 end
 
@@ -332,7 +316,6 @@ local update_metrics = function(self, host, method, query, status)
 	local resp, err = self.red:cmd("HINCRBY", self.prefix .. ":METRICS:" .. host .. ":total", status, "1")
 	resp, err = self.red:cmd("HINCRBY", self.prefix .. ":METRICS:" .. host .. ":by_method", method, "1")
 	resp, err = self.red:cmd("HINCRBY", self.prefix .. ":METRICS:" .. host .. ":by_request", query, "1")
-	self.red:close()
 	return resp, err
 end
 
@@ -351,6 +334,11 @@ local new = function(srv_cfg)
 		data_dir = srv_cfg.data_dir,
 		cache_max_size = srv_cfg.cache_max_size,
 		red = red,
+		close = function(self)
+			if self.red then
+				self.red:close()
+			end
+		end,
 		fetch_host_schema = fetch_host_schema,
 		fetch_proxy_config = fetch_proxy_config,
 		fetch_userinfo = fetch_userinfo,
