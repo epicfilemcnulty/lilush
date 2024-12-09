@@ -716,16 +716,16 @@ local ssh_profile = function(cmd, args)
 	local home = os.getenv("HOME") or ""
 	local args = args or {}
 	local profile = args[1] or ""
-	local profile_full_path = home .. "/.ssh/profiles/" .. profile
+	local profile_relative_path = "profiles/" .. profile
 	local ssh_config = home .. "/.ssh/config"
 
-	if not std.fs.file_exists(profile_full_path) then
+	if not std.fs.file_exists(home .. "/.ssh/" .. profile_relative_path) then
 		errmsg("no such profile")
 		return 255
 	end
 	local st = std.fs.stat(ssh_config)
 	if not st then
-		local ret, err = std.fs.symlink(profile_full_path, ssh_config)
+		local ret, err = std.fs.symlink(profile_relative_path, ssh_config)
 		if ret then
 			return 0
 		end
@@ -738,7 +738,7 @@ local ssh_profile = function(cmd, args)
 			errmsg(err)
 			return 255
 		end
-		local ret, err = std.fs.symlink(profile_full_path, ssh_config)
+		local ret, err = std.fs.symlink(profile_relative_path, ssh_config)
 		if not ret then
 			errmsg(err)
 			return 255
