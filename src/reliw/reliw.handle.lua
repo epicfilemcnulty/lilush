@@ -12,7 +12,14 @@ local handle = function(method, query, args, headers, body, ctx)
 	local srv_cfg = ctx.cfg
 	local store = store.new(srv_cfg)
 
-	host = host:match("^([^:]+)") -- make sure to remove port from the host header
+	-- Remove port from the host header
+	if not host:match("^%[") then
+		host = host:match("^([^:]+)")
+	else
+		-- IPv6 as the Host needs special treatment
+		host = host:match("^%[(.+)%]")
+	end
+
 	local blocked, rule = api.check_waf(store, host, query, headers)
 	if blocked then
 		local ip = headers["x-real-ip"]
@@ -84,8 +91,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		if metadata.auth.logout then
 			return auth.logout(store, headers)
 		end
-		local authorized = auth.authorized(store, headers, metadata.auth)
-		if not authorized then
+		if metadata.auth.login then
 			local vars = {
 				css_file = metadata.css_file or default_css_file,
 				favicon_file = metadata.favicon_file or "/images/favicon.svg",
@@ -105,6 +111,15 @@ local handle = function(method, query, args, headers, body, ctx)
 					response_headers
 			end
 			return resp, status, response_headers
+		end
+		local authorized = auth.authorized(store, headers, metadata.auth)
+		if not authorized then
+			return "Just a second, please",
+				302,
+				{
+					["Set-Cookie"] = "rlw_redirect=" .. query,
+					["Location"] = "/login",
+				}
 		end
 	end
 	-- See if the method is allowed

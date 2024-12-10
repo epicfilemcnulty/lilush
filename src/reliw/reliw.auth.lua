@@ -44,6 +44,7 @@ end
 local logout = function(store, headers)
 	local token = ""
 	local host = headers.host
+	-- TO DO: Should add `parse_host_from_headers` func to `web_server`...
 	host = host:match("^([^:]+)")
 	local cookie = headers.cookie
 	if cookie then
@@ -54,8 +55,8 @@ local logout = function(store, headers)
 		303,
 		{
 			["Set-Cookie"] = "rlw_session_token=" .. token .. "; Max-Age=0",
+			["Set-Cookie"] = "rlw_redirect=; Max-Age=0",
 			["Location"] = "/",
-			["Content-Type"] = "text/plain",
 		}
 end
 
@@ -87,13 +88,17 @@ local login_page = function(store, method, query, args, headers, body)
 	local args = web.parse_args(body)
 	if login(store, headers["host"], args.login, args.password) then
 		local session_cookie = start_session(store, headers["host"], args.login, 10800) -- 3 hours TTL by default
+		local cookie = headers.cookie
+		local redirect_url = "/"
+		if cookie then
+			redirect_url = cookie:match("rlw_redirect=([^%s;]+)") or "/"
+		end
 		if session_cookie then
 			return "We're all good, babe.",
 				303,
 				{
 					["Set-Cookie"] = session_cookie,
-					["Location"] = query,
-					["Content-Type"] = "text/plain",
+					["Location"] = redirect_url,
 				}
 		end
 	end

@@ -243,7 +243,7 @@ local set_session_data = function(self, host, user, ttl)
 	if not host or not user or not ttl then
 		return nil, "required args not present"
 	end
-	local uuid = std.uuid()
+	local uuid = std.nanoid()
 	local ok, err = self.red:cmd("SET", self.prefix .. ":SESSIONS:" .. host .. ":" .. uuid, user, "EX", ttl)
 	if ok then
 		return uuid
