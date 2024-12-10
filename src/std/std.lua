@@ -73,6 +73,22 @@ local function uuid()
 	end)
 end
 
+-- port of https://github.com/ai/nanoid, seems a nice thing to have,
+-- UUIDs are ugly fucks to look at, I'll give ya that...
+
+local function nanoid(length)
+	math.randomseed(os.time())
+	local charset = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_"
+	length = length or 21
+	local id = ""
+	for i = 1, length do
+		local rand = math.random(0, 63)
+		local char = charset:sub(rand + 1, rand + 1)
+		id = id .. char
+	end
+	return id
+end
+
 local function module_available(name)
 	if package.loaded[name] then
 		return true
@@ -142,6 +158,7 @@ local std = {
 	envsubst = envsubst,
 	escape_magic_chars = escape_magic_chars,
 	uuid = uuid,
+	nanoid = nanoid,
 	salt = salt,
 	system_users = system_users,
 	progress_icon = progress_icon,
