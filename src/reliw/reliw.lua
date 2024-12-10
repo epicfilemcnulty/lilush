@@ -84,6 +84,7 @@ local spawn_metrics_server = function(self)
 	local metrics_pid = std.ps.fork()
 	if metrics_pid < 0 then
 		self.logger:log({ msg = "metrics server spawn failed", process = "manager" }, "error")
+		return nil
 	end
 	if metrics_pid == 0 then
 		srv:serve()
@@ -100,13 +101,35 @@ local spawn_server = function(self, srv_cfg)
 	end
 	local reliw_pid = std.ps.fork()
 	if reliw_pid < 0 then
-		self.logger:log({ msg = "server spawn failed", process = "manager" }, "error")
+		self.logger:log({ msg = "IPv4 server spawn failed", process = "manager" }, "error")
+		return nil
 	end
 	if reliw_pid == 0 then
 		reliw_srv:serve()
 	end
-	self.logger:log({ msg = "server spawned", process = "manager", pid = reliw_pid })
+	self.logger:log({ msg = "IPv4 server spawned", process = "manager", pid = reliw_pid })
 	self.reliw_pid = reliw_pid
+
+	if not srv_cfg.ipv6 then
+		return true
+	end
+
+	local srv_cfg_ipv6 = std.tbl.copy(srv_cfg)
+	srv_cfg_ipv6.ip = srv_cfg_ipv6.ipv6
+	local reliw6_srv, err = new_server(srv_cfg_ipv6)
+	if err then
+		return nil, err
+	end
+	local reliw6_pid = std.ps.fork()
+	if reliw6_pid < 0 then
+		self.logger:log({ msg = "IPv6 server spawn failed", process = "manager" }, "error")
+		return nil
+	end
+	if reliw6_pid == 0 then
+		reliw6_srv:serve()
+	end
+	self.logger:log({ msg = "IPv6 server spawned", process = "manager", pid = reliw6_pid })
+	self.reliw6_pid = reliw6_pid
 	return true
 end
 
