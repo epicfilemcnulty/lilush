@@ -315,7 +315,7 @@ local server_serve = function(self)
 							if err == "closed" then
 								self.logger:log("client closed connection", "debug")
 							else
-								self.logger:log(err, "error")
+								self.logger:log(err, "debug")
 							end
 							state = "close"
 						end
