@@ -50,7 +50,8 @@ end
 local function wrap(sock, cfg)
 	local config = std.tbl.copy(default_config)
 	config = std.tbl.merge(config, cfg)
-	local ctx, msg = newcontext(config)
+	-- Use existing context if provided
+	local ctx = config.ctx or newcontext(config)
 	if not ctx then
 		return nil, msg
 	end

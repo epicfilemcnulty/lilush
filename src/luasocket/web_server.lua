@@ -274,15 +274,13 @@ local server_serve = function(self)
 					local client_ip = client:getpeername()
 					local count = 1
 					local ssl_client, err
+
 					if self.__config.ssl then
-						local cfg = {
+						-- Use the pre-loaded default context
+						ssl_client, err = ssl.wrap(client, {
 							mode = "server",
-							keyfile = self.__config.ssl.default.key,
-							certfile = self.__config.ssl.default.cert,
-						}
-						-- Create the default context and wrap socket
-						local default_ctx = ssl.newcontext(cfg)
-						ssl_client, err = ssl.wrap(client, cfg)
+							ctx = self.__ssl_contexts.default,
+						})
 
 						if not ssl_client then
 							self.logger:log("failed to wrap client with SSL: " .. err, "error")
@@ -290,18 +288,13 @@ local server_serve = function(self)
 							os.exit(1)
 						end
 
-						-- Add additional contexts for SNI
-						if self.__config.ssl.hosts then
-							for hostname, cert_config in pairs(self.__config.ssl.hosts) do
-								local host_cfg = {
-									mode = "server",
-									keyfile = cert_config.key,
-									certfile = cert_config.cert,
-								}
-								local host_ctx = ssl.newcontext(host_cfg)
-								ssl_client:add_sni_context(hostname, host_ctx)
+						-- Add pre-loaded SNI contexts
+						if self.__ssl_contexts.hosts then
+							for hostname, ctx in pairs(self.__ssl_contexts.hosts) do
+								ssl_client:add_sni_context(hostname, ctx)
 							end
 						end
+
 						local status, err = ssl_client:dohandshake()
 						if not status then
 							self.logger:log("SSL handshake failed: " .. err, "debug")
@@ -356,6 +349,7 @@ local server_configure = function(self, config)
 	self.__config = std.tbl.merge(self.__config, config)
 	self.logger:set_level(self.__config.log_level)
 	if self.__config.ssl then
+		-- Create default context
 		if self.__config.ssl.default then
 			if
 				not std.fs.file_exists(self.__config.ssl.default.cert)
@@ -363,12 +357,37 @@ local server_configure = function(self, config)
 			then
 				return nil, "can't find default SSL cert/key"
 			end
+
+			local cfg = {
+				mode = "server",
+				keyfile = self.__config.ssl.default.key,
+				certfile = self.__config.ssl.default.cert,
+			}
+			local ctx, err = ssl.newcontext(cfg)
+			if not ctx then
+				return nil, "failed to create default SSL context: " .. err
+			end
+			self.__ssl_contexts.default = ctx
 		end
+
+		-- Create contexts for additional hosts
 		if self.__config.ssl.hosts then
-			for domain, ssl in pairs(self.__config.ssl.hosts) do
-				if not std.fs.file_exists(ssl.cert) or not std.fs.file_exists(ssl.key) then
+			self.__ssl_contexts.hosts = {}
+			for domain, ssl_config in pairs(self.__config.ssl.hosts) do
+				if not std.fs.file_exists(ssl_config.cert) or not std.fs.file_exists(ssl_config.key) then
 					return nil, "Can't find SSL cert for the " .. domain .. " domain"
 				end
+
+				local cfg = {
+					mode = "server",
+					keyfile = ssl_config.key,
+					certfile = ssl_config.cert,
+				}
+				local ctx, err = ssl.newcontext(cfg)
+				if not ctx then
+					return nil, "failed to create SSL context for " .. domain .. ": " .. err
+				end
+				self.__ssl_contexts.hosts[domain] = ctx
 			end
 		end
 	end
@@ -404,6 +423,7 @@ local server_new = function(config, handle)
 			log_level = "access",
 			log_headers = { "referer", "x-real-ip", "user-agent" }, -- request headers to include in the access log.
 		},
+		__ssl_contexts = {},
 		handle = handle,
 		logger = std.logger.new("access"),
 		process_request = server_process_request,
