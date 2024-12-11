@@ -12,7 +12,7 @@ headers_from_luamod () {
 }
 
 do_clean () {
-    cd ${base_dir}/src/lua-cjson && make clean && cd -
+    cd ${base_dir}/src/cjson && make clean && cd -
     cd ${base_dir}/src/luasocket && make clean && cd -
     cd ${base_dir}/src/std && make clean && cd -
     cd ${base_dir}/src/crypto && make clean && cd -
@@ -24,7 +24,7 @@ do_clean () {
 }
 
 do_build () {
-    cd ${base_dir}/src/lua-cjson && make && strip --strip-debug --strip-unneeded *.o && cd -
+    cd ${base_dir}/src/cjson && make && strip --strip-debug --strip-unneeded *.o && cd -
     cd ${base_dir}/src/std && make && strip --strip-debug --strip-unneeded *.o && cd -
     cd ${base_dir}/src/crypto && make && strip --strip-debug --strip-unneeded *.o && cd -
     cd ${base_dir}/src/luasocket && make linux && strip --strip-debug --strip-unneeded *.o && cd -
@@ -43,7 +43,7 @@ do_headers() {
 }
 
 do_linking() {
-    ar rcs liblilush.a ${base_dir}/src/lua-cjson/*.o ${base_dir}/src/luasocket/*.o ${base_dir}/src/std/*.o ${base_dir}/src/crypto/*.o
+    ar rcs liblilush.a ${base_dir}/src/cjson/*.o ${base_dir}/src/luasocket/*.o ${base_dir}/src/std/*.o ${base_dir}/src/crypto/*.o
     clang -Os -s -O3 -Wall -Wl,-E -o reliw_bin ${base_dir}/src/reliw.c -I/usr/local/include/luajit-2.1 -I/usr/local/include/wolfssl -L/usr/local/lib -lluajit-5.1 -Wl,--whole-archive -lwolfssl liblilush.a -Wl,--no-whole-archive -static
 }
 
