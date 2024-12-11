@@ -54,9 +54,9 @@ local logout = function(store, headers)
 	return "Logging out...",
 		303,
 		{
-			["Set-Cookie"] = "rlw_session_token=" .. token .. "; Max-Age=0",
-			["Set-Cookie"] = "rlw_redirect=; Max-Age=0",
-			["Location"] = "/",
+			["set-cookie"] = "rlw_session_token=" .. token .. "; Max-Age=0",
+			["set-cookie"] = "rlw_redirect=; Max-Age=0",
+			["location"] = "/",
 		}
 end
 
@@ -97,8 +97,8 @@ local login_page = function(store, method, query, args, headers, body)
 			return "We're all good, babe.",
 				303,
 				{
-					["Set-Cookie"] = session_cookie,
-					["Location"] = redirect_url,
+					["set-cookie"] = session_cookie,
+					["location"] = redirect_url,
 				}
 		end
 	end

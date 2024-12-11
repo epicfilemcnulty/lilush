@@ -192,7 +192,7 @@ local server_process_request = function(self, client, client_ip, count)
 		if h == "set-cookie" and type(v) == "table" then
 			-- Handle multiple Set-Cookie headers
 			for _, cookie in ipairs(v) do
-				buf:put("Set-Cookie: ", cookie, "\n")
+				buf:put("set-cookie: ", cookie, "\n")
 			end
 		else
 			buf:put(h, ": ", v, "\n")

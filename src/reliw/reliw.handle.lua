@@ -26,8 +26,8 @@ local handle = function(method, query, args, headers, body, ctx)
 		api.add_waffer(store, ip)
 		ctx.logger:log({ msg = "blocked by WAF", waf_rule = rule, query = query, vhost = host, ip = ip }, 30)
 		return "Fuck Off", 301, {
-			["Location"] = "http://127.0.0.1/Fuck_Off",
-			["Content-Type"] = "text/rude",
+			["location"] = "http://127.0.0.1/Fuck_Off",
+			["content-type"] = "text/rude",
 		}
 	end
 	local proxy_config = api.proxy_config(store, host)
@@ -117,8 +117,8 @@ local handle = function(method, query, args, headers, body, ctx)
 			return "Just a second, please",
 				302,
 				{
-					["Set-Cookie"] = "rlw_redirect=" .. query,
-					["Location"] = "/login",
+					["set-cookie"] = "rlw_redirect=" .. query,
+					["location"] = "/login",
 				}
 		end
 	end
@@ -129,7 +129,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		for method, _ in pairs(metadata.methods) do
 			allow = allow .. method .. ", "
 		end
-		response_headers["Allow"] = allow:sub(1, -3) -- remove last comma and space
+		response_headers["allow"] = allow:sub(1, -3) -- remove last comma and space
 		return tmpls.error_page(405, hit_count, user_tmpl, err_img["405"]), 405, response_headers
 	end
 	-- Check rate limits
