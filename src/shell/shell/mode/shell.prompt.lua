@@ -193,7 +193,13 @@ local get = function(self)
 	return prompt .. "$ "
 end
 
+local new = function()
+	local prompt = {
+		set = set,
+		get = get,
+	}
+end
+
 return {
-	set = set,
-	get = get,
+	new = new,
 }

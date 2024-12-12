@@ -20,7 +20,7 @@ local new = function(prompt_module_name)
 		end
 		if std.module_available(prompt_module_name) then
 			local prompt = require(prompt_module_name)
-			return prompt
+			return prompt.new()
 		end
 	end
 	return nil
