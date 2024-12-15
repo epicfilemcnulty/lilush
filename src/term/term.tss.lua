@@ -20,16 +20,13 @@ local calc_el_width = function(self, w, max)
 		max = self.__window.w
 	end
 	local w = w or 0
-	if w > 0 then
-		if w < 1 then
-			return math.ceil(max * w)
-		end
-		if w < max then
-			return w
-		end
-		return max
+	if w <= 0 then
+		return 0
 	end
-	return 0
+	if w < 1 then
+		return math.max(1, math.floor(max * w))
+	end
+	return math.min(w, max)
 end
 
 local get = function(self, el, base_props)

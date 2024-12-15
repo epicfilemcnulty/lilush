@@ -165,6 +165,7 @@ local available_blocks = {
 }
 
 local set = function(self, options, export)
+	local options = options or {}
 	local export = export or false
 	for k, v in pairs(options) do
 		self[k] = v
@@ -181,19 +182,31 @@ local get = function(self)
 	for b in enabled_blocks:gmatch("(%w+),?") do
 		table.insert(enabled, b)
 	end
-	local prompt = ""
+	local prompt = buffer.new()
 	for _, b in ipairs(enabled) do
 		if available_blocks[b] then
 			local out = available_blocks[b](self)
 			if out then
-				prompt = prompt .. out
+				prompt:put(out)
 			end
 		end
 	end
-	return prompt .. "$ "
+	prompt:put("$ ")
+	return prompt:get()
 end
 
-return {
-	set = set,
-	get = get,
-}
+local new = function(options)
+	local prompt = {
+		home = os.getenv("HOME") or "/tmp",
+		user = os.getenv("USER") or "nobody",
+		hostname = tostring(std.fs.read_file("/etc/hostname")):gsub("\n", ""),
+		pwd = std.fs.cwd() or "",
+		blocks = os.getenv("LILUSH_PROMPT") or "user,dir",
+		get = get,
+		set = set,
+	}
+	prompt:set(options)
+	return prompt
+end
+
+return { new = new }

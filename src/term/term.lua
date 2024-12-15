@@ -3,8 +3,8 @@
 local core = require("term.core")
 local buffer = require("string.buffer")
 
---[[ 
-     See https://en.wikipedia.org/wiki/ANSI_escape_code 
+--[[
+     See https://en.wikipedia.org/wiki/ANSI_escape_code
      for info on ANSI escape codes, text colors and attributes.
 ]]
 

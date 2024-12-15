@@ -8,7 +8,7 @@ local redis = require("redis")
 local init_redis_store = function(redis_url)
 	local red, err = redis.connect(redis_url)
 	if err then
-		return nil, "can't connect to redis: " .. tostring(err)
+		return nil, "can't connect to redis: " .. err
 	end
 	return red
 end
@@ -38,6 +38,7 @@ local save_history_entry = function(self, mode, payload)
 end
 
 local load_history = function(self, mode, lines)
+	local mode = mode or "general"
 	local lines = tonumber(lines) or 0
 	local res, err
 	if lines ~= 0 then

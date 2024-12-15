@@ -267,7 +267,7 @@ local toggle_blocks_combo = function(self, combo)
 		end
 	end
 	enabled_blocks = table.concat(blocks, ",")
-	self.input.prompt:set({ blocks = enabled_blocks }, true)
+	self.input:prompt_set({ blocks = enabled_blocks }, true)
 	return true
 end
 
@@ -302,7 +302,7 @@ local new = function(input)
 	std.ps.setenv("PWD", mode.pwd)
 	local prompts = os.getenv("LILUSH_PROMPT") or "user,dir"
 	if mode.input.prompt then
-		mode.input.prompt:set({
+		mode.input:prompt_set({
 			home = mode.home,
 			user = mode.user,
 			hostname = mode.hostname,

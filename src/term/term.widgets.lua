@@ -331,7 +331,7 @@ local settings = function(config, title, rss, l, c)
 					local buf = input.new({ l = l + 1 + idx, c = c + m + 4 + val_indent, 20 })
 					buf:display()
 					while true do
-						local event, combo = buf:event()
+						local event, combo = buf:run({ execute = true, exit = true })
 						if event == "execute" then
 							local choice = buf:render()
 							if choice ~= "" then

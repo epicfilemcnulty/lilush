@@ -1,17 +1,16 @@
 -- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
+local json = require("cjson.safe")
 local text = require("text")
-local storage = require("shell.store")
 local term = require("term")
 local input = require("term.input")
 local history = require("term.input.history")
 local completion = require("term.input.completion")
-local json = require("cjson.safe")
 local prompt = require("term.input.prompt")
 
+local storage = require("shell.store")
 local shell_mode = require("shell.mode.shell")
-
 local builtins = require("shell.builtins")
 local utils = require("shell.utils")
 local theme = require("shell.theme")
@@ -27,8 +26,7 @@ end
 -- the current mode handler
 local clear_combo = function(self, combo)
 	term.clear()
-	self.__mode[self.__chosen_mode].input.__config.l = 1
-	self.__mode[self.__chosen_mode].input.__config.c = 1
+	self.__mode[self.__chosen_mode].input:set_position(1, 1)
 	self.__mode[self.__chosen_mode].input:flush()
 	return true
 end
@@ -83,11 +81,10 @@ local run = function(self)
 				std.ps.setenv("LILUSH_EXEC_END", os.time())
 				std.ps.setenv("LILUSH_EXEC_STATUS", tostring(status))
 				io.flush()
-				self.__mode[self.__chosen_mode].input:flush()
 				io.read("*a")
-				local l, c = term.cursor_position()
-				self.__mode[self.__chosen_mode].input.__config.l = l
-				self.__mode[self.__chosen_mode].input.__config.c = 1
+				local l, _ = term.cursor_position()
+				self.__mode[self.__chosen_mode].input:set_position(l, 1)
+				self.__mode[self.__chosen_mode].input:flush()
 				self.__mode[self.__chosen_mode].input:display(true)
 			elseif event == "combo" then
 				if self.__ctrls[combo] then
@@ -206,7 +203,7 @@ local new = function()
 			hst = history.new(name, history_store)
 		end
 		shell.__shortcuts[m.shortcut] = name
-		shell.__mode[name] = mod.new(input.new({ completion = cmpl, history = hst, prompt = pt }))
+		shell.__mode[name] = mod.new(input.new({ completion = cmpl, history = hst, prompt = pt, l = 1, c = 1 }))
 		shell.__ctrls[m.shortcut] = change_mode_combo
 	end
 	return shell
