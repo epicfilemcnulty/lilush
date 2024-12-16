@@ -424,8 +424,8 @@ end
 
 local pager_exit = function(self)
 	self.__config.status_line = false
-	if self.__state.alt_screen then
-		term.switch_screen("main", nil, true)
+	if self.__screen then
+		self.__screen:done()
 	end
 	term.go(self.__window.l, 1)
 	local till = self.__window.capacity
@@ -607,8 +607,7 @@ local pager_page = function(self)
 	if #self.content.lines < self.__window.capacity and self.__config.exit_on_one_page then
 		return self:exit()
 	end
-	term.switch_screen("alt", true)
-	self.__state.alt_screen = true
+	self.__screen = term.alt_screen()
 	local buf = ""
 	self:display()
 	repeat
@@ -658,7 +657,6 @@ local pager_new = function(config)
 		__state = {
 			top_line = 1,
 			cursor_line = 0,
-			alt_screen = false,
 			history = {},
 		},
 		__search = {
