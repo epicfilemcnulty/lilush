@@ -758,14 +758,7 @@ local aws_profile = function(cmd, args)
 		for p in aws_config:gmatch("%[profile ([^%]]+)%]") do
 			table.insert(content.options, p)
 		end
-		term.set_raw_mode()
-		local l, c = term.cursor_position()
-		term.switch_screen("alt", true)
-		term.hide_cursor()
 		local profile = widgets.switcher(content, theme.widgets.aws)
-		term.show_cursor()
-		term.switch_screen("main", nil, true)
-		term.go(l, c)
 		if profile ~= "" then
 			std.ps.setenv("AWS_PROFILE", profile)
 		end
@@ -780,14 +773,7 @@ local aws_region = function(cmd, args)
 		for region in regions:gmatch("([%w-]+),?") do
 			table.insert(content.options, region)
 		end
-		term.set_raw_mode()
-		term.hide_cursor()
-		local l, c = term.cursor_position()
-		term.switch_screen("alt", true)
 		local region = widgets.switcher(content, theme.widgets.aws)
-		term.switch_screen("main", nil, true)
-		term.go(l, c)
-		term.show_cursor()
 		if region ~= "" then
 			std.ps.setenv("AWS_REGION", region)
 		end
@@ -1439,14 +1425,10 @@ local zx = function(cmd, args)
 			local l, c = term.cursor_position()
 			for _, arg in ipairs(snippet_meta.args) do
 				if arg.kind == "options" then
-					term.switch_screen("alt", true)
-					term.hide_cursor()
 					local chosen_option = widgets.switcher(
 						{ title = "Choose " .. arg.name .. " value", options = arg.values },
 						theme.widgets.shell
 					)
-					term.show_cursor()
-					term.switch_screen("main", nil, true)
 					snippet_args[arg.name] = chosen_option
 				end
 			end

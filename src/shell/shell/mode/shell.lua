@@ -40,13 +40,9 @@ local load_shell_config = function()
 end
 
 local settings = function(self, combo)
-	term.switch_screen("alt", true)
-	term.hide_cursor()
 	widgets.settings(self.conf, "Shell Settings", theme.widgets.shell, 3, 5)
 	-- This is dubious, what if it was already changed via setenv?
 	std.ps.setenv("AWS_REGIONS", self.conf.aws.regions)
-	term.switch_screen("main", nil, true)
-	term.show_cursor()
 	return true
 end
 
@@ -167,14 +163,8 @@ local python_env = function(self, cmd, args)
 			table.insert(venvs, f)
 		end
 		venvs = std.tbl.alphanumsort(venvs)
-		local l, c = term.cursor_position()
 		local content = { title = "Choose a python venv", options = venvs }
-		term.switch_screen("alt", true)
-		term.hide_cursor()
 		local choice = widgets.switcher(content, theme.widgets.python)
-		term.switch_screen("main", nil, true)
-		term.show_cursor()
-		term.go(l, c)
 		virtual_env = base_dir .. "/" .. choice
 	end
 	if not virtual_env:match("^/") then
@@ -217,10 +207,6 @@ local run = function(self)
 			end
 		end
 	end
-	-- Clear any pending input
-	io.flush()
-	io.read("*a")
-	term.set_sane_mode()
 
 	local cmd = pipeline[1].cmd
 	local status, err
@@ -233,7 +219,6 @@ local run = function(self)
 	if not status and not err then
 		status = 0
 	end
-	term.set_raw_mode(true)
 	return status, err
 end
 

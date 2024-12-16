@@ -94,6 +94,7 @@ end
         }
 ]]
 local switcher = function(content, rss, l, c)
+	local state = term.alt_screen()
 	local tss = style.merge(default_widgets_rss, rss)
 	term.clear()
 	local content = content or {}
@@ -164,9 +165,11 @@ local switcher = function(content, rss, l, c)
 			if buf ~= "" then
 				buf = ""
 			else
+				state:done()
 				return ""
 			end
 		elseif key == "ENTER" then
+			state:done()
 			return content.options[content.selected]
 		elseif key == "UP" then
 			if idx > 1 then
@@ -250,6 +253,7 @@ local render_title = function(title, tss, l, c)
 end
 
 local settings = function(config, title, rss, l, c)
+	local state = term.alt_screen()
 	local tss = style.merge(default_widgets_rss, rss)
 	local l = l or 1
 	local c = c or 1
@@ -263,6 +267,7 @@ local settings = function(config, title, rss, l, c)
 	while true do
 		local key = input.simple_get()
 		if key == "ESC" then
+			state:done()
 			return true
 		end
 		if key == "UP" then
@@ -371,6 +376,7 @@ local settings = function(config, title, rss, l, c)
 end
 
 local file_chooser = function(title, start_dir, rss, patterns)
+	local state = term.alt_screen()
 	local invoke_dir = std.fs.cwd()
 	local title = title or "Select a file/dir"
 	local patterns = patterns or { mode = "[fdl]", select = "[fdl]" }
@@ -458,6 +464,7 @@ local file_chooser = function(title, start_dir, rss, patterns)
 	until key == "chosen" or key == "ESC"
 	std.ps.setenv("LILUSH_FC_LASTDIR", std.fs.cwd())
 	std.fs.chdir(invoke_dir)
+	state:done()
 	return choice
 end
 

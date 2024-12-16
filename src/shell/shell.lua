@@ -40,6 +40,7 @@ local exit_combo = function(self, combo)
 		self.__mode.shell.pyvenv(self.__mode.shell, "pyvenv", { "exit" })
 		return true
 	end
+	term.disable_kkbp()
 	term.set_sane_mode()
 	os.exit(0)
 end
@@ -68,7 +69,13 @@ local run = function(self)
 		local event, combo = self.__mode[self.__chosen_mode].input:run({ execute = true, exit = false, combo = true })
 		if event then
 			if event == "execute" then
+				-- Clear any pending input
+				io.flush()
+				io.read("*a")
 				term.write("\r\n")
+				term.disable_kkbp()
+				term.set_sane_mode()
+
 				local cwd = std.fs.cwd()
 				std.ps.setenv("LILUSH_EXEC_CWD", cwd)
 				std.ps.setenv("LILUSH_EXEC_START", os.time())
@@ -78,7 +85,10 @@ local run = function(self)
 				end
 				std.ps.setenv("LILUSH_EXEC_END", os.time())
 				std.ps.setenv("LILUSH_EXEC_STATUS", tostring(status))
+
 				io.flush()
+				term.set_raw_mode()
+				term.enable_kkbp()
 
 				local l, _ = term.cursor_position()
 				self.__mode[self.__chosen_mode].input:set_position(l, 1)
@@ -86,11 +96,21 @@ local run = function(self)
 				self.__mode[self.__chosen_mode].input:display(true)
 			elseif event == "combo" then
 				if self.__ctrls[combo] then
-					if self.__ctrls[combo](self, combo) then
+					term.disable_kkbp()
+					term.set_sane_mode()
+					local redraw = self.__ctrls[combo](self, combo)
+					term.set_raw_mode()
+					term.enable_kkbp()
+					if redraw then
 						self.__mode[self.__chosen_mode].input:display(true)
 					end
 				elseif self.__mode[self.__chosen_mode].combos[combo] then
-					if self.__mode[self.__chosen_mode].combos[combo](self.__mode[self.__chosen_mode], combo) then
+					term.disable_kkbp()
+					term.set_sane_mode()
+					local redraw = self.__mode[self.__chosen_mode].combos[combo](self.__mode[self.__chosen_mode], combo)
+					term.set_raw_mode()
+					term.enable_kkbp()
+					if redraw then
 						self.__mode[self.__chosen_mode].input:display(true)
 					end
 				end
