@@ -7,6 +7,9 @@ local OP = {
 	DELETE = 2,
 	CURSOR_MOVE = 3,
 	FULL_CHANGE = 4, -- for history navigation, etc.
+	COMPLETION_PROMOTION = 5,
+	COMPLETION_SCROLL = 6,
+	HISTORY_SCROLL = 7,
 }
 
 local new = function(config)
@@ -36,6 +39,68 @@ local new = function(config)
 				len = std.utf.len(prompt)
 			end
 			return len, prompt
+		end,
+
+		max_visible_width = function(self)
+			local max = self.config.width or self.window.w
+			if self.prompt and self.prompt.get then
+				return max - std.utf.len(self.prompt:get())
+			end
+			return max
+		end,
+
+		update_window_size = function(self, new_h, new_w)
+			self.window.h = new_h
+			self.window.w = new_w
+
+			-- Adjust visible width if needed
+			if self.config.width then
+				self.config.width = math.min(new_w - 1, self.config.width)
+			end
+
+			-- Ensure cursor position is valid
+			local max_visible = self:max_visible_width()
+			if self.cursor > max_visible then
+				self.cursor = max_visible
+				local content_length = std.utf.len(self.buffer)
+				if content_length > max_visible then
+					self.position = math.max(1, content_length - max_visible + 1)
+				end
+			end
+		end,
+
+		update_cursor = function(self, new_cursor)
+			local max_width = self:max_visible_width()
+			local buf_len = std.utf.len(self.buffer)
+
+			if new_cursor < 0 then
+				new_cursor = 0
+			elseif new_cursor > buf_len then
+				new_cursor = buf_len
+			end
+
+			self.last_op = { type = OP.CURSOR_MOVE }
+			-- Adjust position if cursor would go beyond visible area
+			if new_cursor > max_width then
+				self.position = self.position + (new_cursor - max_width)
+				self.cursor = max_width
+				self.last_op = { type = OP.FULL_CHANGE }
+			else
+				self.cursor = new_cursor
+			end
+		end,
+
+		set_position = function(self, l, c)
+			if l then
+				self.config.l = l
+			end
+			if c then
+				self.config.c = c
+			end
+		end,
+
+		get_content = function(self)
+			return self.buffer
 		end,
 
 		insert = function(self, char)
@@ -126,12 +191,22 @@ local new = function(config)
 			return false
 		end,
 
-		max_visible_width = function(self)
-			local max = self.config.width or self.window.w
-			if self.prompt and self.prompt.get then
-				return max - std.utf.len(self.prompt:get())
+		end_of_line = function(self)
+			-- TODO: Check if we are already at the end of the line
+			local buf_len = std.utf.len(self.buffer)
+			local max = self:max_visible_width()
+			self.position = 1
+			self:update_cursor(buf_len)
+			return true
+		end,
+
+		start_of_line = function(self)
+			if self.cursor > 0 then
+				self.position = 1
+				self:update_cursor(0)
+				return true
 			end
-			return max
+			return false
 		end,
 
 		history_up = function(self)
@@ -146,7 +221,7 @@ local new = function(config)
 				self.buffer = self.history:get()
 				self.cursor = std.utf.len(self.buffer)
 				self.position = 1
-				self.last_op = { type = OP.FULL_CHANGE }
+				self.last_op = { type = OP.HISTORY_SCROLL }
 				return true
 			end
 			return false
@@ -161,7 +236,7 @@ local new = function(config)
 				self.buffer = self.history:get()
 				self.cursor = std.utf.len(self.buffer)
 				self.position = 1
-				self.last_op = { type = OP.FULL_CHANGE }
+				self.last_op = { type = OP.HISTORY_SCROLL }
 				return true
 			end
 			return self:scroll_completion()
@@ -192,7 +267,7 @@ local new = function(config)
 					self.completion.__chosen = total
 				end
 			end
-			self.last_op = { type = OP.FULL_CHANGE }
+			self.last_op = { type = OP.COMPLETION_SCROLL }
 			return true
 		end,
 
@@ -216,7 +291,7 @@ local new = function(config)
 			self.completion:flush()
 			self.cursor = std.utf.len(self.buffer)
 			self.position = 1
-			self.last_op = { type = OP.FULL_CHANGE }
+			self.last_op = { type = OP.COMPLETION_PROMOTION }
 			return metadata.exec_on_prom and "execute" or true
 		end,
 
@@ -227,90 +302,19 @@ local new = function(config)
 			self.completion:search(self.buffer, self.history)
 		end,
 
-		end_of_line = function(self)
-			local buf_len = std.utf.len(self.buffer)
-			local max = self:max_visible_width()
-			self.position = 1
-			self:update_cursor(buf_len)
-			return true
-		end,
-
-		start_of_line = function(self)
-			if self.cursor > 0 then
-				self.position = 1
-				self.cursor = 0
-				return true
-			end
-			return false
-		end,
-
-		update_window_size = function(self, new_h, new_w)
-			self.window.h = new_h
-			self.window.w = new_w
-
-			-- Adjust visible width if needed
-			if self.config.width then
-				self.config.width = math.min(new_w - 1, self.config.width)
-			end
-
-			-- Ensure cursor position is valid
-			local max_visible = self:max_visible_width()
-			if self.cursor > max_visible then
-				self.cursor = max_visible
-				local content_length = std.utf.len(self.buffer)
-				if content_length > max_visible then
-					self.position = math.max(1, content_length - max_visible + 1)
-				end
-			end
-		end,
-
-		update_cursor = function(self, new_cursor)
-			local max_width = self:max_visible_width()
-			local buf_len = std.utf.len(self.buffer)
-
-			if new_cursor < 0 then
-				new_cursor = 0
-			elseif new_cursor > buf_len then
-				new_cursor = buf_len
-			end
-
-			self.last_op = { type = OP.CURSOR_MOVE }
-			-- Adjust position if cursor would go beyond visible area
-			if new_cursor > max_width then
-				self.position = self.position + (new_cursor - max_width)
-				self.cursor = max_width
-				self.last_op = { type = OP.FULL_CHANGE }
-			else
-				self.cursor = new_cursor
-			end
-		end,
-
-		set_position = function(self, l, c)
-			if l then
-				self.config.l = l
-			end
-			if c then
-				self.config.c = c
-			end
-		end,
-
-		get_content = function(self)
-			return self.buffer
-		end,
-
 		external_editor = function(self)
+			local tmp_file = "/tmp/lilush_edit_" .. std.nanoid()
+			std.fs.write_file(tmp_file, self.buffer)
 			local editor = os.getenv("EDITOR") or "vi"
-			local stdin = std.ps.pipe()
-			local stdout = std.ps.pipe()
-			stdin:write(self.buffer)
-			stdin:close_inn()
-			local pid = std.ps.launch(editor, stdin.out, stdout.inn, nil, "-")
+			local pid = std.ps.launch(editor, nil, nil, nil, tmp_file)
 			local _, status = std.ps.wait(pid)
-			stdin:close_out()
-			stdout:close_inn()
-			local result = stdout:read() or "can't get editor output"
-			stdout:close_out()
-			self.buffer = result
+			local result = std.fs.read_file(tmp_file)
+			if result then
+				std.fs.remove(tmp_file)
+				self.buffer = result
+			else
+				result = "can't get editor output"
+			end
 			self.last_op = { type = OP.FULL_CHANGE }
 			return self:end_of_line()
 		end,
@@ -332,11 +336,7 @@ local new = function(config)
 			end
 
 			if shortcut == "BACKSPACE" then
-				local result = self:backspace()
-				if result and self.completion then
-					self:search_completion()
-				end
-				return result
+				return self:backspace()
 			end
 
 			if shortcut == "LEFT" then

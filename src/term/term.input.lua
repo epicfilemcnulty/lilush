@@ -5,7 +5,6 @@ local term = require("term")
 local style = require("term.tss")
 local state = require("term.input.state")
 local view = require("term.input.view")
-local modifiers = require("term.input.modifiers")
 local buffer = require("string.buffer")
 local socket = require("socket")
 
@@ -166,6 +165,50 @@ local get = function()
 	return codepoint, modifiers, tonumber(event), shifted, base
 end
 
+local mods_to_string = function(mods)
+	local keys = {
+		[1] = "SHIFT",
+		[2] = "ALT",
+		[4] = "CTRL",
+		[8] = "SUPER",
+		[16] = "HYPER",
+		[32] = "META",
+		[64] = "CAPS_LOCK",
+		[128] = "NUM_LOCK",
+	}
+	local combination = {}
+	for key, value in pairs(keys) do
+		if bit.band(mods, key) ~= 0 then
+			table.insert(combination, value)
+		end
+	end
+	return table.concat(combination, "+")
+end
+
+local string_to_mods = function(combination)
+	local keys = {
+		SHIFT = 1,
+		ALT = 2,
+		CTRL = 4,
+		SUPER = 8,
+		HYPER = 16,
+		META = 32,
+		CAPS_LOCK = 64,
+		NUM_LOCK = 128,
+	}
+	local byte = 0
+	local modifiers = {}
+	for modifier in string.gmatch(combination, "%w+") do
+		table.insert(modifiers, modifier)
+	end
+	for _, modifier in ipairs(modifiers) do
+		if keys[modifier] then
+			byte = bit.bor(byte, keys[modifier])
+		end
+	end
+	return byte
+end
+
 local simple_get = function()
 	local cp, mods, event, shifted, base = get()
 	if cp and event ~= 3 then
@@ -178,7 +221,7 @@ local simple_get = function()
 		if base then
 			cp = base
 		end
-		local mod_string = modifiers.mods_to_string(mods - 1)
+		local mod_string = mods_to_string(mods - 1)
 		local shortcut = mod_string .. "+"
 		if mod_string == "" then
 			shortcut = cp
@@ -263,15 +306,8 @@ local new = function(config)
 			if key == "TAB" then
 				local long_tab = self:handle_tab_state(event)
 				if event == 3 then -- Only process TAB on key release
-					if self.state.completion and self.state.completion:available() then
-						if #self.state.completion.__candidates == 1 then
-							return self.state:promote_completion()
-						end
-						if long_tab then
-							return self.state:scroll_completion()
-						end
-						return self.state:promote_completion()
-					end
+					self.state.tab_long = long_tab
+					return self.state:handle_ctl(key)
 				end
 				return nil
 			end
@@ -304,7 +340,7 @@ local new = function(config)
 			if base then
 				key = base
 			end
-			local mod_string = modifiers.mods_to_string(mods - 1)
+			local mod_string = mods_to_string(mods - 1)
 			local shortcut = key
 			if mod_string ~= "" then
 				shortcut = mod_string .. "+" .. key
@@ -340,8 +376,8 @@ local new = function(config)
 			return self.state:get_content()
 		end,
 
-		display = function(self, redraw_prompt)
-			self.view:display(redraw_prompt)
+		display = function(self, full_redraw)
+			self.view:display(full_redraw)
 		end,
 
 		prompt_set = function(self, options)
@@ -376,7 +412,7 @@ end
 return {
 	get = get,
 	simple_get = simple_get,
-	mods_to_string = modifiers.mods_to_string,
-	string_to_mods = modifiers.string_to_mods,
+	mods_to_string = mods_to_string,
+	string_to_mods = string_to_mods,
 	new = new,
 }

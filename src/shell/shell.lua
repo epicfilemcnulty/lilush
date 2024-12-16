@@ -68,8 +68,6 @@ local run = function(self)
 		local event, combo = self.__mode[self.__chosen_mode].input:run({ execute = true, exit = false, combo = true })
 		if event then
 			if event == "execute" then
-				-- Let's eat up whatever might be left in the input buffer first:
-				io.read("*a")
 				term.write("\r\n")
 				local cwd = std.fs.cwd()
 				std.ps.setenv("LILUSH_EXEC_CWD", cwd)
@@ -81,7 +79,7 @@ local run = function(self)
 				std.ps.setenv("LILUSH_EXEC_END", os.time())
 				std.ps.setenv("LILUSH_EXEC_STATUS", tostring(status))
 				io.flush()
-				io.read("*a")
+
 				local l, _ = term.cursor_position()
 				self.__mode[self.__chosen_mode].input:set_position(l, 1)
 				self.__mode[self.__chosen_mode].input:flush()

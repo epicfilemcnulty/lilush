@@ -217,15 +217,24 @@ local run = function(self)
 			end
 		end
 	end
+	-- Clear any pending input
+	io.flush()
+	io.read("*a")
+	term.set_sane_mode()
+
 	local cmd = pipeline[1].cmd
+	local status, err
 	if tlb[cmd] then
-		return self[cmd](self, cmd, pipeline[1].args)
+		status, err = self[cmd](self, cmd, pipeline[1].args)
 	else
-		term.set_sane_mode()
-		local status, err = utils.run_pipeline(pipeline, nil, builtins, extra)
-		term.set_raw_mode(true)
-		return status, err
+		status, err = utils.run_pipeline(pipeline, nil, builtins, extra)
 	end
+	-- TODO: Gotta refactor all builtins to return status
+	if not status and not err then
+		status = 0
+	end
+	term.set_raw_mode(true)
+	return status, err
 end
 
 local run_once = function(self)

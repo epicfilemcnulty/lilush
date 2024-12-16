@@ -15,6 +15,15 @@ local new = function(state_obj)
 			return prompt_len, prompt
 		end,
 
+		draw_prompt = function(self)
+			local prompt_len, prompt = self:get_prompt_info()
+			if prompt_len > 0 then
+				term.go(self.state.config.l, self.state.config.c)
+				term.write(prompt)
+			end
+			return prompt_len
+		end,
+
 		draw_content = function(self, content)
 			if self.state.config.escape_newlines then
 				content = content:gsub("\n", "␊")
@@ -30,27 +39,62 @@ local new = function(state_obj)
 			if self.state.completion and self.state.completion:available() then
 				local completion = self.state.completion:get()
 				if completion ~= "" then
-					term.clear_line(0) -- from cursor till the EOL
 					if self.state.config.tss then
 						term.write(self.state.config.tss:apply("completion", completion))
 					else
 						term.write(completion)
 					end
-					self:update_cursor()
 				end
 			end
 		end,
 
-		handle_completion = function(self)
-			if self.state.completion then
-				self.state.completion:search(self.state.buffer, self.state.history)
-				self:draw_completion()
+		redraw = function(self)
+			term.clear_line(2) -- Clear entire line
+			local prompt_len = self:draw_prompt()
+
+			-- Position for content
+			term.go(self.state.config.l, self.state.config.c + prompt_len)
+
+			local max = self.state:max_visible_width()
+			local buf_len = std.utf.len(self.state.buffer)
+			local visible_end = math.min(self.state.position + max - 1, buf_len)
+
+			if visible_end >= self.state.position then
+				local content = std.utf.sub(self.state.buffer, self.state.position, visible_end)
+				if content and #content > 0 then
+					self:draw_content(content)
+				end
 			end
 		end,
 
 		update_cursor = function(self)
 			local prompt_len = self:get_prompt_info()
 			term.go(self.state.config.l, self.state.config.c + self.state.cursor + prompt_len)
+		end,
+
+		handle_content_redraw = function(self)
+			local prompt_len = self:get_prompt_info()
+			term.go(self.state.config.l, self.state.config.c + prompt_len)
+			term.clear_line(0)
+			self:draw_content(self.state.buffer)
+			self:update_cursor()
+		end,
+
+		handle_completion = function(self)
+			if self.state.completion then
+				self.state.completion:search(self.state.buffer, self.state.history)
+				term.clear_line(0) -- from cursor till the EOL
+				self:draw_completion()
+				self:update_cursor()
+			end
+		end,
+
+		handle_completion_scroll = function(self)
+			local prompt_len = self:get_prompt_info()
+			term.go(self.state.config.l, self.state.config.c + self.state.cursor + prompt_len)
+			term.clear_line(0)
+			self:draw_completion()
+			self:update_cursor()
 		end,
 
 		handle_insert = function(self, pos)
@@ -84,7 +128,6 @@ local new = function(state_obj)
 			if pos >= buf_len then
 				term.move("left")
 				term.clear_line(0)
-				self:draw_completion()
 				return
 			end
 
@@ -95,57 +138,27 @@ local new = function(state_obj)
 			local visible_end = math.min(self.state.position + max, buf_len)
 			local content = std.utf.sub(self.state.buffer, pos, visible_end)
 			self:draw_content(content)
-			self:draw_completion()
 			self:update_cursor()
 		end,
 
-		full_redraw = function(self, redraw_prompt)
-			-- First, let's clear everything
-			term.clear_line(2) -- Clear entire line
-
-			local prompt_len, prompt = self:get_prompt_info()
-
-			if redraw_prompt and prompt_len > 0 then
-				-- Position cursor and write prompt
-				term.go(self.state.config.l, self.state.config.c)
-				term.write(prompt)
-			end
-
-			-- Position for content
-			term.go(self.state.config.l, self.state.config.c + prompt_len)
-
-			local max = self.state:max_visible_width()
-			local buf_len = std.utf.len(self.state.buffer)
-			local visible_end = math.min(self.state.position + max - 1, buf_len)
-
-			if visible_end >= self.state.position then
-				local content = std.utf.sub(self.state.buffer, self.state.position, visible_end)
-				if content and #content > 0 then
-					self:draw_content(content)
-				end
-			end
-
-			self:draw_completion()
-			self:update_cursor()
-		end,
 		-- Main display method that checks last operation and renders accordingly
 		display = function(self, force_redraw)
-			local needs_prompt = force_redraw
+			local force_redraw = force_redraw or false
 
 			-- Check if we need to redraw prompt based on operation type
 			if self.state.last_op.type == state.OP.FULL_CHANGE then
-				needs_prompt = true
+				force_redraw = true
 			end
 
 			-- Check if cursor moved to new line
 			if self.state.last_op.type == state.OP.CURSOR_MOVE then
 				local old_line = self.state.last_op.last_line
 				if old_line and old_line ~= self.state.config.l then
-					needs_prompt = true
+					force_redraw = true
 				end
 			end
-			if needs_prompt then
-				return self:full_redraw(true)
+			if force_redraw then
+				return self:redraw()
 			end
 
 			local op = self.state.last_op
@@ -154,11 +167,16 @@ local new = function(state_obj)
 				self:handle_completion()
 			elseif op.type == state.OP.DELETE then
 				self:handle_delete(op.position)
-				self:handle_completion()
 			elseif op.type == state.OP.CURSOR_MOVE then
 				self:update_cursor()
+			elseif op.type == state.OP.COMPLETION_PROMOTION then
+				self:handle_content_redraw()
+			elseif op.type == state.OP.HISTORY_SCROLL then
+				self:handle_content_redraw()
+			elseif op.type == state.OP.COMPLETION_SCROLL then
+				self:handle_completion_scroll()
 			elseif op.type == state.OP.FULL_CHANGE then
-				self:full_redraw(false)
+				self:redraw(false)
 				self:handle_completion()
 			end
 		end,
