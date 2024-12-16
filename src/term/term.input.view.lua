@@ -107,16 +107,15 @@ local new = function(state_obj)
 				local char = std.utf.sub(self.state.buffer, pos, pos)
 				self:draw_content(char)
 				self:update_cursor()
-				return
+				return true
 			end
 
 			-- For insertion in the middle:
 			-- Clear from cursor to end and redraw the affected part
 			term.clear_line(0) -- clear from cursor to end
-			local visible_end = math.min(self.state.position + max, buf_len)
+			local visible_end = math.min(self.state.position + max - 1, buf_len)
 			local content = std.utf.sub(self.state.buffer, pos, visible_end)
 			self:draw_content(content)
-			self:draw_completion()
 			self:update_cursor()
 		end,
 
@@ -163,8 +162,9 @@ local new = function(state_obj)
 
 			local op = self.state.last_op
 			if op.type == state.OP.INSERT then
-				self:handle_insert(op.position)
-				self:handle_completion()
+				if self:handle_insert(op.position) then
+					self:handle_completion()
+				end
 			elseif op.type == state.OP.DELETE then
 				self:handle_delete(op.position)
 			elseif op.type == state.OP.CURSOR_MOVE then
