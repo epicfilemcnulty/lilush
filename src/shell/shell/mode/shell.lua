@@ -261,7 +261,7 @@ local toggle_blocks_combo = function(self, combo)
 		end
 	end
 	enabled_blocks = table.concat(blocks, ",")
-	self.input:prompt_set({ blocks = enabled_blocks }, true)
+	self.input:prompt_set({ blocks = enabled_blocks })
 	return true
 end
 

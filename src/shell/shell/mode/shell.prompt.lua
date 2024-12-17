@@ -164,16 +164,14 @@ local available_blocks = {
 	python = python_prompt,
 }
 
-local set = function(self, options, export)
+local set = function(self, options)
 	local options = options or {}
 	local export = export or false
 	for k, v in pairs(options) do
 		self[k] = v
 	end
 	self.blocks = self.blocks or "user,dir"
-	if export then
-		std.ps.setenv("LILUSH_PROMPT", self.blocks)
-	end
+	std.ps.setenv("LILUSH_PROMPT", self.blocks)
 end
 
 local get = function(self)
