@@ -39,7 +39,7 @@ local get = function(self, promoted)
 end
 
 local update = function(self)
-	for name, source in pairs(self.__sources) do
+	for _, source in pairs(self.__sources) do
 		if source.update then
 			source:update()
 		end

@@ -89,7 +89,7 @@ local load_config = function(self)
 end
 
 local replace_aliases = function(self, input)
-	local input = input
+	local input = input or ""
 	input = input:gsub("^%s-([%w._]+)", self.aliases)
 	input = input:gsub("|%s-([%w._]+)", self.aliases)
 	return input
@@ -100,8 +100,8 @@ end
 -- cause they need access to the mode's self object.
 
 local rehash = function(self, cmd, args)
-	if self.input.completion then
-		self.input.completion:update()
+	if self.input.state.completion then
+		self.input.state.completion:update()
 	end
 	return 0
 end
@@ -213,7 +213,7 @@ local run = function(self)
 	if tlb[cmd] then
 		status, err = self[cmd](self, cmd, pipeline[1].args)
 	else
-		status, err = utils.run_pipeline(pipeline, nil, builtins, extra)
+		status, err = utils.run_pipeline(pipeline, nil, builtins)
 	end
 	-- TODO: Gotta refactor all builtins to return status
 	if not status and not err then
@@ -235,7 +235,7 @@ local run_once = function(self)
 	if tlb[cmd] then
 		return self[cmd](self, cmd, pipeline[1].args)
 	else
-		local status, err = utils.run_pipeline(pipeline, nil, builtins, extra)
+		local status, err = utils.run_pipeline(pipeline, nil, builtins)
 		return status, err
 	end
 end
@@ -260,8 +260,7 @@ local toggle_blocks_combo = function(self, combo)
 			table.insert(blocks, 1, map[combo])
 		end
 	end
-	enabled_blocks = table.concat(blocks, ",")
-	self.input:prompt_set({ blocks = enabled_blocks })
+	self.input:prompt_set({ blocks = table.concat(blocks, ",") })
 	return true
 end
 

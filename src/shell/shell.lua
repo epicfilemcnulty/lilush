@@ -216,7 +216,7 @@ local new = function()
 			end
 			cmpl = completion.new(m.completion)
 		end
-		local mod = require(m.path)
+		mod = require(m.path)
 		if m.history then
 			hst = history.new(name, history_store)
 		end

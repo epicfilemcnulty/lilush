@@ -196,6 +196,9 @@ local new = function(config)
 			local buf_len = std.utf.len(self.buffer)
 			local max = self:max_visible_width()
 			self.position = 1
+			if buf_len > max then
+				self.position = buf_len - max
+			end
 			self:update_cursor(buf_len)
 			return true
 		end,

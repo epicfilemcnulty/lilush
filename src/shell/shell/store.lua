@@ -20,7 +20,7 @@ end
 
 local get_json_file = function(self, filename)
 	local filename = filename or ""
-	local content_json, err = std.fs.read_file(self.storage_dir .. "/" .. filename)
+	local content_json = std.fs.read_file(self.storage_dir .. "/" .. filename)
 	return json.decode(content_json)
 end
 
@@ -30,7 +30,7 @@ local save_history_entry = function(self, mode, payload)
 	if err then
 		return nil, "failed to serialize the entry: " .. err
 	end
-	local ok, err = self.redis:cmd("ZADD", self.prefix .. "history/" .. mode .. self.suffix, payload.ts, encoded)
+	local _, err = self.redis:cmd("ZADD", self.prefix .. "history/" .. mode .. self.suffix, payload.ts, encoded)
 	if err then
 		return nil, "failed to save entry: " .. err
 	end
@@ -86,7 +86,7 @@ local save_llm_chat = function(self, name, payload)
 end
 
 local load_llm_chat = function(self, name)
-	local chat_json, err = self.redis:cmd("HGET", self.prefix .. "llm/chats" .. self.suffix, name)
+	local chat_json = self.redis:cmd("HGET", self.prefix .. "llm/chats" .. self.suffix, name)
 	return json.decode(chat_json)
 end
 

@@ -2,7 +2,6 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
 local buffer = require("string.buffer")
-local term = require("term")
 local theme = require("shell.theme")
 local style = require("term.tss")
 local tss = style.new(theme)
@@ -166,7 +165,6 @@ local available_blocks = {
 
 local set = function(self, options)
 	local options = options or {}
-	local export = export or false
 	for k, v in pairs(options) do
 		self[k] = v
 	end

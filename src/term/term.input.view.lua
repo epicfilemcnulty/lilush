@@ -98,7 +98,6 @@ local new = function(state_obj)
 		end,
 
 		handle_insert = function(self, pos)
-			local prompt_len = self:get_prompt_info()
 			local max = self.state:max_visible_width()
 			local buf_len = std.utf.len(self.state.buffer)
 

@@ -4,7 +4,6 @@ local std = require("std")
 local term = require("term")
 local widgets = require("term.widgets")
 local json = require("cjson.safe")
-local web = require("web")
 local utils = require("shell.utils")
 local dig = require("dns.dig")
 local theme = require("shell.theme")
@@ -13,7 +12,6 @@ local text = require("text")
 local argparser = require("argparser")
 local buffer = require("string.buffer")
 local style = require("term.tss")
-local input = require("term.input")
 
 local set_term_title = function(title)
 	local term_title_prefix = os.getenv("LILUSH_TERM_TITLE_PREFIX") or ""
@@ -93,7 +91,7 @@ render_dir = function(path, pattern, indent, args)
 
 	local buf = buffer.new()
 
-	for i, dir in ipairs(dirs) do
+	for _, dir in ipairs(dirs) do
 		local mode = all_files[dir].mode
 		local size = all_files[dir].size
 		local perms = all_files[dir].perms
@@ -148,7 +146,7 @@ render_dir = function(path, pattern, indent, args)
 		c = "builtins.ls.char",
 		u = "builtins.ls.unknown",
 	}
-	for i, file in ipairs(files) do
+	for _, file in ipairs(files) do
 		local mode = all_files[file].mode
 		local size = all_files[file].size
 		local perms = all_files[file].perms
@@ -386,7 +384,6 @@ local kat_help = [[
 
 ]]
 local kat = function(cmd, args)
-	local extra = extra or {}
 	local parser = argparser.new({
 		raw = { kind = "bool", note = "Force raw rendering mode (no pager, no word wraps)" },
 		page = { kind = "bool", note = "Force using pager even on one screen documents" },
@@ -437,7 +434,7 @@ local kat = function(cmd, args)
 		term.write("\n" .. text.render_text(txt, {}, { global_indent = 0, wrap = -1 }) .. "\n")
 		return 0
 	end
-	term.set_raw_mode(true)
+	term.set_raw_mode()
 	term.hide_cursor()
 	local pager = utils.pager({
 		exit_on_one_page = not args.page,
@@ -548,7 +545,7 @@ end
 local render_dns_record = function(records)
 	local tss = style.new(theme)
 	local out = buffer.new()
-	for i, rec in ipairs(records) do
+	for _, rec in ipairs(records) do
 		local content = rec[2]
 		if type(rec[2]) == "table" then
 			content = ""
@@ -1241,7 +1238,7 @@ local kinda_ps = function(cmd, args)
 					if proc.ppid ~= 2 or args.kernel then
 						if proc.ppid == args.parent or args.parent == 0 then
 							local row = {}
-							for i, col_name in ipairs(ps_tbl_fields) do
+							for _, col_name in ipairs(ps_tbl_fields) do
 								row[col_name] = proc[col_name]
 							end
 							table.insert(ps_tbl, row)
@@ -1448,7 +1445,7 @@ local zx = function(cmd, args)
 
 			local script_lines = std.txt.lines(code)
 
-			for i, line in ipairs(script_lines) do
+			for _, line in ipairs(script_lines) do
 				if line ~= "" then
 					local pipeline, err = utils.parse_pipeline(line, true)
 					if err then

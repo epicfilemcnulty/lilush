@@ -102,7 +102,7 @@ local styles = {
 local style = function(...)
 	local args = { ... }
 	local style_ansi = "\27["
-	for i, v in ipairs(args) do
+	for _, v in ipairs(args) do
 		if styles[v] then
 			style_ansi = style_ansi .. styles[v] .. ";"
 		end
@@ -264,7 +264,7 @@ end
 local alt_screen = function()
 	set_raw_mode()
 	local l, c = cursor_position()
-	switch_screen("alt", true)
+	switch_screen("alt")
 	enable_kkbp()
 	hide_cursor()
 	return {

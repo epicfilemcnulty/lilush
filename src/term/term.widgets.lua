@@ -8,7 +8,7 @@ local input = require("term.input")
 local default_widgets_rss = {
 	align = "center",
 	fg = 253,
-	title = { s = bold },
+	title = { s = "bold" },
 	option = {
 		selected = { s = "inverted" },
 		value = {
@@ -142,7 +142,7 @@ local switcher = function(content, rss, l, c)
 
 	content.selected = content.selected or 1
 
-	for i, option in ipairs(content.options) do
+	for i, _ in ipairs(content.options) do
 		term.go(y + offset + i, x)
 		term.write(tss:apply("borders.v"))
 		if i == content.selected then
@@ -299,7 +299,7 @@ local settings = function(config, title, rss, l, c)
 					render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
 				elseif objs[chosen].selected then
 					local options = {}
-					for k, v in pairs(objs[chosen]) do
+					for k, _ in pairs(objs[chosen]) do
 						if k ~= "selected" then
 							table.insert(options, k)
 						end
