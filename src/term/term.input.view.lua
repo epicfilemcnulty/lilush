@@ -48,12 +48,21 @@ local new = function(state_obj)
 			end
 		end,
 
-		redraw = function(self)
-			term.clear_line(2) -- Clear entire line
-			local prompt_len = self:draw_prompt()
+		update_cursor = function(self)
+			local prompt_len = self:get_prompt_info()
+			term.go(self.state.config.l, self.state.config.c + self.state.cursor + prompt_len)
+		end,
 
-			-- Position for content
-			term.go(self.state.config.l, self.state.config.c + prompt_len)
+		handle_redraw = function(self, with_prompt)
+			local with_prompt = with_prompt or false
+			if with_prompt then
+				term.clear_line(2) -- Clear entire line
+				self:draw_prompt()
+			else
+				local prompt_len = self:get_prompt_info()
+				term.go(self.state.config.l, self.state.config.c + prompt_len)
+				term.clear_line(0)
+			end
 
 			local max = self.state:max_visible_width()
 			local buf_len = std.utf.len(self.state.buffer)
@@ -63,21 +72,9 @@ local new = function(state_obj)
 				local content = std.utf.sub(self.state.buffer, self.state.position, visible_end)
 				if content and #content > 0 then
 					self:draw_content(content)
+					self:update_cursor()
 				end
 			end
-		end,
-
-		update_cursor = function(self)
-			local prompt_len = self:get_prompt_info()
-			term.go(self.state.config.l, self.state.config.c + self.state.cursor + prompt_len)
-		end,
-
-		handle_content_redraw = function(self)
-			local prompt_len = self:get_prompt_info()
-			term.go(self.state.config.l, self.state.config.c + prompt_len)
-			term.clear_line(0)
-			self:draw_content(self.state.buffer)
-			self:update_cursor()
 		end,
 
 		handle_completion = function(self)
@@ -156,7 +153,7 @@ local new = function(state_obj)
 				end
 			end
 			if force_redraw then
-				return self:redraw()
+				return self:handle_redraw(true)
 			end
 
 			local op = self.state.last_op
@@ -169,13 +166,15 @@ local new = function(state_obj)
 			elseif op.type == state.OP.CURSOR_MOVE then
 				self:update_cursor()
 			elseif op.type == state.OP.COMPLETION_PROMOTION then
-				self:handle_content_redraw()
+				self:handle_redraw()
 			elseif op.type == state.OP.HISTORY_SCROLL then
-				self:handle_content_redraw()
+				self:handle_redraw()
 			elseif op.type == state.OP.COMPLETION_SCROLL then
 				self:handle_completion_scroll()
+			elseif op.type == state.OP.POSITION_CHANGE then
+				self:handle_redraw()
 			elseif op.type == state.OP.FULL_CHANGE then
-				self:redraw(false)
+				self:handle_redraw(true)
 				self:handle_completion()
 			end
 		end,

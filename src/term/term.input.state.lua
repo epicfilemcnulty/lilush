@@ -6,10 +6,11 @@ local OP = {
 	INSERT = 1,
 	DELETE = 2,
 	CURSOR_MOVE = 3,
-	FULL_CHANGE = 4, -- for history navigation, etc.
+	POSITION_CHANGE = 4,
 	COMPLETION_PROMOTION = 5,
 	COMPLETION_SCROLL = 6,
 	HISTORY_SCROLL = 7,
+	FULL_CHANGE = 8,
 }
 
 local new = function(config)
@@ -42,10 +43,9 @@ local new = function(config)
 		end,
 
 		max_visible_width = function(self)
-			local max = self.config.width or self.window.w
-			if self.prompt and self.prompt.get then
-				return max - std.utf.len(self.prompt:get())
-			end
+			local prompt_len = self:prompt_len()
+			local available_width = self.window.w - self.config.c - prompt_len
+			local max = math.min(self.config.width or self.window.w, available_width)
 			return max
 		end,
 
@@ -73,18 +73,25 @@ local new = function(config)
 			local max_width = self:max_visible_width()
 			local buf_len = std.utf.len(self.buffer)
 
-			if new_cursor < 0 then
-				new_cursor = 0
-			elseif new_cursor > buf_len then
+			if new_cursor > buf_len then
 				new_cursor = buf_len
 			end
 
-			self.last_op = { type = OP.CURSOR_MOVE }
+			self.last_op.type = OP.CURSOR_MOVE
 			-- Adjust position if cursor would go beyond visible area
 			if new_cursor > max_width then
 				self.position = self.position + (new_cursor - max_width)
 				self.cursor = max_width
-				self.last_op = { type = OP.FULL_CHANGE }
+				self.last_op.type = OP.POSITION_CHANGE
+			elseif new_cursor < 0 then
+				if self.position > 1 then
+					self.last_op.type = OP.POSITION_CHANGE
+					self.position = self.position + new_cursor
+					if self.position < 1 then
+						self.position = 1
+					end
+				end
+				self.cursor = 0
 			else
 				self.cursor = new_cursor
 			end
@@ -107,6 +114,7 @@ local new = function(config)
 			local buf_len = std.utf.len(self.buffer)
 			local insert_pos = self.position + self.cursor - 1
 
+			self.last_op = { type = OP.INSERT, position = insert_pos + 1, last_line = self.last_op.last_line }
 			if self.cursor == 0 then
 				if self.position == 1 then
 					self.buffer = char .. self.buffer
@@ -116,20 +124,23 @@ local new = function(config)
 						.. std.utf.sub(self.buffer, self.position + 1)
 				end
 				self.cursor = 1
-				self.last_op = { type = OP.INSERT, position = 1 }
+				self.last_op.type = OP.INSERT
+				self.last_op.position = 1
 				return true
 			end
 
 			if buf_len == insert_pos then
 				self.buffer = self.buffer .. char
-				self.cursor = self.cursor + 1
-				self.last_op = { type = OP.INSERT, position = insert_pos + 1 }
+				self:update_cursor(self.cursor + 1)
+				if self.last_op.type == OP.CURSOR_MOVE then
+					self.last_op.type = OP.INSERT
+					self.last_op.position = insert_pos + 1
+				end
 				return true
 			end
 
 			self.buffer = std.utf.sub(self.buffer, 1, insert_pos) .. char .. std.utf.sub(self.buffer, insert_pos + 1)
 			self.cursor = self.cursor + 1
-			self.last_op = { type = OP.INSERT, position = insert_pos + 1 }
 			return true
 		end,
 
@@ -151,7 +162,7 @@ local new = function(config)
 					delete_pos = self.position
 					self.buffer = std.utf.sub(self.buffer, 1, delete_pos - 1)
 						.. std.utf.sub(self.buffer, delete_pos + 1)
-					self.last_op = { type = OP.DELETE, position = delete_pos }
+					self.last_op.type = OP.POSITION_CHANGE
 					return true
 				end
 				return false
@@ -159,24 +170,20 @@ local new = function(config)
 
 			if delete_pos == buf_len then
 				self.buffer = std.utf.sub(self.buffer, 1, buf_len - 1)
-				self.cursor = self.cursor - 1
-				self.last_op = { type = OP.DELETE, position = delete_pos }
+				self:update_cursor(self.cursor - 1)
+				self.last_op = { type = OP.DELETE, position = delete_pos, last_line = self.last_op.last_line }
 				return true
 			end
 
 			self.buffer = std.utf.sub(self.buffer, 1, delete_pos - 1) .. std.utf.sub(self.buffer, delete_pos + 1)
 			self.cursor = self.cursor - 1
-			self.last_op = { type = OP.DELETE, position = delete_pos }
+			self.last_op = { type = OP.DELETE, position = delete_pos, last_line = self.last_op.last_line }
 			return true
 		end,
 
 		move_left = function(self)
-			if self.cursor > 0 then
+			if self.cursor > 0 or self.position > 1 then
 				self:update_cursor(self.cursor - 1)
-				return true
-			elseif self.position > 1 then
-				self.position = self.position - 1
-				self.last_op = { type = OP.CURSOR_MOVE }
 				return true
 			end
 			return false
@@ -194,19 +201,14 @@ local new = function(config)
 		end_of_line = function(self)
 			-- TODO: Check if we are already at the end of the line
 			local buf_len = std.utf.len(self.buffer)
-			local max = self:max_visible_width()
-			self.position = 1
-			if buf_len > max then
-				self.position = buf_len - max
-			end
 			self:update_cursor(buf_len)
 			return true
 		end,
 
 		start_of_line = function(self)
-			if self.cursor > 0 then
-				self.position = 1
-				self:update_cursor(0)
+			if self.cursor > 0 or self.position > 1 then
+				local buf_len = std.utf.len(self.buffer)
+				self:update_cursor(-buf_len)
 				return true
 			end
 			return false
@@ -224,7 +226,7 @@ local new = function(config)
 				self.buffer = self.history:get()
 				self.cursor = std.utf.len(self.buffer)
 				self.position = 1
-				self.last_op = { type = OP.HISTORY_SCROLL }
+				self.last_op.type = OP.HISTORY_SCROLL
 				return true
 			end
 			return false
@@ -239,7 +241,7 @@ local new = function(config)
 				self.buffer = self.history:get()
 				self.cursor = std.utf.len(self.buffer)
 				self.position = 1
-				self.last_op = { type = OP.HISTORY_SCROLL }
+				self.last_op.type = OP.HISTORY_SCROLL
 				return true
 			end
 			return self:scroll_completion()
@@ -270,7 +272,7 @@ local new = function(config)
 					self.completion.__chosen = total
 				end
 			end
-			self.last_op = { type = OP.COMPLETION_SCROLL }
+			self.last_op.type = OP.COMPLETION_SCROLL
 			return true
 		end,
 
@@ -294,7 +296,7 @@ local new = function(config)
 			self.completion:flush()
 			self.cursor = std.utf.len(self.buffer)
 			self.position = 1
-			self.last_op = { type = OP.COMPLETION_PROMOTION }
+			self.last_op.type = OP.COMPLETION_PROMOTION
 			return metadata.exec_on_prom and "execute" or true
 		end,
 
@@ -318,7 +320,7 @@ local new = function(config)
 			else
 				result = "can't get editor output"
 			end
-			self.last_op = { type = OP.FULL_CHANGE }
+			self.last_op.type = OP.FULL_CHANGE
 			return self:end_of_line()
 		end,
 
@@ -377,7 +379,7 @@ local new = function(config)
 						self.config.l = self.window.h
 					end
 					self.last_op = {
-						type = OP.FULL_CHANGE, -- Changed from CURSOR_MOVE to FULL_CHANGE
+						type = OP.FULL_CHANGE,
 						last_line = self.config.l - 1, -- Store previous line
 					}
 					return true
