@@ -1,10 +1,11 @@
 # Roadmap
 
 - [x] ACME client
-- [ ] postgreSQL library
+- [ ] PostgreSQL library
 - [ ] Djot rendering refactor: add divs and quotes support; navigation
 - [ ] Kitty graphics protocol support
 - [ ] Add basic `curl` alternative to shell builtins
+- [ ] HTTP/2.0
 - [x] Digital signatures from WolfCrypt for proper packaging/plugins support
 - [ ] Curve25519 & session keys
 - [ ] Vault API library
