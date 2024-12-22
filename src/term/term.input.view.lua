@@ -79,10 +79,17 @@ local new = function(state_obj)
 
 		handle_completion = function(self)
 			if self.state.completion then
-				self.state.completion:search(self.state.buffer, self.state.history)
-				term.clear_line(0) -- from cursor till the EOL
-				self:draw_completion()
-				self:update_cursor()
+				local current_completion = self.state.completion:get()
+				if self.state:search_completion() then
+					local new_completion = self.state.completion:get()
+					if new_completion ~= current_completion then
+						term.clear_line(0) -- from cursor till the EOL
+						self:draw_completion()
+						self:update_cursor()
+					end
+				else
+					term.clear_line(0) -- clear previous completion
+				end
 			end
 		end,
 
@@ -98,15 +105,16 @@ local new = function(state_obj)
 			local max = self.state:max_visible_width()
 			local buf_len = std.utf.len(self.state.buffer)
 
-			-- If we're at the end of the visible buffer, just write the new char
-			if pos >= buf_len then
+			-- If we're at the end of the input, but not at the end of the visible part,
+			-- we don't clear the line
+			if pos >= buf_len and self.state.cursor < max then
 				local char = std.utf.sub(self.state.buffer, pos, pos)
 				self:draw_content(char)
 				self:update_cursor()
 				return true
 			end
 
-			-- For insertion in the middle:
+			-- For insertion in the middle or at max:
 			-- Clear from cursor to end and redraw the affected part
 			term.clear_line(0) -- clear from cursor to end
 			local visible_end = math.min(self.state.position + max - 1, buf_len)

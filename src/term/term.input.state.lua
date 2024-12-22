@@ -70,6 +70,9 @@ local new = function(config)
 		end,
 
 		update_cursor = function(self, new_cursor)
+			if new_cursor == self.cursor then
+				return false
+			end
 			local max_width = self:max_visible_width()
 			local buf_len = std.utf.len(self.buffer)
 
@@ -304,7 +307,11 @@ local new = function(config)
 			if not self.completion then
 				return false
 			end
-			self.completion:search(self.buffer, self.history)
+			if self.buffer:match("%s$") then
+				self.completion:flush()
+				return false
+			end
+			return self.completion:search(self.buffer, self.history)
 		end,
 
 		external_editor = function(self)

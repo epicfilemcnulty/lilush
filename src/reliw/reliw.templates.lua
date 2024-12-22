@@ -37,6 +37,7 @@ local template = {
 				"You must be coming from AltaVista, right?",
 				"Elvis has left the building, baby.",
 				"Paginam perdidi.",
+				"Pagina niet gevonden. Wie vult dat lege gat?...",
 				"The train has long been gone.",
 				"Oh, this overwhelming sense of loss...",
 				"Nope, no such page. Why are you looking for it, anyway? What is it, your relative? Who told you to go looking for pages on the internet?! Some people have no shame!",
@@ -50,6 +51,8 @@ local template = {
 			msg = {
 				"You better slow down before it gets ugly, I'm warning you!",
 				"Take a pause for the cause, will ya?",
+				"Pēdīcābo ego vōs et irrumābō!",
+				"Quo usque tandem abutere, Catilina, patientia nostra?",
 			},
 		},
 		[503] = { title = "Service Unavailable", msg = "Sad days." },

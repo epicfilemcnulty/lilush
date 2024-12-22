@@ -2,11 +2,11 @@ local crypto = require("crypto")
 local web = require("web")
 local json = require("cjson.safe")
 
-local provision = function(self, domain, key_authorization)
+local provision = function(self, domain, token, key_thumbprint)
 	local base_domain = domain:match("([^.]+%.[^.]+)$")
 	local sub_domain = "." .. domain:match("^([^.]+)%.")
 	local dots = 0
-	for dot in domain:gmatch("%.") do
+	for _ in domain:gmatch("%.") do
 		dots = dots + 1
 	end
 	if dots == 1 then
@@ -17,12 +17,12 @@ local provision = function(self, domain, key_authorization)
 		sub_domain = ""
 	end
 	local api_endpoint = "https://api.vultr.com/v2/domains/" .. base_domain .. "/records"
-	local dns_txt_value = crypto.b64url_encode(crypto.sha256(key_authorization))
+	local txt_value = crypto.b64url_encode(crypto.sha256(token .. "." .. key_thumbprint))
 	local vultr_payload = {
 		type = "TXT",
 		ttl = 60,
 		name = "_acme-challenge" .. sub_domain,
-		data = dns_txt_value,
+		data = txt_value,
 	}
 	local resp, err =
 		web.request(api_endpoint, { method = "POST", headers = self.headers, body = json.encode(vultr_payload) })

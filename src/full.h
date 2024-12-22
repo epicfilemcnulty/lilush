@@ -31,6 +31,7 @@ typedef struct mod_lua {
 // ACME
 #include "../build/acme/mod_lua_acme.dns.vultr.h"
 #include "../build/acme/mod_lua_acme.h"
+#include "../build/acme/mod_lua_acme.http.reliw.h"
 #include "../build/acme/mod_lua_acme.store.file.h"
 // Text
 #include "../build/text/mod_lua_text.h"
@@ -46,10 +47,10 @@ typedef struct mod_lua {
 #include "../build/term/mod_lua_term.h"
 #include "../build/term/mod_lua_term.input.completion.h"
 #include "../build/term/mod_lua_term.input.h"
-#include "../build/term/mod_lua_term.input.state.h"
-#include "../build/term/mod_lua_term.input.view.h"
 #include "../build/term/mod_lua_term.input.history.h"
 #include "../build/term/mod_lua_term.input.prompt.h"
+#include "../build/term/mod_lua_term.input.state.h"
+#include "../build/term/mod_lua_term.input.view.h"
 #include "../build/term/mod_lua_term.tss.h"
 #include "../build/term/mod_lua_term.widgets.h"
 // Djot
@@ -99,6 +100,7 @@ const mod_lua__t lua_preload[] = {
     {"std.utf",                          mod_lua_std_utf,                          &mod_lua_std_utf_SIZE                     },
     {"acme",                             mod_lua_acme,                             &mod_lua_acme_SIZE                        },
     {"acme.dns.vultr",                   mod_lua_acme_dns_vultr,                   &mod_lua_acme_dns_vultr_SIZE              },
+    {"acme.http.reliw",                  mod_lua_acme_http_reliw,                  &mod_lua_acme_http_reliw_SIZE             },
     {"acme.store.file",                  mod_lua_acme_store_file,                  &mod_lua_acme_store_file_SIZE             },
     {"argparser",                        mod_lua_argparser,                        &mod_lua_argparser_SIZE                   },
     {"crypto",                           mod_lua_crypto,                           &mod_lua_crypto_SIZE                      },

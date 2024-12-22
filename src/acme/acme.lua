@@ -69,7 +69,7 @@ local acme_frame = function(self, url, payload, jwk)
 end
 
 local refresh_nonce = function(self)
-	local resp, err = web.request(self.__dir.newNonce, { method = "HEAD" })
+	local resp, _ = web.request(self.__dir.newNonce, { method = "HEAD" })
 	if not resp or resp.status ~= 200 then
 		return nil, "failed to refresh nonce"
 	end
@@ -200,27 +200,41 @@ local get_auth_by_url = function(self, url)
 	return nil, resp, err
 end
 
-local solve_dns_challenge = function(self, primary_domain, domain, dns_cfg)
-	local dns_cfg = dns_cfg or {}
-	local dns_provider = dns_cfg.name or "unknown"
-	if not std.module_available("acme.dns." .. dns_provider) then
-		return nil, "no DNS plugin for " .. dns_provider .. " found"
+-- WIP: add provider_name arg and get rid of cfg.name...
+local solve_challenge = function(self, primary_domain, domain, cfg)
+	if not cfg or type(cfg) ~= "table" or not cfg.name then
+		return nil, "provider config missing"
 	end
-	local provider = require("acme.dns." .. dns_provider)
-	local dns = provider.new(dns_cfg)
+
+	local mode = cfg.name:match("^(%w+)%.")
+	if not mode or mode ~= "dns" or mode ~= "http" then
+		return nil, "invalid provider name"
+	end
+
+	local provider_name = "acme." .. (cfg.name or "unknown")
+	if not std.module_available(provider_name) then
+		return nil, "no provider plugin for " .. cfg.name .. " found"
+	end
+
+	local provider = require(provider_name)
+	local solver, err = provider.new(cfg)
+	if err then
+		return nil, "failed to init challenge solver: " .. err
+	end
+
 	local auth = self:get_authorization(primary_domain, domain)
 	local url, token
 	for _, challenge in ipairs(auth.challenges) do
-		if challenge.type == "dns-01" then
+		if challenge.type == mode .. "-01" then
 			token = challenge.token
 			url = challenge.url
 			break
 		end
 	end
-	if not domain or not token then
+	if not url or not token then
 		return nil, "can't get challenge info"
 	end
-	local provision_state, err = dns:provision(domain, token .. "." .. self:key_thumbprint())
+	local provision_state, err = solver:provision(domain, token, self:key_thumbprint())
 	if err then
 		return nil, err
 	end
@@ -241,12 +255,20 @@ local mark_challenge_as_ready = function(self, primary_domain, domain)
 	return nil, resp, err
 end
 
-local cleanup_dns = function(self, primary_domain, domain, dns_cfg)
+local cleanup_provision = function(self, primary_domain, domain, cfg)
 	local provision_state, err = self.store:load_order_provision(primary_domain, domain)
 	if provision_state then
-		local provider = require("acme.dns." .. provision_state.provider)
-		local dns = provider.new(dns_cfg)
-		local ok, err = dns:cleanup(provision_state)
+		local provider_name = "acme." .. (cfg.name or "unknown")
+		if not std.module_available(provider_name) then
+			return nil, "no provider plugin for " .. cfg.name .. " found"
+		end
+
+		local provider = require(provider_name)
+		local solver, err = provider.new(cfg)
+		if err then
+			return nil, "failed to init challenge solver: " .. err
+		end
+		local ok, err = solver:cleanup(provision_state)
 		if err then
 			return nil, err
 		end
@@ -381,12 +403,12 @@ local acme_new = function(email, directory_url, storage_provider_cfg)
 		order_info = order_info,
 		get_authorization = get_authorization,
 		get_auth_by_url = get_auth_by_url,
-		solve_dns_challenge = solve_dns_challenge,
+		solve_challenge = solve_challenge,
 		mark_challenge_as_ready = mark_challenge_as_ready,
 		finalize = finalize,
 		fetch_certificate = fetch_certificate,
 		cleanup = cleanup,
-		cleanup_dns = cleanup_dns,
+		cleanup_provision = cleanup_provision,
 	}
 end
 

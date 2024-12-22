@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#define RELIW_VERSION "0.5.6-26-ge209ef2"
+#define RELIW_VERSION "0.5.6-27-gf01061b"
 
 static const char START_RELIW[] = "local reliw = require('reliw')\n"
                                   "local reliw_srv, err = reliw.new()\n"
@@ -39,6 +39,7 @@ typedef struct mod_lua {
 // ACME
 #include "../build/acme/mod_lua_acme.dns.vultr.h"
 #include "../build/acme/mod_lua_acme.h"
+#include "../build/acme/mod_lua_acme.http.reliw.h"
 #include "../build/acme/mod_lua_acme.store.file.h"
 // Crypto primitives from WolfSSL
 #include "../build/crypto/mod_lua_crypto.h"
@@ -85,6 +86,7 @@ const mod_lua__t lua_preload[] = {
     {"std.utf",         mod_lua_std_utf,         &mod_lua_std_utf_SIZE        },
     {"acme",            mod_lua_acme,            &mod_lua_acme_SIZE           },
     {"acme.dns.vultr",  mod_lua_acme_dns_vultr,  &mod_lua_acme_dns_vultr_SIZE },
+    {"acme.http.reliw", mod_lua_acme_http_reliw, &mod_lua_acme_http_reliw_SIZE},
     {"acme.store.file", mod_lua_acme_store_file, &mod_lua_acme_store_file_SIZE},
     {"crypto",          mod_lua_crypto,          &mod_lua_crypto_SIZE         },
     {"djot",            mod_lua_djot,            &mod_lua_djot_SIZE           },

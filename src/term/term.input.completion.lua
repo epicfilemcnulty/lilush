@@ -69,7 +69,6 @@ local new = function(config)
 		-- It must provide the name of the source for each candidate,
 		-- and may provide additional information
 		__meta = {},
-		__tab = {}, -- the table for extended info on TAB key presses
 		-- METHODS
 		search = mod.search,
 		available = available,

@@ -1,5 +1,4 @@
 local std = require("std")
-local json = require("cjson.safe")
 local acme = require("acme")
 local crypto = require("crypto")
 
@@ -147,12 +146,12 @@ local solve_challenge = function(self, primary_domain)
 	end
 
 	local provider = self:provider_by_domain(primary_domain)
-	local dns_cfg = self.__config.providers[provider]
-	local ok, err = self.client:solve_dns_challenge(primary_domain, domain, dns_cfg)
+	local cfg = self.__config.providers[provider]
+	local ok, err = self.client:solve_challenge(primary_domain, domain, cfg)
 	if not ok then
 		self.logger:log({
 			process = "acme",
-			msg = "DNS provisioning failed",
+			msg = "challenge provisioning failed",
 			primary_domain = primary_domain,
 			domain = domain,
 			err = err,
@@ -163,7 +162,7 @@ local solve_challenge = function(self, primary_domain)
 	state.challenges[domain] = "solved"
 	self.logger:log({
 		process = "acme",
-		msg = "DNS provisioned",
+		msg = "challenge provisioned",
 		primary_domain = primary_domain,
 		domain = domain,
 	})
@@ -174,7 +173,7 @@ local mark_challenge_as_ready = function(self, primary_domain)
 	local state = self.state[primary_domain]
 	local domain = self.state[primary_domain].domains[state.idx]
 
-	local ok, err = self.client:mark_challenge_as_ready(primary_domain, domain)
+	local _, err = self.client:mark_challenge_as_ready(primary_domain, domain)
 	if err then
 		self.logger:log({
 			process = "acme",
@@ -201,8 +200,8 @@ local cleanup_challenge = function(self, primary_domain)
 	local domain = self.state[primary_domain].domains[state.idx]
 
 	local provider = self:provider_by_domain(primary_domain)
-	local dns_cfg = self.__config.providers[provider]
-	local ok, err = self.client:cleanup_dns(primary_domain, domain, dns_cfg)
+	local cfg = self.__config.providers[provider]
+	local ok, err = self.client:cleanup_provision(primary_domain, domain, cfg)
 	if not ok then
 		self.logger:log({
 			process = "acme",
@@ -306,15 +305,18 @@ local manage = function(self)
 					local domain = state.domains[state.idx]
 					local challenge_status = state.challenges[domain]
 					if challenge_status == "new" then
+						local provider = self:provider_by_domain(primary_domain)
 						if self:solve_challenge(primary_domain) then
-							self.logger:log({
-								process = "acme",
-								msg = "waiting for DNS to propagate",
-								primary_domain = primary_domain,
-								domain = domain,
-								duration = 120,
-							})
-							std.sleep(120)
+							if provider:match("dns") then
+								self.logger:log({
+									process = "acme",
+									msg = "waiting for DNS to propagate",
+									primary_domain = primary_domain,
+									domain = domain,
+									duration = 120,
+								})
+								std.sleep(120)
+							end
 						end
 					elseif challenge_status == "solved" then
 						self:mark_challenge_as_ready(primary_domain)
@@ -372,7 +374,7 @@ local acme_manager_new = function(srv_cfg, logger)
 	if err then
 		return nil, "failed to initialize acme client: " .. err
 	end
-	local ok, err = client:init()
+	local _, err = client:init()
 	if err then
 		return nil, "failed to initialize acme client: " .. err
 	end
