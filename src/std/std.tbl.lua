@@ -16,7 +16,7 @@ render = function(t, indent)
 		buf:put("{\n")
 	end
 	for k, v in pairs(t) do
-		formatting = string.rep("  ", indent) .. k .. " = "
+		local formatting = string.rep("  ", indent) .. k .. " = "
 		if type(v) == "table" then
 			buf:put(formatting .. "{\n", render(v, indent + 1), string.rep(" ", indent + indent), "},\n")
 		elseif type(v) == "string" then

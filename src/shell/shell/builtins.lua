@@ -505,7 +505,7 @@ local list_env = function(cmd, args)
 	for _, entry in ipairs(matched) do
 		out:put(tss:apply("builtins.envlist.var", entry), " ", tss:apply("builtins.envlist.value", env[entry]), "\n")
 	end
-	term.write(out)
+	term.write(out:get())
 	return 0
 end
 
