@@ -1501,14 +1501,10 @@ local get = function(cmd)
 	for k, f in pairs(builtins) do
 		if cmd:match("^" .. k .. "$") then
 			local fork = true
-			local needy = false
 			if dont_fork[cmd] or cmd:match("^%.%.+") or cmd:match("^aws%.") then
 				fork = false
 			end
-			if cmd == "history" or cmd == "kat" then
-				needy = true
-			end
-			return { name = cmd, func = f, fork = fork, needy = needy }
+			return { name = cmd, func = f, fork = fork }
 		end
 	end
 	return nil
