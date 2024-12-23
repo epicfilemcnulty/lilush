@@ -200,23 +200,21 @@ local get_auth_by_url = function(self, url)
 	return nil, resp, err
 end
 
--- WIP: add provider_name arg and get rid of cfg.name...
-local solve_challenge = function(self, primary_domain, domain, cfg)
-	if not cfg or type(cfg) ~= "table" or not cfg.name then
+local solve_challenge = function(self, primary_domain, domain, provider_name, cfg)
+	if not cfg or type(cfg) ~= "table" or not provider_name then
 		return nil, "provider config missing"
 	end
 
-	local mode = cfg.name:match("^(%w+)%.")
-	if not mode or mode ~= "dns" or mode ~= "http" then
-		return nil, "invalid provider name"
+	local mode = provider_name:match("^(%w+)%.") or ""
+	if mode ~= "dns" and mode ~= "http" then
+		return nil, "invalid provider name: " .. mode
 	end
 
-	local provider_name = "acme." .. (cfg.name or "unknown")
-	if not std.module_available(provider_name) then
-		return nil, "no provider plugin for " .. cfg.name .. " found"
+	if not std.module_available("acme." .. provider_name) then
+		return nil, "no provider plugin for " .. provider_name .. " found"
 	end
 
-	local provider = require(provider_name)
+	local provider = require("acme." .. provider_name)
 	local solver, err = provider.new(cfg)
 	if err then
 		return nil, "failed to init challenge solver: " .. err
@@ -255,20 +253,19 @@ local mark_challenge_as_ready = function(self, primary_domain, domain)
 	return nil, resp, err
 end
 
-local cleanup_provision = function(self, primary_domain, domain, cfg)
+local cleanup_provision = function(self, primary_domain, domain, provider_name, cfg)
 	local provision_state, err = self.store:load_order_provision(primary_domain, domain)
 	if provision_state then
-		local provider_name = "acme." .. (cfg.name or "unknown")
-		if not std.module_available(provider_name) then
-			return nil, "no provider plugin for " .. cfg.name .. " found"
+		if not std.module_available("acme." .. provider_name) then
+			return nil, "no provider plugin for " .. provider_name .. " found"
 		end
 
-		local provider = require(provider_name)
+		local provider = require("acme." .. provider_name)
 		local solver, err = provider.new(cfg)
 		if err then
 			return nil, "failed to init challenge solver: " .. err
 		end
-		local ok, err = solver:cleanup(provision_state)
+		local _, err = solver:cleanup(provision_state)
 		if err then
 			return nil, err
 		end

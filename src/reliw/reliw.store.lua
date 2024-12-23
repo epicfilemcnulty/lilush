@@ -239,6 +239,10 @@ local check_rate_limit = function(self, host, method, query, remote_ip, period)
 	return count
 end
 
+local get_acme_challenge = function(self, domain, token)
+	return self.red:cmd("GET", self.prefix .. ":ACME:" .. domain .. ":" .. token)
+end
+
 local provision_acme_challenge = function(self, domain, token, txt_value)
 	if not domain or not token or not txt_value then
 		return nil, "required arguments missing"
@@ -364,6 +368,7 @@ local new = function(srv_cfg)
 		check_waf = check_waf,
 		provision_acme_challenge = provision_acme_challenge,
 		cleanup_acme_challenge = cleanup_acme_challenge,
+		get_acme_challenge = get_acme_challenge,
 		add_waffer = add_waffer,
 		set_session_data = set_session_data,
 		destroy_session = destroy_session,

@@ -145,9 +145,9 @@ local solve_challenge = function(self, primary_domain)
 		return nil
 	end
 
-	local provider = self:provider_by_domain(primary_domain)
-	local cfg = self.__config.providers[provider]
-	local ok, err = self.client:solve_challenge(primary_domain, domain, cfg)
+	local provider_name = self:provider_by_domain(primary_domain)
+	local cfg = self.__config.providers[provider_name]
+	local ok, err = self.client:solve_challenge(primary_domain, domain, provider_name, cfg)
 	if not ok then
 		self.logger:log({
 			process = "acme",
@@ -199,9 +199,9 @@ local cleanup_challenge = function(self, primary_domain)
 	local state = self.state[primary_domain]
 	local domain = self.state[primary_domain].domains[state.idx]
 
-	local provider = self:provider_by_domain(primary_domain)
-	local cfg = self.__config.providers[provider]
-	local ok, err = self.client:cleanup_provision(primary_domain, domain, cfg)
+	local provider_name = self:provider_by_domain(primary_domain)
+	local cfg = self.__config.providers[provider_name]
+	local ok, err = self.client:cleanup_provision(primary_domain, domain, provider_name, cfg)
 	if not ok then
 		self.logger:log({
 			process = "acme",
@@ -367,15 +367,38 @@ local manage = function(self)
 	end
 end
 
+local http_handle = function(method, query, args, headers, body, ctx)
+	local storage = require("reliw.store")
+	local store, err = storage.new(ctx.cfg)
+	if err then
+		return "db connection error", 501, { ["content-type"] = "text/plain" }
+	end
+	if method ~= "GET" then
+		return "Method Not Allowed", 405, { ["content-type"] = "text/plain" }
+	end
+
+	local host = headers.host or headers.Host
+	local token = query:match("^/%.well%-known/acme%-challenge/(.*)")
+	if not token or not host then
+		return "Bad Request", 401, { ["content-type"] = "text/plain" }
+	end
+	local challenge = store:get_acme_challenge(host, token)
+	if challenge then
+		return challenge, 200
+	end
+
+	return "Not Found", 404, { ["content-type"] = "text/plain" }
+end
+
 local acme_manager_new = function(srv_cfg, logger)
 	local acme_dir = srv_cfg.data_dir .. "/.acme"
 	local account = srv_cfg.ssl.acme.account
 	local client, err = acme.le_prod(account, { plugin = "file", storage_dir = acme_dir })
-	if err then
+	if not client then
 		return nil, "failed to initialize acme client: " .. err
 	end
-	local _, err = client:init()
-	if err then
+	local ok, err = client:init()
+	if not ok then
 		return nil, "failed to initialize acme client: " .. err
 	end
 	local manager = {
@@ -396,7 +419,12 @@ local acme_manager_new = function(srv_cfg, logger)
 		get_certificate = get_certificate,
 		provider_by_domain = provider_by_domain,
 		manage = manage,
+		http_handle = http_handle,
 	}
+	if not manager.__config.providers then
+		manager.__config.providers = {}
+	end
+	manager.__config.providers["http.reliw"] = { redis = srv_cfg.redis }
 	manager.__config.renew_time = manager.__config.renew_time or 2592000 -- one month
 	return manager
 end
