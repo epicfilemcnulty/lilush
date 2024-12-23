@@ -45,27 +45,30 @@ RELIW will try to load `/etc/reliw/config.json` file if there is any.
 }
 ```
 
-### HTTPS server with SSL certificates managed by RELIW ACME client
+### HTTPS server, listening on IPv4 and IPv6 addresses, with SSL certificates managed by RELIW ACME client
 
 ```json
 { 
     "ip": "0.0.0.0",
+    "ipv6": "::",
     "port": 443,
     "ssl": {
       "acme": {
         "account": "some@email.com",
         "providers": {
-            "vultr": {
-                "name": "vultr",
+            "dns.vultr": {
                 "token": "VULTR-API-TOKEN"
             }
         },
         "certificates": [
-            { "names": { "example.com" }, "provider": "vultr" },
-            { "names": { "*.sample.net", "sample.net" }, "provider": "vultr" },
-            { "names": { "folks.online", "my.folks.online" }, "provider": "vultr" }
+            { "names": { "example.com" }, "provider": "dns.vultr" },
+            { "names": { "*.sample.net", "sample.net" }, "provider": "dns.vultr" },
+            { "names": { "folks.online", "my.folks.online" }, "provider": "http.reliw" }
         ]
       }
     }
 }
 ```
+
+`http.reliw` is an internal provider for solving HTTP challenges, it does not need to be
+defined in the `acme.providers` block.

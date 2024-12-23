@@ -53,7 +53,10 @@ suprisingly called _Lilush Shell_, which
 
 :::  
 
-Oh, and there is also [RELIW](https://github.com/epicfilemcnulty/lilush/blob/master/RELIW_README.md), a web server/framework built on top of _Lilush_ core modules.
+### Side projects built upon Lilush
+
+* [RELIW](https://github.com/epicfilemcnulty/lilush/blob/master/RELIW_README.md) is an HTTP server/framework with automatic SSL certifcates management (similar to Caddy).
+* Circada is an IRC server/client bundle
 
 # Installation
 
@@ -91,7 +94,6 @@ After `1.0.0` version release the project will abide by the semantic versioning 
 but until then all bets are off. Meaning that there might be breaking changes of the core 
 lilush modules' API even between, say, `0.5.x` and `0.6.x`. Or worse.
 But let's hope it won't come to that.
-
 
 
 [^1]: Well, not yet automatically. And it really depends. But still.
