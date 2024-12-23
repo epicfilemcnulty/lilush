@@ -2,7 +2,6 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
 local buffer = require("string.buffer")
-local term = require("term")
 local theme = require("shell.theme")
 local style = require("term.tss")
 local tss = style.new(theme)
@@ -164,15 +163,13 @@ local available_blocks = {
 	python = python_prompt,
 }
 
-local set = function(self, options, export)
-	local export = export or false
+local set = function(self, options)
+	local options = options or {}
 	for k, v in pairs(options) do
 		self[k] = v
 	end
 	self.blocks = self.blocks or "user,dir"
-	if export then
-		std.ps.setenv("LILUSH_PROMPT", self.blocks)
-	end
+	std.ps.setenv("LILUSH_PROMPT", self.blocks)
 end
 
 local get = function(self)
@@ -181,25 +178,31 @@ local get = function(self)
 	for b in enabled_blocks:gmatch("(%w+),?") do
 		table.insert(enabled, b)
 	end
-	local prompt = ""
+	local prompt = buffer.new()
 	for _, b in ipairs(enabled) do
 		if available_blocks[b] then
 			local out = available_blocks[b](self)
 			if out then
-				prompt = prompt .. out
+				prompt:put(out)
 			end
 		end
 	end
-	return prompt .. "$ "
+	prompt:put("$ ")
+	return prompt:get()
 end
 
-local new = function()
+local new = function(options)
 	local prompt = {
-		set = set,
+		home = os.getenv("HOME") or "/tmp",
+		user = os.getenv("USER") or "nobody",
+		hostname = tostring(std.fs.read_file("/etc/hostname")):gsub("\n", ""),
+		pwd = std.fs.cwd() or "",
+		blocks = os.getenv("LILUSH_PROMPT") or "user,dir",
 		get = get,
+		set = set,
 	}
+	prompt:set(options)
+	return prompt
 end
 
-return {
-	new = new,
-}
+return { new = new }

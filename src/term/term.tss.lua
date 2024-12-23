@@ -20,16 +20,13 @@ local calc_el_width = function(self, w, max)
 		max = self.__window.w
 	end
 	local w = w or 0
-	if w > 0 then
-		if w < 1 then
-			return math.ceil(max * w)
-		end
-		if w < max then
-			return w
-		end
-		return max
+	if w <= 0 then
+		return 0
 	end
-	return 0
+	if w < 1 then
+		return math.max(1, math.floor(max * w))
+	end
+	return math.min(w, max)
 end
 
 local get = function(self, el, base_props)
@@ -41,7 +38,7 @@ local get = function(self, el, base_props)
 				tbl = {}
 			else
 				local duplicate = false
-				for i, v in ipairs(tbl) do
+				for _, v in ipairs(tbl) do
 					if opt == v then
 						duplicate = true
 						break
@@ -57,7 +54,7 @@ local get = function(self, el, base_props)
 	-- don't want to merge it with the base
 	-- values
 	if base_props == nil then
-		for k, v in pairs(props) do
+		for k, _ in pairs(props) do
 			if self.__style[k] then
 				if k == "w" then
 					props.w = self:calc_el_width(self.__style.w, self.__window.w)
@@ -73,7 +70,7 @@ local get = function(self, el, base_props)
 	local obj = self.__style
 	for e in el:gmatch("([^.]+)%.?") do
 		if obj[e] then
-			for k, v in pairs(props) do
+			for k, _ in pairs(props) do
 				if obj[e][k] then
 					if k == "w" then
 						local max = props.w

@@ -2,7 +2,6 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
 local socket = require("socket")
-local json = require("cjson.safe")
 local buffer = require("string.buffer")
 local ssl = require("ssl")
 

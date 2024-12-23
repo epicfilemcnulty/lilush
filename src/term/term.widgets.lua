@@ -8,7 +8,7 @@ local input = require("term.input")
 local default_widgets_rss = {
 	align = "center",
 	fg = 253,
-	title = { s = bold },
+	title = { s = "bold" },
 	option = {
 		selected = { s = "inverted" },
 		value = {
@@ -94,6 +94,7 @@ end
         }
 ]]
 local switcher = function(content, rss, l, c)
+	local state = term.alt_screen()
 	local tss = style.merge(default_widgets_rss, rss)
 	term.clear()
 	local content = content or {}
@@ -141,7 +142,7 @@ local switcher = function(content, rss, l, c)
 
 	content.selected = content.selected or 1
 
-	for i, option in ipairs(content.options) do
+	for i, _ in ipairs(content.options) do
 		term.go(y + offset + i, x)
 		term.write(tss:apply("borders.v"))
 		if i == content.selected then
@@ -164,9 +165,11 @@ local switcher = function(content, rss, l, c)
 			if buf ~= "" then
 				buf = ""
 			else
+				state:done()
 				return ""
 			end
 		elseif key == "ENTER" then
+			state:done()
 			return content.options[content.selected]
 		elseif key == "UP" then
 			if idx > 1 then
@@ -250,6 +253,7 @@ local render_title = function(title, tss, l, c)
 end
 
 local settings = function(config, title, rss, l, c)
+	local state = term.alt_screen()
 	local tss = style.merge(default_widgets_rss, rss)
 	local l = l or 1
 	local c = c or 1
@@ -263,6 +267,7 @@ local settings = function(config, title, rss, l, c)
 	while true do
 		local key = input.simple_get()
 		if key == "ESC" then
+			state:done()
 			return true
 		end
 		if key == "UP" then
@@ -294,7 +299,7 @@ local settings = function(config, title, rss, l, c)
 					render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
 				elseif objs[chosen].selected then
 					local options = {}
-					for k, v in pairs(objs[chosen]) do
+					for k, _ in pairs(objs[chosen]) do
 						if k ~= "selected" then
 							table.insert(options, k)
 						end
@@ -331,7 +336,7 @@ local settings = function(config, title, rss, l, c)
 					local buf = input.new({ l = l + 1 + idx, c = c + m + 4 + val_indent, 20 })
 					buf:display()
 					while true do
-						local event, combo = buf:event()
+						local event, combo = buf:run({ execute = true, exit = true })
 						if event == "execute" then
 							local choice = buf:render()
 							if choice ~= "" then
@@ -371,6 +376,7 @@ local settings = function(config, title, rss, l, c)
 end
 
 local file_chooser = function(title, start_dir, rss, patterns)
+	local state = term.alt_screen()
 	local invoke_dir = std.fs.cwd()
 	local title = title or "Select a file/dir"
 	local patterns = patterns or { mode = "[fdl]", select = "[fdl]" }
@@ -458,6 +464,7 @@ local file_chooser = function(title, start_dir, rss, patterns)
 	until key == "chosen" or key == "ESC"
 	std.ps.setenv("LILUSH_FC_LASTDIR", std.fs.cwd())
 	std.fs.chdir(invoke_dir)
+	state:done()
 	return choice
 end
 

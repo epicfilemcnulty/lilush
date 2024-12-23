@@ -3,8 +3,8 @@
 local core = require("term.core")
 local buffer = require("string.buffer")
 
---[[ 
-     See https://en.wikipedia.org/wiki/ANSI_escape_code 
+--[[
+     See https://en.wikipedia.org/wiki/ANSI_escape_code
      for info on ANSI escape codes, text colors and attributes.
 ]]
 
@@ -102,7 +102,7 @@ local styles = {
 local style = function(...)
 	local args = { ... }
 	local style_ansi = "\27["
-	for i, v in ipairs(args) do
+	for _, v in ipairs(args) do
 		if styles[v] then
 			style_ansi = style_ansi .. styles[v] .. ";"
 		end
@@ -233,6 +233,7 @@ end
 local enable_kkbp = function()
 	write("\027[>1u")
 	write("\027[=15;1u")
+	io.flush()
 end
 
 local disable_kkbp = function()
@@ -241,34 +242,46 @@ local disable_kkbp = function()
 end
 
 local set_sane_mode = function()
-	disable_kkbp()
 	core.set_sane_mode()
 end
 
-local set_raw_mode = function(with_kkbp)
-	local with_kkbp = with_kkbp or false
-	core.set_raw_mode()
-	if with_kkbp then
-		enable_kkbp()
+local set_raw_mode = function()
+	if not core.raw_mode() then
+		core.set_raw_mode()
 	end
 end
 
-local switch_screen = function(scr, with_kkbp, disable_kkbp_before_switch)
+local switch_screen = function(scr)
 	local scr = scr or "main"
-	local with_kkbp = with_kkbp or false
-	local disable_kkbp_before_switch = disable_kkbp_before_switch or false
-	if disable_kkbp_before_switch then
-		disable_kkbp()
-	end
 	if scr == "main" then
 		io.write("\027[?47l")
 	else
 		io.write("\027[?47h")
 	end
-	if with_kkbp then
-		enable_kkbp()
-	end
 	io.flush()
+end
+
+local alt_screen = function()
+	set_raw_mode()
+	local l, c = cursor_position()
+	switch_screen("alt")
+	enable_kkbp()
+	hide_cursor()
+	return {
+		l = l,
+		c = c,
+		done = function(self)
+			switch_screen("main")
+			show_cursor()
+			go(self.l, self.c)
+			-- In a perfect symmetric world
+			-- we would also disable kkbp here
+			-- and switch back to sane mode.
+			-- But in our harsh terminal realities
+			-- we actually prefer to stay in the raw mode
+			-- most of the time...
+		end,
+	}
 end
 
 local _M = {
@@ -295,6 +308,7 @@ local _M = {
 	raw_mode = core.raw_mode,
 	window_size = core.get_window_size,
 	switch_screen = switch_screen,
+	alt_screen = alt_screen,
 	has_kkbp = has_kkbp,
 	enable_kkbp = enable_kkbp,
 	disable_kkbp = disable_kkbp,

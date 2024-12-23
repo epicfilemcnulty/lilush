@@ -97,7 +97,7 @@ local search = function(self, input)
 	local home = os.getenv("HOME") or ""
 	cwd = cwd:gsub("^" .. home, "~")
 
-	for i, v in ipairs(self.entries) do
+	for _, v in ipairs(self.entries) do
 		if v.cmd:match(pattern) then
 			local score = scores[v.cmd] or 0
 			score = score + 1
@@ -111,7 +111,7 @@ local search = function(self, input)
 		end
 	end
 	local candidates = {}
-	for k, v in pairs(scores) do
+	for k, _ in pairs(scores) do
 		table.insert(candidates, k)
 	end
 	table.sort(candidates, function(a, b)
@@ -134,7 +134,7 @@ local dir_search = function(self, input)
 	end
 
 	local scores = {}
-	for i, v in ipairs(self.entries) do
+	for _, v in ipairs(self.entries) do
 		if v.cwd:match(pattern) then
 			local score = scores[v.cwd] or 0
 			score = score + 1
@@ -146,7 +146,7 @@ local dir_search = function(self, input)
 	end
 
 	local candidates = {}
-	for k, v in pairs(scores) do
+	for k, _ in pairs(scores) do
 		table.insert(candidates, k)
 	end
 	table.sort(candidates, function(a, b)

@@ -94,9 +94,9 @@ local fetch_content = function(self, host, query, metadata)
 		end
 	end
 	local mime_type = std.mime.type(filename)
-	local count, err = self.red:cmd("HEXISTS", self.prefix .. ":FILES:" .. host .. ":" .. filename, "content")
+	local count, _ = self.red:cmd("HEXISTS", self.prefix .. ":FILES:" .. host .. ":" .. filename, "content")
 	if count and count == 1 then
-		local resp, err = self.red:cmd(
+		local resp, _ = self.red:cmd(
 			"HMGET",
 			self.prefix .. ":FILES:" .. host .. ":" .. filename,
 			"content",
@@ -119,7 +119,7 @@ local fetch_content = function(self, host, query, metadata)
 		return nil, filename .. " not found"
 	end
 	local title = metadata.title or ""
-	local resp, err = self.red:cmd("HGET", self.prefix .. ":TITLES:" .. host, filename)
+	local resp, _ = self.red:cmd("HGET", self.prefix .. ":TITLES:" .. host, filename)
 	if resp then
 		title = resp
 	end
@@ -239,6 +239,24 @@ local check_rate_limit = function(self, host, method, query, remote_ip, period)
 	return count
 end
 
+local get_acme_challenge = function(self, domain, token)
+	return self.red:cmd("GET", self.prefix .. ":ACME:" .. domain .. ":" .. token)
+end
+
+local provision_acme_challenge = function(self, domain, token, txt_value)
+	if not domain or not token or not txt_value then
+		return nil, "required arguments missing"
+	end
+	return self.red:cmd("SET", self.prefix .. ":ACME:" .. domain .. ":" .. token, txt_value)
+end
+
+local cleanup_acme_challenge = function(self, domain, token)
+	if not domain or not token then
+		return nil, "required arguments missing"
+	end
+	return self.red:cmd("DEL", self.prefix .. ":ACME:" .. domain .. ":" .. token)
+end
+
 local set_session_data = function(self, host, user, ttl)
 	if not host or not user or not ttl then
 		return nil, "required args not present"
@@ -277,7 +295,7 @@ end
 local fetch_metrics = function(self)
 	local metrics_total = "# TYPE http_requests_total counter\n"
 	local metrics_by_method = "# TYPE http_requests_by_method counter\n"
-	local vhosts, err = self.red:cmd("KEYS", self.prefix .. ":METRICS:*:total")
+	local vhosts, _ = self.red:cmd("KEYS", self.prefix .. ":METRICS:*:total")
 	if vhosts then
 		for _, v in ipairs(vhosts) do
 			local vhost_name = v:match(self.prefix .. ":METRICS:(.-):total")
@@ -294,7 +312,7 @@ local fetch_metrics = function(self)
 						.. "\n"
 				end
 			end
-			local values = self.red:cmd("HGETALL", self.prefix .. ":METRICS:" .. vhost_name .. ":by_method")
+			values = self.red:cmd("HGETALL", self.prefix .. ":METRICS:" .. vhost_name .. ":by_method")
 			if values then
 				for i = 1, #values, 2 do
 					metrics_by_method = metrics_by_method
@@ -348,6 +366,9 @@ local new = function(srv_cfg)
 		fetch_userdata = fetch_userdata,
 		check_rate_limit = check_rate_limit,
 		check_waf = check_waf,
+		provision_acme_challenge = provision_acme_challenge,
+		cleanup_acme_challenge = cleanup_acme_challenge,
+		get_acme_challenge = get_acme_challenge,
 		add_waffer = add_waffer,
 		set_session_data = set_session_data,
 		destroy_session = destroy_session,

@@ -1,5 +1,3 @@
-local std = require("std")
-
 local show = function(method, query, args, headers, body, ctx)
 	local storage = require("reliw.store")
 	local store, err = storage.new(ctx.cfg)

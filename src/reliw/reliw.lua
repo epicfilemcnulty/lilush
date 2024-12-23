@@ -3,7 +3,7 @@ local ws = require("web_server")
 local json = require("cjson.safe")
 local handle = require("reliw.handle")
 local acme_manager = require("reliw.acme")
-local store = require("reliw.store")
+local storage = require("reliw.store")
 
 local default_reliw_config = {
 	ip = "127.0.0.1",
@@ -68,7 +68,10 @@ local ssl_config_from_acme = function(srv_cfg)
 end
 
 local spawn_metrics_server = function(self)
-	local cfg = get_server_config()
+	local cfg, err = get_server_config()
+	if not cfg then
+		return nil, err
+	end
 	if not cfg.metrics then
 		return nil, "metrics are disabled"
 	end
@@ -78,7 +81,7 @@ local spawn_metrics_server = function(self)
 	cfg.log_level = 100
 	local metrics = require("reliw.metrics")
 	local srv, err = ws.new(cfg, metrics.show)
-	if err then
+	if not srv then
 		return nil, err
 	end
 	local metrics_pid = std.ps.fork()
@@ -96,7 +99,7 @@ end
 
 local spawn_server = function(self, srv_cfg)
 	local reliw_srv, err = new_server(srv_cfg)
-	if err then
+	if not reliw_srv then
 		return nil, err
 	end
 	local reliw_pid = std.ps.fork()
@@ -117,7 +120,7 @@ local spawn_server = function(self, srv_cfg)
 	local srv_cfg_ipv6 = std.tbl.copy(srv_cfg)
 	srv_cfg_ipv6.ip = srv_cfg_ipv6.ipv6
 	local reliw6_srv, err = new_server(srv_cfg_ipv6)
-	if err then
+	if not reliw6_srv then
 		return nil, err
 	end
 	local reliw6_pid = std.ps.fork()
@@ -134,19 +137,51 @@ local spawn_server = function(self, srv_cfg)
 end
 
 local spawn_acme_manager = function(self)
-	local acme_manager, err = acme_manager.new(self.cfg, self.logger)
-	if err then
+	local need_http_solver = false
+	for _, cert in ipairs(self.cfg.ssl.acme.certificates) do
+		if cert.provider == "http.reliw" then
+			need_http_solver = true
+			break
+		end
+	end
+	local cfg, _ = get_server_config()
+	local am, err = acme_manager.new(cfg, self.logger)
+	if not am then
+		self.logger:log({ msg = "ACME manager init failed", process = "manager", err = err }, "error")
 		return nil, "failed to init ACME manager: " .. err
 	end
-	acme_pid = std.ps.fork()
+	local acme_pid = std.ps.fork()
 	if acme_pid < 0 then
 		self.logger:log({ msg = "ACME manager spawn failed", process = "manager" }, "error")
 	end
 	if acme_pid == 0 then
-		acme_manager:manage()
+		am:manage()
 	end
 	self.logger:log({ msg = "ACME manager spawned", process = "manager", pid = acme_pid })
 	self.acme_pid = acme_pid
+
+	if need_http_solver then
+		local cfg, err = get_server_config()
+		if not cfg then
+			return nil, err
+		end
+		cfg.port = 80
+		cfg.ssl = nil
+		local srv, err = ws.new(cfg, am.http_handle)
+		if not srv then
+			return nil, err
+		end
+		local acme_http_pid = std.ps.fork()
+		if acme_http_pid < 0 then
+			self.logger:log({ msg = "ACME HTTP solver spawn failed", process = "manager" }, "error")
+			return nil
+		end
+		if acme_http_pid == 0 then
+			srv:serve()
+		end
+		self.logger:log({ msg = "ACME HTTP solver spawned", process = "manager", pid = acme_http_pid })
+		self.acme_http_pid = acme_http_pid
+	end
 	return true
 end
 
@@ -167,7 +202,7 @@ local run = function(self)
 		local ssl_config = ssl_config_from_acme(cfg)
 		real_cfg.ssl = ssl_config
 		local ok, err = self:spawn_server(real_cfg)
-		if err then
+		if not ok then
 			self.logger:log({
 				process = "manager",
 				msg = "RELIW failed to start, will try relaunch in " .. pause .. " seconds",
@@ -181,7 +216,7 @@ local run = function(self)
 	end
 	self.store.red:cmd("SUBSCRIBE", cfg.redis.prefix .. ":CTL")
 	while true do
-		local resp, err = self.store.red:read()
+		local resp, _ = self.store.red:read()
 		if resp and resp.value then
 			local msg = resp.value[3]
 			if msg == "RESTART" then
@@ -194,11 +229,11 @@ end
 
 local new = function()
 	local cfg, err = get_server_config()
-	if err then
+	if not cfg then
 		return nil, "failed to get reliw server config: " .. err
 	end
-	local store, err = store.new(cfg)
-	if err then
+	local store, err = storage.new(cfg)
+	if not store then
 		return nil, "failed to init store: " .. err
 	end
 

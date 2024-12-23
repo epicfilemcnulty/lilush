@@ -212,7 +212,7 @@ parse_pipeline = function(input, with_inlines)
 		local output_file = last_command:match("^[^>]+>(.*)$")
 		local c2 = last_command:match("^(.-)[<>]")
 
-		for i, line in ipairs(cmdlines) do
+		for _, line in ipairs(cmdlines) do
 			local l = {}
 			if line == first_command then
 				if input_file then
@@ -390,7 +390,7 @@ local pager_display_status_line = function(self)
 	if self.__search.pattern ~= "" then
 		bottom_status = bottom_status .. tss:apply("status_line.search.pattern", self.__search.pattern)
 	end
-	local y, x = term.window_size()
+	local y, _ = term.window_size()
 	term.go(1, 1)
 	term.clear_line()
 	term.write(top_status)
@@ -424,8 +424,8 @@ end
 
 local pager_exit = function(self)
 	self.__config.status_line = false
-	if self.__state.alt_screen then
-		term.switch_screen("main", nil, true)
+	if self.__screen then
+		self.__screen:done()
 	end
 	term.go(self.__window.l, 1)
 	local till = self.__window.capacity
@@ -607,8 +607,7 @@ local pager_page = function(self)
 	if #self.content.lines < self.__window.capacity and self.__config.exit_on_one_page then
 		return self:exit()
 	end
-	term.switch_screen("alt", true)
-	self.__state.alt_screen = true
+	self.__screen = term.alt_screen()
 	local buf = ""
 	self:display()
 	repeat
@@ -658,7 +657,6 @@ local pager_new = function(config)
 		__state = {
 			top_line = 1,
 			cursor_line = 0,
-			alt_screen = false,
 			history = {},
 		},
 		__search = {
@@ -758,7 +756,7 @@ local wg_apply = function(config_name)
 	if err then
 		return nil, "Failed to decode json config: " .. tostring(err)
 	end
-	for i, peer in ipairs(wg_device.peers) do
+	for _, peer in ipairs(wg_device.peers) do
 		if not peer.remove_me then
 			peer.remove_me = false
 		end

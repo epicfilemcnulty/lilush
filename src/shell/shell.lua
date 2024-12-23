@@ -1,17 +1,16 @@
 -- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
+local json = require("cjson.safe")
 local text = require("text")
-local storage = require("shell.store")
 local term = require("term")
 local input = require("term.input")
 local history = require("term.input.history")
 local completion = require("term.input.completion")
-local json = require("cjson.safe")
 local prompt = require("term.input.prompt")
 
+local storage = require("shell.store")
 local shell_mode = require("shell.mode.shell")
-
 local builtins = require("shell.builtins")
 local utils = require("shell.utils")
 local theme = require("shell.theme")
@@ -27,8 +26,7 @@ end
 -- the current mode handler
 local clear_combo = function(self, combo)
 	term.clear()
-	self.__mode[self.__chosen_mode].input.__config.l = 1
-	self.__mode[self.__chosen_mode].input.__config.c = 1
+	self.__mode[self.__chosen_mode].input:set_position(1, 1)
 	self.__mode[self.__chosen_mode].input:flush()
 	return true
 end
@@ -42,6 +40,7 @@ local exit_combo = function(self, combo)
 		self.__mode.shell.pyvenv(self.__mode.shell, "pyvenv", { "exit" })
 		return true
 	end
+	term.disable_kkbp()
 	term.set_sane_mode()
 	os.exit(0)
 end
@@ -70,9 +69,13 @@ local run = function(self)
 		local event, combo = self.__mode[self.__chosen_mode].input:run({ execute = true, exit = false, combo = true })
 		if event then
 			if event == "execute" then
-				-- Let's eat up whatever might be left in the input buffer first:
+				-- Clear any pending input
+				io.flush()
 				io.read("*a")
 				term.write("\r\n")
+				term.disable_kkbp()
+				term.set_sane_mode()
+
 				local cwd = std.fs.cwd()
 				std.ps.setenv("LILUSH_EXEC_CWD", cwd)
 				std.ps.setenv("LILUSH_EXEC_START", os.time())
@@ -82,20 +85,32 @@ local run = function(self)
 				end
 				std.ps.setenv("LILUSH_EXEC_END", os.time())
 				std.ps.setenv("LILUSH_EXEC_STATUS", tostring(status))
+
 				io.flush()
+				term.set_raw_mode()
+				term.enable_kkbp()
+
+				local l, _ = term.cursor_position()
+				self.__mode[self.__chosen_mode].input:set_position(l, 1)
 				self.__mode[self.__chosen_mode].input:flush()
-				io.read("*a")
-				local l, c = term.cursor_position()
-				self.__mode[self.__chosen_mode].input.__config.l = l
-				self.__mode[self.__chosen_mode].input.__config.c = 1
 				self.__mode[self.__chosen_mode].input:display(true)
 			elseif event == "combo" then
 				if self.__ctrls[combo] then
-					if self.__ctrls[combo](self, combo) then
+					term.disable_kkbp()
+					term.set_sane_mode()
+					local redraw = self.__ctrls[combo](self, combo)
+					term.set_raw_mode()
+					term.enable_kkbp()
+					if redraw then
 						self.__mode[self.__chosen_mode].input:display(true)
 					end
 				elseif self.__mode[self.__chosen_mode].combos[combo] then
-					if self.__mode[self.__chosen_mode].combos[combo](self.__mode[self.__chosen_mode], combo) then
+					term.disable_kkbp()
+					term.set_sane_mode()
+					local redraw = self.__mode[self.__chosen_mode].combos[combo](self.__mode[self.__chosen_mode], combo)
+					term.set_raw_mode()
+					term.enable_kkbp()
+					if redraw then
 						self.__mode[self.__chosen_mode].input:display(true)
 					end
 				end
@@ -201,12 +216,12 @@ local new = function()
 			end
 			cmpl = completion.new(m.completion)
 		end
-		local mod = require(m.path)
+		mod = require(m.path)
 		if m.history then
 			hst = history.new(name, history_store)
 		end
 		shell.__shortcuts[m.shortcut] = name
-		shell.__mode[name] = mod.new(input.new({ completion = cmpl, history = hst, prompt = pt }))
+		shell.__mode[name] = mod.new(input.new({ completion = cmpl, history = hst, prompt = pt, l = 1, c = 1 }))
 		shell.__ctrls[m.shortcut] = change_mode_combo
 	end
 	return shell
