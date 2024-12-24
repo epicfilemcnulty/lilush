@@ -72,11 +72,12 @@ local spawn_metrics_server = function(self)
 	if not cfg then
 		return nil, err
 	end
-	if not cfg.metrics then
+	if not cfg.metrics or cfg.metrics.disabled then
 		return nil, "metrics are disabled"
 	end
 	cfg.ip = cfg.metrics.ip
 	cfg.port = cfg.metrics.port
+	cfg.process = "metrics"
 	cfg.ssl = nil
 	cfg.log_level = 100
 	local metrics = require("reliw.metrics")
@@ -98,6 +99,7 @@ local spawn_metrics_server = function(self)
 end
 
 local spawn_server = function(self, srv_cfg)
+	srv_cfg.process = "server_ipv4"
 	local reliw_srv, err = new_server(srv_cfg)
 	if not reliw_srv then
 		return nil, err
@@ -119,6 +121,7 @@ local spawn_server = function(self, srv_cfg)
 
 	local srv_cfg_ipv6 = std.tbl.copy(srv_cfg)
 	srv_cfg_ipv6.ip = srv_cfg_ipv6.ipv6
+	srv_cfg_ipv6.process = "server_ipv6"
 	local reliw6_srv, err = new_server(srv_cfg_ipv6)
 	if not reliw6_srv then
 		return nil, err
@@ -145,6 +148,7 @@ local spawn_acme_manager = function(self)
 		end
 	end
 	local cfg, _ = get_server_config()
+	cfg.process = "acme_manager"
 	local am, err = acme_manager.new(cfg, self.logger)
 	if not am then
 		self.logger:log({ msg = "ACME manager init failed", process = "manager", err = err }, "error")
@@ -166,6 +170,7 @@ local spawn_acme_manager = function(self)
 			return nil, err
 		end
 		cfg.port = 80
+		cfg.process = "acme_http"
 		cfg.ssl = nil
 		local srv, err = ws.new(cfg, am.http_handle)
 		if not srv then

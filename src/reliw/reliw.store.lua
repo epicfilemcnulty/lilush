@@ -364,6 +364,8 @@ local new = function(srv_cfg)
 		fetch_content = fetch_content,
 		fetch_hash_and_size = fetch_hash_and_size,
 		fetch_userdata = fetch_userdata,
+		fetch_session_user = fetch_session_user,
+		fetch_metrics = fetch_metrics,
 		check_rate_limit = check_rate_limit,
 		check_waf = check_waf,
 		provision_acme_challenge = provision_acme_challenge,
@@ -372,8 +374,6 @@ local new = function(srv_cfg)
 		add_waffer = add_waffer,
 		set_session_data = set_session_data,
 		destroy_session = destroy_session,
-		fetch_session_user = fetch_session_user,
-		fetch_metrics = fetch_metrics,
 		update_metrics = update_metrics,
 		send_ctl_msg = send_ctl_msg,
 	}

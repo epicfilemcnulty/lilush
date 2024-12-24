@@ -1,4 +1,3 @@
-local std = require("std")
 local api = require("reliw.api")
 local auth = require("reliw.auth")
 local tmpls = require("reliw.templates")
@@ -161,7 +160,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		end
 		response_headers["content-length"] = size
 		if mime ~= "text/djot" then
-			response_headers["content-type"] = content_type
+			response_headers["content-type"] = mime
 		end
 		response_headers["etag"] = hash
 		response_headers["cache-control"] = ttl

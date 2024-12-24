@@ -371,6 +371,7 @@ local http_handle = function(method, query, args, headers, body, ctx)
 	local storage = require("reliw.store")
 	local store, err = storage.new(ctx.cfg)
 	if err then
+		ctx.logger:log("redis connection error", "error")
 		return "db connection error", 501, { ["content-type"] = "text/plain" }
 	end
 	if method ~= "GET" then

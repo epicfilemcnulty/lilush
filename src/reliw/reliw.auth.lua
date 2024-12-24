@@ -1,4 +1,3 @@
-local json = require("cjson")
 local crypto = require("crypto")
 local web = require("web")
 
@@ -54,8 +53,7 @@ local logout = function(store, headers)
 	return "Logging out...",
 		303,
 		{
-			["set-cookie"] = "rlw_session_token=" .. token .. "; Max-Age=0",
-			["set-cookie"] = "rlw_redirect=; Max-Age=0",
+			["set-cookie"] = { "rlw_session_token=" .. token .. "; Max-Age=0", "rlw_redirect=; Max-Age=0" },
 			["location"] = "/",
 		}
 end
@@ -85,9 +83,9 @@ local login_page = function(store, method, query, args, headers, body)
 	if method == "GET" then
 		return login_form, 200
 	end
-	local args = web.parse_args(body)
-	if login(store, headers["host"], args.login, args.password) then
-		local session_cookie = start_session(store, headers["host"], args.login, 10800) -- 3 hours TTL by default
+	local body_args = web.parse_args(body)
+	if login(store, headers["host"], body_args.login, body_args.password) then
+		local session_cookie = start_session(store, headers["host"], body_args.login, 10800) -- 3 hours TTL by default
 		local cookie = headers.cookie
 		local redirect_url = "/"
 		if cookie then

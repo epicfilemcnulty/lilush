@@ -210,6 +210,7 @@ local server_process_request = function(self, client, client_ip, count)
 			method = method,
 			query = query,
 			status = status,
+			process = self.__config.process,
 			size = #content,
 			time = string.format("%.4f", elapsed_time),
 		}
@@ -243,6 +244,7 @@ local server_serve = function(self)
 		requests_per_fork = self.__config.requests_per_fork,
 		log_level = self.logger:level(),
 		log_level_str = self.logger:level_str(),
+		process = self.__config.process,
 	})
 
 	while true do
