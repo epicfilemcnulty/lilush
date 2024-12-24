@@ -290,6 +290,8 @@ local new = function(config)
 			if metadata.replace_prompt then
 				if metadata.trim_promotion then
 					promoted = promoted:gsub("^%s+", "")
+				elseif metadata.reduce_spaces then
+					promoted = promoted:gsub("(%s+)", " ")
 				end
 				self.buffer = metadata.replace_prompt .. promoted
 			else
@@ -297,8 +299,7 @@ local new = function(config)
 			end
 
 			self.completion:flush()
-			self.cursor = std.utf.len(self.buffer)
-			self.position = 1
+			self:update_cursor(std.utf.len(self.buffer))
 			self.last_op.type = OP.COMPLETION_PROMOTION
 			return metadata.exec_on_prom and "execute" or true
 		end,

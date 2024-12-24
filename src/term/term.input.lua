@@ -361,7 +361,13 @@ local new = function(config)
 					end
 				end
 				event, combo = self:event()
-				if event and not exit_events[event] then
+				if
+					event
+					and (
+						not exit_events[event]
+						or (self.state.last_op.type == state.OP.COMPLETION_PROMOTION and event == "execute")
+					)
+				then
 					self.view:display()
 				end
 			until exit_events[event]

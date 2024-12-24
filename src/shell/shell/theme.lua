@@ -103,7 +103,7 @@ local builtins_default = {
 	},
 	envlist = {
 		var = { fg = 248, s = "bold", align = "left" },
-		value = { indent = 4, fg = 246, indent = 4 },
+		value = { fg = 246, indent = 4 },
 	},
 	dig = {
 		name = { fg = 144, s = "bold" },
@@ -246,7 +246,8 @@ local completion_default = {
 	fs_exe = { fg = { 180, 142, 173 } },
 	bin = { fg = 247, s = "bold" },
 	env = { s = "bold" },
-	history = { fg = 246, s = "italic" },
+	history = { indent = 4, fg = 59, s = "bold,italic" },
+	dir_history = { indent = 4, fg = 246, s = "bold,italic" },
 	snippet = { fg = 247, s = "bold" },
 }
 

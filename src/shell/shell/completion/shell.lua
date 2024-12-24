@@ -53,12 +53,11 @@ local search = function(self, input, history)
 		if cmd:match("^[zx]$") then
 			local mt = {
 				__index = function(t, k)
-					return { source = "history", replace_prompt = "cd", exec_on_prom = true }
+					return { source = "dir_history", replace_prompt = "cd", exec_on_prom = true, reduce_spaces = true }
 				end,
 			}
 			if cmd == "z" then
 				self.__candidates = history.dir_search(history, args)
-				setmetatable(self.__meta, mt)
 			else
 				self.__candidates = history.search(history, args)
 				mt = {
@@ -66,8 +65,8 @@ local search = function(self, input, history)
 						return { source = "history", replace_prompt = "", exec_on_prom = true, trim_promotion = true }
 					end,
 				}
-				setmetatable(self.__meta, mt)
 			end
+			setmetatable(self.__meta, mt)
 			return self:available()
 		end
 		if cmd == "zx" then
