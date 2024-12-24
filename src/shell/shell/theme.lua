@@ -246,7 +246,7 @@ local completion_default = {
 	fs_exe = { fg = { 180, 142, 173 } },
 	bin = { fg = 247, s = "bold" },
 	env = { s = "bold" },
-	history = { indent = 4, fg = 59, s = "bold,italic" },
+	history = { indent = 4, fg = 65, s = "bold,italic" },
 	dir_history = { indent = 4, fg = 246, s = "bold,italic" },
 	snippet = { indent = 4, fg = 29, s = "bold" },
 }
