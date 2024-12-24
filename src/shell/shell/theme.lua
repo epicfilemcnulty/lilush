@@ -248,7 +248,7 @@ local completion_default = {
 	env = { s = "bold" },
 	history = { indent = 4, fg = 59, s = "bold,italic" },
 	dir_history = { indent = 4, fg = 246, s = "bold,italic" },
-	snippet = { fg = 247, s = "bold" },
+	snippet = { indent = 4, fg = 29, s = "bold" },
 }
 
 local load_user_theme = function()
