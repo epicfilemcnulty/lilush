@@ -77,6 +77,8 @@ typedef struct mod_lua {
 #include "../build/shell/mod_lua_shell.store.h"
 #include "../build/shell/mod_lua_shell.theme.h"
 #include "../build/shell/mod_lua_shell.utils.h"
+// Vault
+#include "../build/vault/mod_lua_vault.h"
 
 const mod_lua__t lua_preload[] = {
     {"socket",                           mod_lua_socket,                           &mod_lua_socket_SIZE                      },
@@ -139,6 +141,7 @@ const mod_lua__t lua_preload[] = {
     {"shell.completion.source.cmds",     mod_lua_shell_completion_source_cmds,     &mod_lua_shell_completion_source_cmds_SIZE},
     {"shell.completion.source.env",      mod_lua_shell_completion_source_env,      &mod_lua_shell_completion_source_env_SIZE },
     {"shell.completion.source.fs",       mod_lua_shell_completion_source_fs,       &mod_lua_shell_completion_source_fs_SIZE  },
+    {"vault",                            mod_lua_vault,                            &mod_lua_vault_SIZE                       },
     {NULL,                               NULL,                                     NULL                                      }
 };
 

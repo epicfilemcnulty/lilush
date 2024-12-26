@@ -71,9 +71,9 @@ local run = function(self)
 			if event == "execute" then
 				-- Clear any pending input
 				io.flush()
-				io.read("*a")
 				term.write("\r\n")
 				term.disable_kkbp()
+				io.read("*a")
 				term.set_sane_mode()
 
 				local cwd = std.fs.cwd()
@@ -86,8 +86,8 @@ local run = function(self)
 				std.ps.setenv("LILUSH_EXEC_END", os.time())
 				std.ps.setenv("LILUSH_EXEC_STATUS", tostring(status))
 
-				io.flush()
 				term.set_raw_mode()
+				io.flush()
 				term.enable_kkbp()
 
 				local l, _ = term.cursor_position()

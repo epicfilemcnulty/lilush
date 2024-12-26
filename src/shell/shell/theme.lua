@@ -222,6 +222,12 @@ local prompts_default = {
 			profile = { fg = 175, before = "" },
 			ns = { fg = 176, before = "" },
 		},
+		vault = {
+			unlocked = { fg = 210, s = "bold", content = " " },
+			locked = { fg = 70, s = "bold", content = " " },
+			unknown = { fg = 59, s = "bold", content = " " },
+			error = { fg = 124, s = "bold", content = " " },
+		},
 		python = {
 			logo = { fg = 222, content = " ", s = "bold" },
 			env = { fg = 39, s = "bold,dim", bg = { 0, 65, 140 } },

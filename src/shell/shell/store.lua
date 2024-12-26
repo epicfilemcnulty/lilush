@@ -94,6 +94,14 @@ local list_llm_chats = function(self)
 	return self.redis:cmd("HKEYS", self.prefix .. "llm/chats" .. self.suffix)
 end
 
+local save_vault_token = function(self, token, ttl)
+	return self.redis:cmd("SET", self.prefix .. "vault_token" .. self.suffix, token, "EX", ttl)
+end
+
+local get_vault_token = function(self)
+	return self.redis:cmd("GET", self.prefix .. "vault_token" .. self.suffix)
+end
+
 local close = function(self, no_keepalive)
 	self.redis:close(no_keepalive)
 end
@@ -139,6 +147,8 @@ local new = function(options)
 		get_snippet = get_snippet,
 		get_json_file = get_json_file,
 		get_file = get_file,
+		get_vault_token = get_vault_token,
+		save_vault_token = save_vault_token,
 		save_llm_chat = save_llm_chat,
 		load_llm_chat = load_llm_chat,
 		list_llm_chats = list_llm_chats,

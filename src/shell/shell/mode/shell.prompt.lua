@@ -107,6 +107,13 @@ local aws_prompt = function(self)
 	return nil
 end
 
+local vault_prompt = function(self)
+	if self.vault_status then
+		return tss:apply("prompts.shell.vault." .. self.vault_status)
+	end
+	return nil
+end
+
 local user_prompt = function(self)
 	local buf = buffer.new()
 	if self.user ~= "root" then
@@ -161,6 +168,7 @@ local available_blocks = {
 	dir = dir_prompt,
 	kube = kube_prompt,
 	python = python_prompt,
+	vault = vault_prompt,
 }
 
 local set = function(self, options)
@@ -198,6 +206,7 @@ local new = function(options)
 		hostname = tostring(std.fs.read_file("/etc/hostname")):gsub("\n", ""),
 		pwd = std.fs.cwd() or "",
 		blocks = os.getenv("LILUSH_PROMPT") or "user,dir",
+		vault_status = "unknown",
 		get = get,
 		set = set,
 	}

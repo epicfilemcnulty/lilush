@@ -8,6 +8,8 @@ local builtins = require("shell.builtins")
 local theme = require("shell.theme")
 local style = require("term.tss")
 local tss = style.new(theme)
+local storage = require("shell.store")
+local vault = require("vault")
 
 local check_config_dirs = function(self)
 	if not std.fs.dir_exists(self.home .. "/.config/lilush") then
@@ -20,24 +22,6 @@ end
 
 -- Top Level Builtins
 local tlb = { rehash = true, alias = true, unalias = true, run_script = true, pyvenv = true }
-
-local load_shell_config = function()
-	local settings = {
-		renderer = {
-			wrap = 100,
-			codeblock_wrap = true,
-			global_indent = 2,
-			hide_links = true,
-		},
-		aws = {
-			regions = os.getenv("AWS_REGIONS") or "us-east-1",
-		},
-		python = {
-			venvs_dir = os.getenv("LILUSH_PYTHON_VENVS_DIR"),
-		},
-	}
-	return settings
-end
 
 local settings = function(self, combo)
 	widgets.settings(self.conf, "Shell Settings", theme.widgets.shell, 3, 5)
@@ -159,7 +143,7 @@ local python_env = function(self, cmd, args)
 	if virtual_env == "" and base_dir then
 		local files = std.fs.list_files(base_dir, nil, "d") or {}
 		local venvs = {}
-		for f, s in pairs(files) do
+		for f, _ in pairs(files) do
 			table.insert(venvs, f)
 		end
 		venvs = std.tbl.alphanumsort(venvs)
@@ -185,6 +169,99 @@ local python_env = function(self, cmd, args)
 		std.ps.setenv("LILUSH_PROMPT", "python," .. prompt)
 	end
 	return 0
+end
+
+local vault_login = function()
+	local store = storage.new()
+	local token = os.getenv("VAULT_TOKEN") or store:get_vault_token()
+	if not token then
+		local login_form = widgets.form({ "username", "password" })
+		vc = vault.new()
+		local ok, err = vc:login(login_form.username, login_form.password)
+		if not ok then
+			store:close()
+			return nil, err
+		end
+		local ttl = vc.valid_till - os.time()
+		store:save_vault_token(vc.token, ttl)
+		store:close()
+		std.ps.setenv("VAULT_TOKEN", vc.token)
+	end
+	return true
+end
+
+local fetch_env_secrets = function(envs)
+	local store = storage.new()
+	local token = store:get_vault_token()
+	store:close()
+	local vc = vault.new(nil, token)
+	local ok, err = vc:healthy()
+	if not ok then
+		return nil, err
+	end
+	for name, value in pairs(envs) do
+		local mount, path = value:match("^vault://([^/]+)/(.+)$")
+		if not mount or not path then
+			return nil, "failed to parse vault reference"
+		end
+		if not path:match("#") then
+			path = path .. "#value"
+		end
+		local secret, err = vc:get_secret(path, mount)
+		if not secret then
+			return nil, err
+		end
+		std.ps.setenv(name, secret)
+	end
+	return true
+end
+
+local clear_env_secrets = function(self)
+	if self.vault_vars then
+		for name, value in pairs(self.vault_vars) do
+			std.ps.setenv(name, value)
+		end
+		self.vault_vars = nil
+		self.input:prompt_set({ vault_status = "locked" })
+	end
+end
+
+local env_secrets_combo = function(self, combo)
+	local vault_vars = {}
+	local no_vault_vars = true
+	for name, value in pairs(std.environ()) do
+		if value:match("^vault://") then
+			vault_vars[name] = value
+			no_vault_vars = false
+		end
+	end
+	if no_vault_vars then
+		return false
+	end
+	local prompt_blocks = self.input.state.prompt.blocks
+	if not prompt_blocks:match("vault") then
+		prompt_blocks = prompt_blocks .. ",vault"
+	end
+	if not vault_login() then
+		self.input:prompt_set({ blocks = prompt_blocks, vault_status = "error" })
+		return true
+	end
+	local content = { title = "Choose secrets to be fetched", options = std.tbl.sort_keys(vault_vars) }
+	local results = widgets.multiple_choice(content, theme.widgets.shell)
+	if results and #results > 0 then
+		local selected_envs = {}
+		for _, name in ipairs(results) do
+			selected_envs[name] = vault_vars[name]
+		end
+		self.vault_vars = vault_vars
+		if fetch_env_secrets(selected_envs) then
+			self.input:prompt_set({ blocks = prompt_blocks, vault_status = "unlocked" })
+		else
+			self:clear_env_secrets()
+			self.input:prompt_set({ blocks = prompt_blocks, vault_status = "error" })
+		end
+	end
+	return true
 end
 
 local run = function(self)
@@ -219,6 +296,7 @@ local run = function(self)
 	if not status and not err then
 		status = 0
 	end
+	self:clear_env_secrets()
 	return status, err
 end
 
@@ -241,7 +319,7 @@ local run_once = function(self)
 end
 
 local toggle_blocks_combo = function(self, combo)
-	local map = { ["ALT+k"] = "kube", ["ALT+a"] = "aws", ["ALT+g"] = "git" }
+	local map = { ["ALT+k"] = "kube", ["ALT+a"] = "aws", ["ALT+g"] = "git", ["ALT+v"] = "vault" }
 
 	local prompt = os.getenv("LILUSH_PROMPT") or ""
 	local blocks = {}
@@ -271,6 +349,7 @@ local new = function(input)
 			["ALT+k"] = toggle_blocks_combo,
 			["ALT+a"] = toggle_blocks_combo,
 			["ALT+g"] = toggle_blocks_combo,
+			["ALT+v"] = env_secrets_combo,
 		},
 		aliases = {},
 		home = os.getenv("HOME") or "HOMELESS",
@@ -286,12 +365,12 @@ local new = function(input)
 		rehash = rehash,
 		pyvenv = python_env,
 		alias = alias,
+		clear_env_secrets = clear_env_secrets,
 		unalias = alias,
 	}
 	mode.input = input
 	mode:check_config_dirs()
 	mode:load_config()
-	mode.conf = load_shell_config()
 	std.ps.setenv("PWD", mode.pwd)
 	local prompts = os.getenv("LILUSH_PROMPT") or "user,dir"
 	if mode.input.prompt then

@@ -478,12 +478,142 @@ local simple_confirm = function(text, rss)
 	return false
 end
 
+local form = function(fields, rss, l, c)
+	local state = term.alt_screen()
+	local tss = style.merge(default_widgets_rss, rss)
+	local l = l or 1
+	local c = c or 1
+	local results = {}
+
+	-- Calculate max field name length for alignment
+	local max_field_len = 0
+	for _, field in ipairs(fields) do
+		max_field_len = math.max(max_field_len, std.utf.len(field))
+	end
+
+	term.clear()
+
+	-- Create input fields
+	for i, field in ipairs(fields) do
+		term.go(l + i - 1, c)
+		term.write(tss:apply("form.label", field .. ": "))
+
+		-- Calculate proper position for input field
+		local input_pos = c + max_field_len + 2
+
+		local buf = input.new({
+			l = l + i - 1,
+			c = input_pos,
+			width = 30, -- configurable width for input fields
+		})
+
+		buf:display()
+		while true do
+			local event = buf:run({ execute = true, exit = true })
+			if event == "execute" then
+				results[field] = buf:render()
+				break
+			elseif event == "exit" then
+				state:done()
+				return nil
+			end
+		end
+	end
+
+	state:done()
+	return results
+end
+
+local multiple_choice = function(content, rss, l, c)
+	local state = term.alt_screen()
+	local tss = style.merge(default_widgets_rss, rss)
+	term.clear()
+
+	local content = content or {}
+	local selected = {} -- Track selected items
+
+	local title = content.title or ""
+	local max = std.tbl.longest(content.options)
+	if std.utf.len(title) > max then
+		max = std.utf.len(title)
+	end
+
+	local offset = title ~= "" and 2 or 1
+	local w = max + 6 + 2 -- Added space for selection indicator [x]
+	local h = #content.options + 2
+	if content.title then
+		h = h + 3
+	end
+
+	local w_y, w_x = term.window_size()
+	local x = math.floor((w_x - w) / 2)
+	local y = math.floor((w_y - h) / 2)
+	if l then
+		y = l
+	end
+	if c then
+		x = c
+	end
+
+	local render_option = function(idx, is_current)
+		local option = content.options[idx]
+		term.go(y + offset + idx, x + 1)
+		local indicator = selected[option] and "[x]" or "[ ]"
+		local display_text = indicator .. " " .. option
+
+		if is_current then
+			term.write(tss:apply("option.selected", display_text))
+		else
+			term.write(tss:apply("option", display_text))
+		end
+	end
+
+	-- Initial render
+	draw_borders(title, rss, w, h, y, x)
+	local idx = 1
+
+	for i, _ in ipairs(content.options) do
+		render_option(i, i == idx)
+	end
+
+	-- Handle input
+	while true do
+		local key = input.simple_get()
+		if key == "ESC" then
+			state:done()
+			return {}
+		elseif key == "ENTER" then
+			-- Return selected items as array
+			local result = {}
+			for option, _ in pairs(selected) do
+				table.insert(result, option)
+			end
+			state:done()
+			return result
+		elseif key == " " then
+			local option = content.options[idx]
+			selected[option] = not selected[option]
+			render_option(idx, true)
+		elseif key == "UP" and idx > 1 then
+			render_option(idx, false)
+			idx = idx - 1
+			render_option(idx, true)
+		elseif key == "DOWN" and idx < #content.options then
+			render_option(idx, false)
+			idx = idx + 1
+			render_option(idx, true)
+		end
+	end
+end
+
 local _M = {
 	switcher = switcher,
 	settings = settings,
 	file_chooser = file_chooser,
 	draw_borders = draw_borders,
 	simple_confirm = simple_confirm,
+	form = form,
+	multiple_choice = multiple_choice,
 }
 
 return _M
