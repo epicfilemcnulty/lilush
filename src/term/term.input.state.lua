@@ -8,9 +8,10 @@ local OP = {
 	CURSOR_MOVE = 3,
 	POSITION_CHANGE = 4,
 	COMPLETION_PROMOTION = 5,
-	COMPLETION_SCROLL = 6,
-	HISTORY_SCROLL = 7,
-	FULL_CHANGE = 8,
+	COMPLETION_PROMOTION_FULL = 6,
+	COMPLETION_SCROLL = 7,
+	HISTORY_SCROLL = 8,
+	FULL_CHANGE = 9,
 }
 
 local new = function(config)
@@ -29,7 +30,7 @@ local new = function(config)
 		last_op = {
 			type = OP.NONE,
 			position = 0, -- position in buffer where operation occurred
-			last_line = config.l,
+			line = config.l,
 		},
 
 		prompt_len = function(self)
@@ -80,7 +81,7 @@ local new = function(config)
 				new_cursor = buf_len
 			end
 
-			self.last_op.type = OP.CURSOR_MOVE
+			self.last_op = { type = OP.CURSOR_MOVE, line = self.config.l }
 			-- Adjust position if cursor would go beyond visible area
 			if new_cursor > max_width then
 				self.position = self.position + (new_cursor - max_width)
@@ -117,7 +118,7 @@ local new = function(config)
 			local buf_len = std.utf.len(self.buffer)
 			local insert_pos = self.position + self.cursor - 1
 
-			self.last_op = { type = OP.INSERT, position = insert_pos + 1, last_line = self.last_op.last_line }
+			self.last_op = { type = OP.INSERT, position = insert_pos + 1, line = self.last_op.line }
 			if self.cursor == 0 then
 				if self.position == 1 then
 					self.buffer = char .. self.buffer
@@ -158,6 +159,8 @@ local new = function(config)
 				return false
 			end
 
+			local op = { type = OP.DELETE, position = delete_pos, line = self.last_op.line }
+
 			if self.cursor == 0 then
 				if self.position > 1 then
 					-- Move position back and delete from there
@@ -165,7 +168,8 @@ local new = function(config)
 					delete_pos = self.position
 					self.buffer = std.utf.sub(self.buffer, 1, delete_pos - 1)
 						.. std.utf.sub(self.buffer, delete_pos + 1)
-					self.last_op.type = OP.POSITION_CHANGE
+					op.type = OP.POSITION_CHANGE
+					self.last_op = op
 					return true
 				end
 				return false
@@ -174,13 +178,13 @@ local new = function(config)
 			if delete_pos == buf_len then
 				self.buffer = std.utf.sub(self.buffer, 1, buf_len - 1)
 				self:update_cursor(self.cursor - 1)
-				self.last_op = { type = OP.DELETE, position = delete_pos, last_line = self.last_op.last_line }
+				self.last_op = op
 				return true
 			end
 
 			self.buffer = std.utf.sub(self.buffer, 1, delete_pos - 1) .. std.utf.sub(self.buffer, delete_pos + 1)
-			self.cursor = self.cursor - 1
-			self.last_op = { type = OP.DELETE, position = delete_pos, last_line = self.last_op.last_line }
+			self:update_cursor(self.cursor - 1)
+			self.last_op = op
 			return true
 		end,
 
@@ -223,13 +227,14 @@ local new = function(config)
 			end
 
 			if self.history:up() then
+				local op = { type = OP.HISTORY_SCROLL, line = self.last_op.line, len = std.utf.len(self.buffer) }
 				if #self.buffer > 0 and self.history.position == #self.history.entries then
 					self.history:stash(self.buffer)
 				end
 				self.buffer = self.history:get()
-				self.cursor = std.utf.len(self.buffer)
+				self.cursor = 0
 				self.position = 1
-				self.last_op.type = OP.HISTORY_SCROLL
+				self.last_op = op
 				return true
 			end
 			return false
@@ -241,10 +246,11 @@ local new = function(config)
 			end
 
 			if self.history:down() then
+				local op = { type = OP.HISTORY_SCROLL, line = self.last_op.line, len = std.utf.len(self.buffer) }
 				self.buffer = self.history:get()
-				self.cursor = std.utf.len(self.buffer)
+				self.cursor = 0
 				self.position = 1
-				self.last_op.type = OP.HISTORY_SCROLL
+				self.last_op = op
 				return true
 			end
 			return self:scroll_completion()
@@ -261,9 +267,9 @@ local new = function(config)
 				return false
 			end
 
+			local op = { type = OP.COMPLETION_SCROLL, line = self.last_op.line, completion = self.completion:get() }
 			direction = direction or "down"
 			local total = #self.completion.__candidates
-
 			if direction == "down" then
 				self.completion.__chosen = self.completion.__chosen + 1
 				if self.completion.__chosen > total then
@@ -275,7 +281,7 @@ local new = function(config)
 					self.completion.__chosen = total
 				end
 			end
-			self.last_op.type = OP.COMPLETION_SCROLL
+			self.last_op = op
 			return true
 		end,
 
@@ -287,6 +293,7 @@ local new = function(config)
 			local promoted = self.completion:get(true)
 			local metadata = self.completion.__meta[self.completion.__chosen]
 
+			self.last_op.type = OP.COMPLETION_PROMOTION
 			if metadata.replace_prompt then
 				if metadata.trim_promotion then
 					promoted = promoted:gsub("^%s+", "")
@@ -294,13 +301,11 @@ local new = function(config)
 					promoted = promoted:gsub("(%s+)", " ")
 				end
 				self.buffer = metadata.replace_prompt .. promoted
+				self.last_op.type = OP.COMPLETION_PROMOTION_FULL
 			else
 				self.buffer = self.buffer .. promoted
 			end
-
 			self.completion:flush()
-			self:update_cursor(std.utf.len(self.buffer))
-			self.last_op.type = OP.COMPLETION_PROMOTION
 			return metadata.exec_on_prom and "execute" or true
 		end,
 
@@ -388,7 +393,7 @@ local new = function(config)
 					end
 					self.last_op = {
 						type = OP.FULL_CHANGE,
-						last_line = self.config.l - 1, -- Store previous line
+						line = self.config.l - 1,
 					}
 					return true
 				end

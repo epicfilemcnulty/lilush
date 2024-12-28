@@ -751,11 +751,11 @@ end
 local aws_profile = function(cmd, args)
 	local aws_config = std.fs.read_file(os.getenv("HOME") .. "/.aws/config")
 	if aws_config then
-		local content = { title = "Choose   profile", options = {} }
+		local content = {}
 		for p in aws_config:gmatch("%[profile ([^%]]+)%]") do
-			table.insert(content.options, p)
+			table.insert(content, p)
 		end
-		local profile = widgets.switcher(content, theme.widgets.aws)
+		local profile = widgets.chooser(content, { rss = theme.widgets.aws, title = "Choose   profile" })
 		if profile ~= "" then
 			std.ps.setenv("AWS_PROFILE", profile)
 		end
@@ -764,13 +764,13 @@ local aws_profile = function(cmd, args)
 end
 
 local aws_region = function(cmd, args)
-	local content = { title = "Choose   region", options = {} }
+	local content = {}
 	local regions = os.getenv("AWS_REGIONS")
 	if regions and regions ~= "" then
 		for region in regions:gmatch("([%w-]+),?") do
-			table.insert(content.options, region)
+			table.insert(content, region)
 		end
-		local region = widgets.switcher(content, theme.widgets.aws)
+		local region = widgets.chooser(content, { rss = theme.widgets.aws, title = "Choose   region" })
 		if region ~= "" then
 			std.ps.setenv("AWS_REGION", region)
 		end
@@ -1422,9 +1422,9 @@ local zx = function(cmd, args)
 			local l, c = term.cursor_position()
 			for _, arg in ipairs(snippet_meta.args) do
 				if arg.kind == "options" then
-					local chosen_option = widgets.switcher(
-						{ title = "Choose " .. arg.name .. " value", options = arg.values },
-						theme.widgets.shell
+					local chosen_option = widgets.chooser(
+						arg.values,
+						{ rss = theme.widgets.shell, title = "Choose " .. arg.name .. " value" }
 					)
 					snippet_args[arg.name] = chosen_option
 				end

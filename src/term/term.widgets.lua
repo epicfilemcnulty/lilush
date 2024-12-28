@@ -5,12 +5,13 @@ local term = require("term")
 local style = require("term.tss")
 local input = require("term.input")
 
-local default_widgets_rss = {
+local default_rss = {
 	align = "center",
 	fg = 253,
 	title = { s = "bold" },
 	option = {
 		selected = { s = "inverted" },
+		marked = { content = "", s = "bold", w = 1 },
 		value = {
 			clip = -1,
 			align = "left",
@@ -21,6 +22,10 @@ local default_widgets_rss = {
 			string = { fg = 144 },
 			table = { fg = 143, s = "italic" },
 		},
+	},
+	form = {
+		label = { indent = 1, align = "left", after = ": ", s = "bold" },
+		input = { s = "italic", line = { content = "_", fill = true }, blank = { w = 1 } },
 	},
 	file = {
 		align = "left",
@@ -41,159 +46,203 @@ local default_widgets_rss = {
 	},
 }
 
-local draw_borders = function(title, rss, w, h, l, c, label)
-	local tss = style.merge(default_widgets_rss, rss)
-	local title = title or ""
-	local height = h + 2
-	tss.__style.w = w
-	tss.__style.borders.w = w + 2
-
-	term.go(l, c)
-	term.write(tss:apply("borders.top_line", nil, c))
-	if label then
-		term.go(l, c + 1)
-		term.write(tss:apply("borders.label", label, c + 1))
+local draw_top_border = function(self)
+	term.go(self.l, self.c)
+	term.write(self.tss:apply("borders.top_line", nil, self.c))
+	if self.label then
+		term.go(self.l, self.c + 1)
+		term.write(self.tss:apply("borders.label", self.label, self.c + 1))
 	end
+end
+
+local draw_borders = function(self)
+	local height = self.h + 2
+	self.tss.__style.w = self.w
+	self.tss.__style.borders.w = self.w + 2
+
+	self:draw_top_border()
 	local offset = 1
-	if title ~= "" then
+	if self.title ~= "" then
 		height = height + 2
-		term.go(l + 1, c)
+		term.go(self.l + 1, self.c)
 		term.write(
-			tss:apply("borders.v", nil, c)
-				.. tss:apply("title", title, c + 1)
-				.. tss:apply("borders.v", nil, c + std.utf.len(title) + 1)
+			self.tss:apply("borders.v", nil, self.c)
+				.. self.tss:apply("title", self.title, self.c + 1)
+				.. self.tss:apply("borders.v", nil, self.c + std.utf.len(self.title) + 1)
 		)
-		term.go(l + 2, c)
-		term.write(tss:apply("borders.subtitle_line", nil, c))
+		term.go(self.l + 2, self.c)
+		term.write(self.tss:apply("borders.subtitle_line", nil, self.c))
 		offset = 2
 	end
 	for i = 1, height - offset - 2 do
-		term.go(l + offset + i, c)
-		term.write(tss:apply("borders.v", nil, c))
-		term.go(l + offset + i, c + w + 1)
-		term.write(tss:apply("borders.v", nil, c + w))
+		term.go(self.l + offset + i, self.c)
+		term.write(self.tss:apply("borders.v", nil, self.c))
+		term.go(self.l + offset + i, self.c + self.w + 1)
+		term.write(self.tss:apply("borders.v", nil, self.c + self.w))
 	end
-	term.go(l + height - 1, c)
-	term.write(tss:apply("borders.bottom_line", nil, c))
+	term.go(self.l + height - 1, self.c)
+	term.write(self.tss:apply("borders.bottom_line", nil, self.c))
 end
 
---[[ 
-    Switcher provides functionality similar to dmenu/rofi.
-    Switcher needs terminal to be in raw mode to work correctly,
-    so call `term.set_raw_mode()` before calling switcher,
-    and `term.set_sane_mode()` after it returns.   
-    
-     Expected `content` format:
-        content = {
-            title = "Choose a region",
-            options = {
-                "us-east-1",
-                "us-west-2",
-                "ap-northeast-1",
-            }
-        }
-]]
-local switcher = function(content, rss, l, c)
-	local state = term.alt_screen()
-	local tss = style.merge(default_widgets_rss, rss)
+local init = function(self)
+	self.state = term.alt_screen()
 	term.clear()
-	local content = content or {}
+	return self
+end
 
-	local title = content.title or ""
-	local max = std.tbl.longest(content.options)
+local cleanup = function(self)
+	if self.state then
+		self.state:done()
+	end
+end
+
+local render_chooser_option = function(self, idx)
+	local option = self.content[idx]
+	term.go(self.l + (self.title ~= "" and 3 or 1) + idx - 1, self.c + 1)
+
+	if self.kind == "chooser_multi" then
+		term.move("left", 1)
+		if self.selected[option] then
+			term.write(self.tss:apply("option.marked"))
+		else
+			term.write(self.tss:apply("borders.v", nil, self.c))
+		end
+	end
+	if idx == self.idx then
+		term.write(self.tss:apply("option.selected", option))
+	else
+		term.write(self.tss:apply("option", option))
+	end
+end
+
+local goto_field = function(self, idx, to_input)
+	local label = self.tss:apply("form.label", self.content[idx])
+	local c = self.c + 1
+	if to_input then
+		c = c + std.utf.len(label)
+	end
+	term.go(self.l + (self.title ~= "" and 3 or 1) + idx - 1, c)
+end
+
+local render_form_field = function(self, idx)
+	local label = self.content[idx]
+	local display_label = self.tss:apply("form.label", label)
+	self:goto_field(idx)
+	term.write(display_label)
+	term.write(self.tss:apply("form.input.line"))
+	if self.results[label] then
+		self:goto_field(idx, true)
+		local value = self.results[label]
+		if self.meta[label] and self.meta[label].secret then
+			value = string.rep("*", std.utf.len(value))
+		end
+		term.write(self.tss:apply("form.input", value))
+	end
+end
+
+local new_widget = function(opts)
+	local opts = opts or {}
+	local widget = {
+		l = opts.l or 1,
+		c = opts.c or 1,
+		w = opts.w or 0,
+		h = opts.h or 0,
+		title = opts.title or "",
+		tss = style.merge(default_rss, opts.rss),
+		kind = opts.kind or "widget",
+	}
+	local win_y, win_x = term.window_size()
+	if not opts.l or not opts.c then
+		widget.l = opts.l or math.floor((win_y - widget.h) / 2) - math.floor(win_y * 0.05)
+		widget.c = opts.c or math.floor((win_x - widget.w) / 2) - math.floor(win_x * 0.01)
+	end
+	widget.init = init
+	widget.cleanup = cleanup
+	widget.draw_borders = draw_borders
+	widget.draw_top_border = draw_top_border
+	widget.render_chooser_option = render_chooser_option
+	widget.render_form_field = render_form_field
+	widget.goto_field = goto_field
+	return widget
+end
+
+local chooser = function(content, opts)
+	local opts = opts or {}
+	local content = content or {}
+	if #content == 0 then
+		return ""
+	end
+	local title = opts.title or ""
+	local max = std.tbl.longest(content)
 	if std.utf.len(title) > max then
 		max = std.utf.len(title)
 	end
-	local w = max + 4 + 2 -- indents plus borders
-	local h = #content.options + 2
-	if content.title then
-		h = h + 3
+	opts.w = max + 4 -- Add some space for indentation
+	opts.h = #content
+	local w = new_widget(opts)
+	w.content = content
+	w.kind = "chooser"
+	if opts.multiple_choice then
+		w.kind = "chooser_multi"
+		w.selected = {}
 	end
-
-	local w_y, w_x = term.window_size()
-	local x = math.floor((w_x - w) / 2)
-	local y = math.floor((w_y - h) / 2)
-	if l then
-		y = l
+	w.idx = 1
+	w:init()
+	w:draw_borders()
+	for i, _ in ipairs(content) do
+		w:render_chooser_option(i)
 	end
-	if c then
-		x = c
-	end
-
-	term.go(y, x)
-	tss.__style.borders.w = w - 2
-	tss.__style.w = w - 2
-
-	term.write(tss:apply("borders.top_line"))
-	local offset = 1
-	if title ~= "" then
-		term.go(y + 1, x)
-		term.write(tss:apply("borders.v") .. tss:apply("title", title) .. tss:apply("borders.v"))
-		term.go(y + 2, x)
-		term.write(tss:apply("borders.subtitle_line"))
-		offset = 2
-	end
-
-	local render_option = function(idx, el)
-		local option = content.options[idx]
-		term.go(y + offset + idx, x + 1)
-		term.write(tss:apply(el, option))
-	end
-
-	content.selected = content.selected or 1
-
-	for i, _ in ipairs(content.options) do
-		term.go(y + offset + i, x)
-		term.write(tss:apply("borders.v"))
-		if i == content.selected then
-			render_option(i, "option.selected")
-		else
-			render_option(i, "option")
-		end
-		term.go(y + offset + i, x + w - 1)
-		term.write(tss:apply("borders.v"))
-	end
-	term.go(y + h - 2, x)
-	term.write(tss:apply("borders.bottom_line"))
-
-	local idx = content.selected
-	local buf = ""
-
+	w.label = ""
 	while true do
 		local key = input.simple_get()
 		if key == "ESC" then
-			if buf ~= "" then
-				buf = ""
+			if w.label ~= "" then
+				w.label = ""
+				w:draw_top_border()
 			else
-				state:done()
-				return ""
+				w:cleanup()
+				return w.kind == "chooser_multi" and {} or ""
 			end
 		elseif key == "ENTER" then
-			state:done()
-			return content.options[content.selected]
+			if w.kind == "chooser_multi" then
+				local result = {}
+				for option, selected in pairs(w.selected) do
+					if selected then
+						table.insert(result, option)
+					end
+				end
+				w:cleanup()
+				return result
+			else
+				w:cleanup()
+				return w.content[w.idx]
+			end
+		elseif key == " " and w.kind == "chooser_multi" then
+			local option = w.content[w.idx]
+			w.selected[option] = not w.selected[option]
+			w:render_chooser_option(w.idx)
 		elseif key == "UP" then
-			if idx > 1 then
-				render_option(idx, "option")
-				idx = idx - 1
-				content.selected = idx
-				render_option(idx, "option.selected")
+			if w.idx > 1 then
+				w.idx = w.idx - 1
+				w:render_chooser_option(w.idx)
+				w:render_chooser_option(w.idx + 1)
 			end
 		elseif key == "DOWN" then
-			if idx < #content.options then
-				render_option(idx, "option")
-				idx = idx + 1
-				content.selected = idx
-				render_option(idx, "option.selected")
+			if w.idx < #w.content then
+				w.idx = w.idx + 1
+				w:render_chooser_option(w.idx)
+				w:render_chooser_option(w.idx - 1)
 			end
-		elseif key and key ~= "" then
-			buf = buf .. key
-			for i, option in ipairs(content.options) do
-				if option:match(buf) then
-					if idx ~= i then
-						render_option(idx, "option")
-						idx = i
-						content.selected = idx
-						render_option(idx, "option.selected")
+		elseif key and key ~= "" and std.utf.len(key) < 2 then
+			w.label = w.label .. key
+			w:draw_top_border()
+			for i, option in ipairs(w.content) do
+				if option:match(w.label) then
+					if w.idx ~= i then
+						local prev_idx = w.idx
+						w.idx = i
+						w:render_chooser_option(w.idx)
+						w:render_chooser_option(prev_idx)
 						break
 					end
 				end
@@ -202,179 +251,118 @@ local switcher = function(content, rss, l, c)
 	end
 end
 
---[[ Auxiliary functions for settings widget ]]
+local simple_confirm = function(text, rss)
+	local tss = style.merge(default_rss, rss)
+	term.write(tss:apply("confirm", text))
+	local confirmed = io.read(1)
+	if confirmed and (confirmed == "y" or confirmed == "Y") then
+		return true
+	end
+	return false
+end
 
-local render_options = function(options, idx, tss, l, c)
-	local l = l or 1
-	local c = c or 1
-	local option_keys = std.tbl.exclude_keys(std.tbl.sort_keys(options), "selected")
-	local max_opt_len = std.tbl.longest(option_keys)
-	tss.__style.w = max_opt_len + 4
+local form = function(content, opts)
+	if not content or type(content) ~= "table" then
+		return false
+	end
 
-	for i, opt in ipairs(option_keys) do
-		term.go(l + i - 1, c)
-		local val_type = type(options[opt])
-		local option_val = options[opt]
-		if val_type == "table" then
-			option_val = options[opt].selected
+	local opts = opts or {}
+	if not opts.meta then
+		opts.meta = {}
+	end
+	local title = opts.title or ""
+	local title_len = std.utf.len(title)
+	local max_label = std.tbl.longest(content)
+	local max_input = 0
+	for i, label in ipairs(content) do
+		local field_input = 10
+		if opts.meta[label] then
+			field_input = opts.meta[label].w or 10
 		end
-		if val_type == "string" then
-			option_val = option_val:gsub("\n", "\\n")
-		end
-		if i ~= idx then
-			if val_type == "table" and not option_val then
-				if options[opt][1] then
-					term.write(
-						tss:apply("option", opt)
-							.. tss:apply("option.value." .. val_type, table.concat(options[opt], ","))
-					)
-				else
-					term.write(tss:apply("category", opt))
-				end
-			else
-				term.write(tss:apply("option", opt) .. tss:apply("option.value." .. val_type, option_val))
-			end
-		else
-			if val_type == "table" and not option_val then
-				term.write(tss:apply("category.selected", opt))
-			else
-				term.write(tss:apply("option.selected", opt) .. tss:apply("option.value." .. val_type, option_val))
-			end
+		if field_input > max_input then
+			max_input = field_input
 		end
 	end
-end
+	local total_len = max_label + max_input
+	if title_len > total_len then
+		total_len = title_len
+	end
+	opts.w = total_len + 5
+	opts.h = #content
 
-local render_title = function(title, tss, l, c)
-	local l = l or 1
-	local c = c or 1
-	term.go(l, c)
-	term.clear_line()
-	term.write(tss:apply("title", title))
-end
+	local w = new_widget(opts)
+	w.content = content
+	w.idx = 1
+	w.results = {}
+	w.meta = opts.meta
+	w:init()
+	w:draw_borders()
+	w.tss.__style.form.input.w = max_input + 2
+	w.tss.__style.form.label.w = max_label + 1
 
-local settings = function(config, title, rss, l, c)
-	local state = term.alt_screen()
-	local tss = style.merge(default_widgets_rss, rss)
-	local l = l or 1
-	local c = c or 1
-	local idx = 1
-	local title = title or "settings"
-	local target = ""
-	term.clear()
-	render_title(title, tss, l, c)
-	render_options(config, idx, tss, l + 2, c)
+	for i, field in ipairs(w.content) do
+		w:render_form_field(i)
+	end
 
-	while true do
+	local done = function(ww)
+		for _, label in ipairs(ww.content) do
+			if not ww.results[label] or ww.results[label] == "" then
+				return false
+			end
+		end
+		return true
+	end
+
+	repeat
 		local key = input.simple_get()
 		if key == "ESC" then
-			state:done()
-			return true
+			w:cleanup()
+			return w.results
 		end
-		if key == "UP" then
-			if idx > 1 then
-				idx = idx - 1
-				render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
-			end
-		end
-		if key == "DOWN" then
-			local options =
-				std.tbl.exclude_keys(std.tbl.sort_keys(std.tbl.get_value_by_ref(config, target)), "selected")
-			if idx < #options then
-				idx = idx + 1
-				render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
-			end
-		end
-		if key == "RIGHT" or key == "ENTER" then
-			local objs = std.tbl.get_value_by_ref(config, target)
-			local keys = std.tbl.exclude_keys(std.tbl.sort_keys(objs), "selected")
-			local chosen = keys[idx]
-
-			if type(objs[chosen]) == "table" and not objs[chosen].options then
-				if key == "RIGHT" or not objs[chosen].selected then
-					target = target .. "." .. keys[idx]
-					term.clear()
-					idx = 1
-					local subcat = target:gsub("%.", " -> ")
-					render_title(title .. subcat, tss, l, c)
-					render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
-				elseif objs[chosen].selected then
-					local options = {}
-					for k, _ in pairs(objs[chosen]) do
-						if k ~= "selected" then
-							table.insert(options, k)
-						end
-					end
-					options = std.tbl.alphanumsort(options)
-					local choice = switcher({ title = "Choose an option", options = options }, rss, l + 2, c)
-					if choice ~= "" then
-						objs[chosen].selected = choice
-					end
-					term.clear()
-					local subcat = target:gsub("%.", " -> ")
-					render_title(title .. subcat, tss, l, c)
-					render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
-				end
+		if key == "ENTER" then
+			local label = w.content[w.idx]
+			local display_label = w.tss:apply("form.label", label)
+			local y = w.l + (w.title ~= "" and 3 or 1) + w.idx - 1
+			local x = w.c + 1 + std.utf.len(display_label)
+			if w.meta[label] and w.meta[label].secret then
+				w.tss.__style.form.input.content = "*"
 			else
-				if type(objs[chosen]) == "boolean" then
-					objs[chosen] = not objs[chosen]
-					render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
-				elseif type(objs[chosen]) == "table" then
-					local choice =
-						switcher({ title = "Choose an option", options = objs[chosen].options }, rss, l + 2, c)
-					if choice ~= "" then
-						objs[chosen].selected = choice
-					end
-					term.clear()
-					local subcat = target:gsub("%.", " -> ")
-					render_title(title .. subcat, tss, l, c)
-					render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
-				elseif type(objs[chosen]) == "string" or type(objs[chosen]) == "number" then
-					local m = std.tbl.longest(keys)
-					local val_indent = tss.__style.option.value.indent or 0
-					term.clear_line()
-					term.show_cursor()
-					local buf = input.new({ l = l + 1 + idx, c = c + m + 4 + val_indent, 20 })
-					buf:display()
-					while true do
-						local event, combo = buf:run({ execute = true, exit = true })
-						if event == "execute" then
-							local choice = buf:render()
-							if choice ~= "" then
-								if type(objs[chosen]) == "string" then
-									objs[chosen] = choice:gsub("\\n", "\n")
-								else
-									if tonumber(choice) then
-										objs[chosen] = tonumber(choice)
-									end
-								end
-								break
-							end
-						end
-						if event == "exit" then
-							break
-						end
-					end
-					term.hide_cursor()
-					term.clear()
-					local subcat = target:gsub("%.", " -> ")
-					render_title(title .. subcat, tss, l, c)
-					render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
+				w.tss.__style.form.input.content = nil
+			end
+			local buf =
+				input.new({ l = y, c = x, width = w.w - std.utf.len(display_label) - 1, rss = w.tss.__style.form })
+			w:goto_field(w.idx, true)
+			term.show_cursor()
+			buf:display()
+			while true do
+				local event = buf:run({ execute = true, exit = true })
+				if event == "execute" then
+					w.results[label] = buf:render()
+					break
+				elseif event == "exit" then
+					break
 				end
 			end
+			term.hide_cursor()
 		end
-		if key == "LEFT" then
-			if target ~= "" then
-				target = target:gsub("%.?[^.]+$", "")
-				term.clear()
-				idx = 1
-				local subcat = target:gsub("%.", " -> ")
-				render_title(title .. subcat, tss, l, c)
-				render_options(std.tbl.get_value_by_ref(config, target), idx, tss, l + 2, c)
+		if key == "DOWN" or key == "RIGHT" or key == "TAB" then
+			w.idx = w.idx + 1
+			if w.idx > #w.content then
+				w.idx = 1
 			end
 		end
-	end
+		if key == "UP" or key == "LEFT" then
+			if w.idx > 1 then
+				w.idx = w.idx - 1
+			else
+				w.idx = #w.content
+			end
+		end
+	until done(w)
+	return w.results
 end
 
+--[==[
 local file_chooser = function(title, start_dir, rss, patterns)
 	local state = term.alt_screen()
 	local invoke_dir = std.fs.cwd()
@@ -467,153 +455,12 @@ local file_chooser = function(title, start_dir, rss, patterns)
 	state:done()
 	return choice
 end
-
-local simple_confirm = function(text, rss)
-	local tss = style.merge(default_widgets_rss, rss)
-	term.write(tss:apply("confirm", text))
-	local confirmed = io.read(1)
-	if confirmed and (confirmed == "y" or confirmed == "Y") then
-		return true
-	end
-	return false
-end
-
-local form = function(fields, rss, l, c)
-	local state = term.alt_screen()
-	local tss = style.merge(default_widgets_rss, rss)
-	local l = l or 1
-	local c = c or 1
-	local results = {}
-
-	-- Calculate max field name length for alignment
-	local max_field_len = 0
-	for _, field in ipairs(fields) do
-		max_field_len = math.max(max_field_len, std.utf.len(field))
-	end
-
-	term.clear()
-
-	-- Create input fields
-	for i, field in ipairs(fields) do
-		term.go(l + i - 1, c)
-		term.write(tss:apply("form.label", field .. ": "))
-
-		-- Calculate proper position for input field
-		local input_pos = c + max_field_len + 2
-
-		local buf = input.new({
-			l = l + i - 1,
-			c = input_pos,
-			width = 30, -- configurable width for input fields
-		})
-
-		buf:display()
-		while true do
-			local event = buf:run({ execute = true, exit = true })
-			if event == "execute" then
-				results[field] = buf:render()
-				break
-			elseif event == "exit" then
-				state:done()
-				return nil
-			end
-		end
-	end
-
-	state:done()
-	return results
-end
-
-local multiple_choice = function(content, rss, l, c)
-	local state = term.alt_screen()
-	local tss = style.merge(default_widgets_rss, rss)
-	term.clear()
-
-	local content = content or {}
-	local selected = {} -- Track selected items
-
-	local title = content.title or ""
-	local max = std.tbl.longest(content.options)
-	if std.utf.len(title) > max then
-		max = std.utf.len(title)
-	end
-
-	local offset = title ~= "" and 2 or 1
-	local w = max + 6 + 2 -- Added space for selection indicator [x]
-	local h = #content.options + 2
-	if content.title then
-		h = h + 3
-	end
-
-	local w_y, w_x = term.window_size()
-	local x = math.floor((w_x - w) / 2)
-	local y = math.floor((w_y - h) / 2)
-	if l then
-		y = l
-	end
-	if c then
-		x = c
-	end
-
-	local render_option = function(idx, is_current)
-		local option = content.options[idx]
-		term.go(y + offset + idx, x + 1)
-		local indicator = selected[option] and "[x]" or "[ ]"
-		local display_text = indicator .. " " .. option
-
-		if is_current then
-			term.write(tss:apply("option.selected", display_text))
-		else
-			term.write(tss:apply("option", display_text))
-		end
-	end
-
-	-- Initial render
-	draw_borders(title, rss, w, h, y, x)
-	local idx = 1
-
-	for i, _ in ipairs(content.options) do
-		render_option(i, i == idx)
-	end
-
-	-- Handle input
-	while true do
-		local key = input.simple_get()
-		if key == "ESC" then
-			state:done()
-			return {}
-		elseif key == "ENTER" then
-			-- Return selected items as array
-			local result = {}
-			for option, _ in pairs(selected) do
-				table.insert(result, option)
-			end
-			state:done()
-			return result
-		elseif key == " " then
-			local option = content.options[idx]
-			selected[option] = not selected[option]
-			render_option(idx, true)
-		elseif key == "UP" and idx > 1 then
-			render_option(idx, false)
-			idx = idx - 1
-			render_option(idx, true)
-		elseif key == "DOWN" and idx < #content.options then
-			render_option(idx, false)
-			idx = idx + 1
-			render_option(idx, true)
-		end
-	end
-end
+--]==]
 
 local _M = {
-	switcher = switcher,
-	settings = settings,
-	file_chooser = file_chooser,
-	draw_borders = draw_borders,
+	chooser = chooser,
 	simple_confirm = simple_confirm,
 	form = form,
-	multiple_choice = multiple_choice,
 }
 
 return _M

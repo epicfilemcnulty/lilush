@@ -23,13 +23,6 @@ end
 -- Top Level Builtins
 local tlb = { rehash = true, alias = true, unalias = true, run_script = true, pyvenv = true }
 
-local settings = function(self, combo)
-	widgets.settings(self.conf, "Shell Settings", theme.widgets.shell, 3, 5)
-	-- This is dubious, what if it was already changed via setenv?
-	std.ps.setenv("AWS_REGIONS", self.conf.aws.regions)
-	return true
-end
-
 local run_script = function(self, cmd, args)
 	local args = args or {}
 	local script_file = args[1] or ""
@@ -138,7 +131,7 @@ local python_env = function(self, cmd, args)
 		deactivate()
 		return 0
 	end
-	local base_dir = self.conf.python.venvs_dir
+	local base_dir = os.getenv("LILUSH_PYTHON_VENVS_DIR")
 	local virtual_env = args[1] or ""
 	if virtual_env == "" and base_dir then
 		local files = std.fs.list_files(base_dir, nil, "d") or {}
@@ -147,8 +140,7 @@ local python_env = function(self, cmd, args)
 			table.insert(venvs, f)
 		end
 		venvs = std.tbl.alphanumsort(venvs)
-		local content = { title = "Choose a python venv", options = venvs }
-		local choice = widgets.switcher(content, theme.widgets.python)
+		local choice = widgets.chooser(venvs, { rss = theme.widgets.python, title = "Choose a python venv" })
 		virtual_env = base_dir .. "/" .. choice
 	end
 	if not virtual_env:match("^/") then
@@ -175,8 +167,11 @@ local vault_login = function()
 	local store = storage.new()
 	local token = os.getenv("VAULT_TOKEN") or store:get_vault_token()
 	if not token then
-		local login_form = widgets.form({ "username", "password" })
-		vc = vault.new()
+		local login_form = widgets.form(
+			{ "username", "password" },
+			{ title = "Login to Vault", rss = theme.widgets.shell, meta = { password = { w = 32, secret = true } } }
+		) or {}
+		local vc = vault.new()
 		local ok, err = vc:login(login_form.username, login_form.password)
 		if not ok then
 			store:close()
@@ -246,8 +241,10 @@ local env_secrets_combo = function(self, combo)
 		self.input:prompt_set({ blocks = prompt_blocks, vault_status = "error" })
 		return true
 	end
-	local content = { title = "Choose secrets to be fetched", options = std.tbl.sort_keys(vault_vars) }
-	local results = widgets.multiple_choice(content, theme.widgets.shell)
+	local results = widgets.chooser(
+		std.tbl.sort_keys(vault_vars),
+		{ multiple_choice = true, rss = theme.widgets.shell, title = "Choose secrets to be fetched" }
+	)
 	if results and #results > 0 then
 		local selected_envs = {}
 		for _, name in ipairs(results) do

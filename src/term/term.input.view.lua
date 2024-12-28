@@ -6,6 +6,11 @@ local new = function(state_obj)
 	local view = {
 		state = state_obj,
 
+		update_cursor = function(self)
+			local prompt_len = self:get_prompt_info()
+			term.go(self.state.config.l, self.state.config.c + self.state.cursor + prompt_len)
+		end,
+
 		get_prompt_info = function(self)
 			local prompt = ""
 			local prompt_len = 0
@@ -28,45 +33,92 @@ local new = function(state_obj)
 			if self.state.config.escape_newlines then
 				content = content:gsub("\n", "␊")
 			end
-			if self.state.config.tss then
-				term.write(self.state.config.tss:apply("input", content))
-			else
-				term.write(content)
-			end
+			term.write(self.state.config.tss:apply("input", content))
 		end,
 
 		draw_completion = function(self)
 			if self.state.completion and self.state.completion:available() then
 				local completion = self.state.completion:get()
 				if completion ~= "" then
-					if self.state.config.tss then
-						term.write(self.state.config.tss:apply("completion", completion))
-					else
-						term.write(completion)
-					end
+					term.write(self.state.config.tss:apply("completion", completion))
 				end
 			end
 		end,
 
-		update_cursor = function(self)
+		clear_line = function(self, mode)
+			local mode = mode or "all"
+			local width = self.state:max_visible_width()
 			local prompt_len = self:get_prompt_info()
-			term.go(self.state.config.l, self.state.config.c + self.state.cursor + prompt_len)
+			local blank = self.state.config.tss:apply("input.blank", self.state.config.blank)
+			local buf_len = std.utf.len(self.state.buffer)
+			if self.state.last_op.len then
+				buf_len = self.state.last_op.len
+			end
+
+			local count = buf_len + prompt_len
+			local start = self.state.config.c
+
+			if mode == "full" then
+				count = width
+			end
+
+			if mode == "from_prompt" then
+				start = start + prompt_len
+				count = count - prompt_len
+			end
+
+			if mode == "from_cursor" then
+				start = start + prompt_len + self.state.cursor
+				count = count - prompt_len - self.state.cursor
+			end
+
+			if mode == "from_position" then
+				start = start + prompt_len + self.state.last_op.position
+				count = count - prompt_len - self.state.last_op.position
+			end
+
+			if self.state.completion then
+				local completion_len = std.utf.len(self.state.completion:get())
+				count = count + completion_len
+			end
+			if self.state.last_op.type == state.OP.DELETE then
+				-- account for the deleted from the buffer,
+				-- but not yet cleared character
+				count = count + 1
+			end
+
+			count = math.min(width, count)
+			term.go(self.state.config.l, start)
+			term.write(string.rep(blank, count))
+			self:update_cursor()
+		end,
+
+		clear_completion = function(self, completion)
+			if self.state.completion then
+				local completion = completion or self.state.completion:get()
+				if completion ~= "" then
+					local prompt_len = self:get_prompt_info()
+					local count = std.utf.len(completion)
+					local blank = self.state.config.tss:apply("input.blank", self.state.config.blank)
+					term.go(self.state.config.l, self.state.config.c + self.state.cursor + prompt_len)
+					term.write(string.rep(blank, count))
+					self:update_cursor()
+				end
+			end
 		end,
 
 		handle_redraw = function(self, with_prompt)
 			local with_prompt = with_prompt or false
 			if with_prompt then
-				term.clear_line(2) -- Clear entire line
+				self:clear_line("full")
 				self:draw_prompt()
 			else
-				local prompt_len = self:get_prompt_info()
-				term.go(self.state.config.l, self.state.config.c + prompt_len)
-				term.clear_line(0)
+				self:clear_line("from_prompt")
 			end
 
 			local max = self.state:max_visible_width()
 			local buf_len = std.utf.len(self.state.buffer)
-			local visible_end = math.min(self.state.position + max - 1, buf_len)
+			local visible_end = math.min(max - 1, buf_len)
 
 			if visible_end >= self.state.position then
 				local content = std.utf.sub(self.state.buffer, self.state.position, visible_end)
@@ -79,24 +131,39 @@ local new = function(state_obj)
 
 		handle_completion = function(self)
 			if self.state.completion then
-				local current_completion = self.state.completion:get()
+				local previous_completion = self.state.completion:get()
 				if self.state:search_completion() then
 					local new_completion = self.state.completion:get()
-					if new_completion ~= current_completion then
-						term.clear_line(0) -- from cursor till the EOL
+					if new_completion ~= previous_completion then
+						self:clear_completion(previous_completion)
 						self:draw_completion()
 						self:update_cursor()
 					end
 				else
-					term.clear_line(0) -- clear previous completion
+					self:clear_completion(previous_completion)
 				end
 			end
 		end,
 
+		handle_completion_promotion = function(self, full)
+			local max = self.state:max_visible_width()
+			local buf_len = std.utf.len(self.state.buffer)
+			local visible_end = math.min(max - 1, buf_len)
+			if full then
+				self.state:start_of_line()
+				self:clear_line("from_prompt")
+			end
+			local content = std.utf.sub(self.state.buffer, self.state.position + self.state.cursor, visible_end)
+			if content and #content > 0 then
+				self:update_cursor()
+				self:draw_content(content)
+				self.state:end_of_line()
+				self:update_cursor()
+			end
+		end,
+
 		handle_completion_scroll = function(self)
-			local prompt_len = self:get_prompt_info()
-			term.go(self.state.config.l, self.state.config.c + self.state.cursor + prompt_len)
-			term.clear_line(0)
+			self:clear_completion(self.state.last_op.completion)
 			self:draw_completion()
 			self:update_cursor()
 		end,
@@ -116,28 +183,26 @@ local new = function(state_obj)
 
 			-- For insertion in the middle or at max:
 			-- Clear from cursor to end and redraw the affected part
-			term.clear_line(0) -- clear from cursor to end
+			self:clear_line("from_cursor") -- clear from cursor to end
 			local visible_end = math.min(self.state.position + max - 1, buf_len)
 			local content = std.utf.sub(self.state.buffer, pos, visible_end)
+			term.move("left")
 			self:draw_content(content)
 			self:update_cursor()
+			return true
 		end,
 
 		handle_delete = function(self, pos)
 			local buf_len = std.utf.len(self.state.buffer)
 			local max = self.state:max_visible_width()
 
-			-- If we deleted from the end, just clear one char
+			self:clear_line("from_cursor")
+			-- If we deleted from the end, then we are done
 			if pos >= buf_len then
-				term.move("left")
-				term.clear_line(0)
 				return
 			end
 
 			-- For deletion in the middle:
-			-- Clear from deletion point to end and redraw
-			term.move("left")
-			term.clear_line(0)
 			local visible_end = math.min(self.state.position + max, buf_len)
 			local content = std.utf.sub(self.state.buffer, pos, visible_end)
 			self:draw_content(content)
@@ -161,29 +226,51 @@ local new = function(state_obj)
 				end
 			end
 			if force_redraw then
-				return self:handle_redraw(true)
+				term.hide_cursor()
+				self:handle_redraw(true)
+				term.show_cursor()
+				return true
 			end
 
 			local op = self.state.last_op
 			if op.type == state.OP.INSERT then
-				if self:handle_insert(op.position) then
-					self:handle_completion()
-				end
+				term.hide_cursor()
+				self:handle_insert(op.position)
+				self:handle_completion()
+				term.show_cursor()
 			elseif op.type == state.OP.DELETE then
+				term.hide_cursor()
 				self:handle_delete(op.position)
+				term.show_cursor()
 			elseif op.type == state.OP.CURSOR_MOVE then
 				self:update_cursor()
 			elseif op.type == state.OP.COMPLETION_PROMOTION then
-				self:handle_redraw()
+				term.hide_cursor()
+				self:handle_completion_promotion()
+				term.show_cursor()
+			elseif op.type == state.OP.COMPLETION_PROMOTION_FULL then
+				term.hide_cursor()
+				self:handle_completion_promotion(true)
+				term.show_cursor()
 			elseif op.type == state.OP.HISTORY_SCROLL then
+				term.hide_cursor()
 				self:handle_redraw()
+				self.state:end_of_line()
+				self:update_cursor()
+				term.show_cursor()
 			elseif op.type == state.OP.COMPLETION_SCROLL then
+				term.hide_cursor()
 				self:handle_completion_scroll()
+				term.show_cursor()
 			elseif op.type == state.OP.POSITION_CHANGE then
+				term.hide_cursor()
 				self:handle_redraw()
+				term.show_cursor()
 			elseif op.type == state.OP.FULL_CHANGE then
+				term.hide_cursor()
 				self:handle_redraw(true)
 				self:handle_completion()
+				term.show_cursor()
 			end
 		end,
 	}

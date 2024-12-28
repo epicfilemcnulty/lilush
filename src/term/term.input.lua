@@ -236,6 +236,17 @@ end
 --[[
     Input Object functions & methods.
 ]]
+local default_rss = {
+	input = {
+		fg = 253,
+		s = "normal",
+		blank = { w = 1 },
+	},
+	completion = {
+		fg = 247,
+	},
+}
+
 local new = function(config)
 	local win_l, win_c = term.window_size()
 	local default_config = {
@@ -245,14 +256,12 @@ local new = function(config)
 		width = win_c - 1,
 		win_w = win_c,
 		win_h = win_l,
+		tss = style.merge(default_rss, config.rss),
+		blank = " ",
 		tab_timing = tonumber(os.getenv("LILUSH_QUICK_PRESS")) or 0.093,
 	}
 	config = std.tbl.merge(default_config, config)
-
-	if config.rss then
-		config.tss = style.new(config.rss)
-		config.rss = nil
-	end
+	config.rss = nil
 
 	local s = state.new(config)
 	local v = view.new(s)
