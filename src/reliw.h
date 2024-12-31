@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#define RELIW_VERSION "0.5.7"
+#define RELIW_VERSION "0.5.7-11-g3e7a167"
 
 static const char START_RELIW[] = "local reliw = require('reliw')\n"
                                   "local reliw_srv, err = reliw.new()\n"
