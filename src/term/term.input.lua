@@ -374,7 +374,7 @@ local new = function(config)
 					event
 					and (
 						not exit_events[event]
-						or (self.state.last_op.type == state.OP.COMPLETION_PROMOTION and event == "execute")
+						or (self.state.last_op.type == state.OP.COMPLETION_PROMOTION_FULL and event == "execute")
 					)
 				then
 					self.view:display()

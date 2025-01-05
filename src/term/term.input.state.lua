@@ -7,10 +7,10 @@ local OP = {
 	DELETE = 2,
 	CURSOR_MOVE = 3,
 	POSITION_CHANGE = 4,
-	COMPLETION_PROMOTION = 5,
-	COMPLETION_PROMOTION_FULL = 6,
-	COMPLETION_SCROLL = 7,
-	HISTORY_SCROLL = 8,
+	HISTORY_SCROLL = 5,
+	COMPLETION_SCROLL = 6,
+	COMPLETION_PROMOTION = 7,
+	COMPLETION_PROMOTION_FULL = 8,
 	FULL_CHANGE = 9,
 }
 
@@ -30,7 +30,6 @@ local new = function(config)
 		last_op = {
 			type = OP.NONE,
 			position = 0, -- position in buffer where operation occurred
-			line = config.l,
 		},
 
 		prompt_len = function(self)
@@ -81,15 +80,15 @@ local new = function(config)
 				new_cursor = buf_len
 			end
 
-			self.last_op = { type = OP.CURSOR_MOVE, line = self.config.l }
+			local op = { type = OP.CURSOR_MOVE }
 			-- Adjust position if cursor would go beyond visible area
 			if new_cursor > max_width then
 				self.position = self.position + (new_cursor - max_width)
 				self.cursor = max_width
-				self.last_op.type = OP.POSITION_CHANGE
+				op.type = OP.POSITION_CHANGE
 			elseif new_cursor < 0 then
 				if self.position > 1 then
-					self.last_op.type = OP.POSITION_CHANGE
+					op.type = OP.POSITION_CHANGE
 					self.position = self.position + new_cursor
 					if self.position < 1 then
 						self.position = 1
@@ -99,6 +98,7 @@ local new = function(config)
 			else
 				self.cursor = new_cursor
 			end
+			return op
 		end,
 
 		set_position = function(self, l, c)
@@ -118,7 +118,8 @@ local new = function(config)
 			local buf_len = std.utf.len(self.buffer)
 			local insert_pos = self.position + self.cursor - 1
 
-			self.last_op = { type = OP.INSERT, position = insert_pos + 1, line = self.last_op.line }
+			local op = { type = OP.INSERT, position = insert_pos + 1 }
+			self.last_op = op
 			if self.cursor == 0 then
 				if self.position == 1 then
 					self.buffer = char .. self.buffer
@@ -128,23 +129,25 @@ local new = function(config)
 						.. std.utf.sub(self.buffer, self.position + 1)
 				end
 				self.cursor = 1
-				self.last_op.type = OP.INSERT
-				self.last_op.position = 1
 				return true
 			end
 
 			if buf_len == insert_pos then
 				self.buffer = self.buffer .. char
-				self:update_cursor(self.cursor + 1)
-				if self.last_op.type == OP.CURSOR_MOVE then
-					self.last_op.type = OP.INSERT
-					self.last_op.position = insert_pos + 1
+				local cursor_op = self:update_cursor(self.cursor + 1)
+				-- if it's a cursor move, we change the op to the insert,
+				-- but if it's a position change, we just pass it through
+				if cursor_op.type ~= OP.CURSOR_MOVE then
+					self.last_op = cursor_op
 				end
 				return true
 			end
 
 			self.buffer = std.utf.sub(self.buffer, 1, insert_pos) .. char .. std.utf.sub(self.buffer, insert_pos + 1)
-			self.cursor = self.cursor + 1
+			local cursor_op = self:update_cursor(self.cursor + 1)
+			if cursor_op.type ~= OP.CURSOR_MOVE then
+				self.last_op = cursor_op
+			end
 			return true
 		end,
 
@@ -160,6 +163,7 @@ local new = function(config)
 			end
 
 			local op = { type = OP.DELETE, position = delete_pos, line = self.last_op.line }
+			self.last_op = op
 
 			if self.cursor == 0 then
 				if self.position > 1 then
@@ -168,8 +172,7 @@ local new = function(config)
 					delete_pos = self.position
 					self.buffer = std.utf.sub(self.buffer, 1, delete_pos - 1)
 						.. std.utf.sub(self.buffer, delete_pos + 1)
-					op.type = OP.POSITION_CHANGE
-					self.last_op = op
+					self.last_op.type = OP.POSITION_CHANGE
 					return true
 				end
 				return false
@@ -177,45 +180,50 @@ local new = function(config)
 
 			if delete_pos == buf_len then
 				self.buffer = std.utf.sub(self.buffer, 1, buf_len - 1)
-				self:update_cursor(self.cursor - 1)
-				self.last_op = op
+				local cursor_op = self:update_cursor(self.cursor - 1)
+				if cursor_op.type ~= OP.CURSOR_MOVE then
+					self.last_op = cursor_op
+				end
 				return true
 			end
 
 			self.buffer = std.utf.sub(self.buffer, 1, delete_pos - 1) .. std.utf.sub(self.buffer, delete_pos + 1)
-			self:update_cursor(self.cursor - 1)
-			self.last_op = op
+			local cursor_op = self:update_cursor(self.cursor - 1)
+			if cursor_op.type ~= OP.CURSOR_MOVE then
+				self.last_op = cursor_op
+			end
 			return true
 		end,
 
 		move_left = function(self)
 			if self.cursor > 0 or self.position > 1 then
-				self:update_cursor(self.cursor - 1)
+				self.last_op = self:update_cursor(self.cursor - 1)
 				return true
 			end
 			return false
 		end,
 
 		move_right = function(self)
+			-- local buf_len = std.utf.len(self.buffer)
+			-- if self.position + self.cursor - 1 < buf_len then
+			self.last_op = self:update_cursor(self.cursor + 1)
+			return true
+			-- end
+			-- return false
+		end,
+
+		end_of_line = function(self)
 			local buf_len = std.utf.len(self.buffer)
 			if self.position + self.cursor - 1 < buf_len then
-				self:update_cursor(self.cursor + 1)
+				self.last_op = self:update_cursor(buf_len)
 				return true
 			end
 			return false
 		end,
 
-		end_of_line = function(self)
-			-- TODO: Check if we are already at the end of the line
-			local buf_len = std.utf.len(self.buffer)
-			self:update_cursor(buf_len)
-			return true
-		end,
-
 		start_of_line = function(self)
 			if self.cursor > 0 or self.position > 1 then
-				local buf_len = std.utf.len(self.buffer)
-				self:update_cursor(-buf_len)
+				self.last_op = self:update_cursor(-std.utf.len(self.buffer))
 				return true
 			end
 			return false
@@ -293,7 +301,8 @@ local new = function(config)
 			local promoted = self.completion:get(true)
 			local metadata = self.completion.__meta[self.completion.__chosen]
 
-			self.last_op.type = OP.COMPLETION_PROMOTION
+			local op = { type = OP.COMPLETION_PROMOTION, line = self.last_op.line, completion = self.completion:get() }
+			-- TODO: we should replace spaces with ␥ for file completions here...
 			if metadata.replace_prompt then
 				if metadata.trim_promotion then
 					promoted = promoted:gsub("^%s+", "")
@@ -301,11 +310,15 @@ local new = function(config)
 					promoted = promoted:gsub("(%s+)", " ")
 				end
 				self.buffer = metadata.replace_prompt .. promoted
-				self.last_op.type = OP.COMPLETION_PROMOTION_FULL
+				op.type = OP.COMPLETION_PROMOTION_FULL
 			else
 				self.buffer = self.buffer .. promoted
 			end
 			self.completion:flush()
+			self.last_op = op
+			if metadata.exec_on_prom then
+				self:add_to_history()
+			end
 			return metadata.exec_on_prom and "execute" or true
 		end,
 
@@ -393,7 +406,6 @@ local new = function(config)
 					end
 					self.last_op = {
 						type = OP.FULL_CHANGE,
-						line = self.config.l - 1,
 					}
 					return true
 				end

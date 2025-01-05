@@ -24,7 +24,7 @@ local widgets_default = {
 	shell = {
 		fg = 67,
 		borders = { fg = 69 },
-		option = { fg = 67 },
+		option = { fg = 67, marked = { fg = 96 } },
 		title = { fg = 137 },
 	},
 }
