@@ -74,7 +74,7 @@ local handle = function(method, query, args, headers, body, ctx)
 	local user_tmpl = api.get_userdata(store, host, "template.lua")
 	local index = api.entry_index(store, host, query)
 	if not index then
-		local hit_count = metrics.update(store, host, method, query, 404)
+		local hit_count = metrics.update(store, "unknown", method, host .. query, 404)
 		return tmpls.error_page(404, hit_count, user_tmpl), 404, response_headers
 	end
 	local metadata = api.entry_metadata(store, host, index)

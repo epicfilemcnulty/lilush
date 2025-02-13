@@ -63,6 +63,17 @@ suprisingly called _Lilush Shell_, which
 
 # Installation
 
+## With docker
+
+Get the official Lilush image and run it as a docker container:
+
+```
+docker pull sjc.vultrcr.com/lilush/lilush:latest
+docker run -it --rm sjc.vultrcr.com/lilush/lilush:latest
+```
+
+Or copy the binary from the container to the host system.
+
 ## Building from source
 
 The easiest way is just to build with docker and then copy
