@@ -246,9 +246,9 @@ local set_sane_mode = function()
 end
 
 local set_raw_mode = function()
-	if not core.raw_mode() then
-		core.set_raw_mode()
-	end
+	--if not core.raw_mode() then
+	core.set_raw_mode()
+	--end
 end
 
 local switch_screen = function(scr)
@@ -272,8 +272,10 @@ local alt_screen = function()
 		c = c,
 		done = function(self)
 			switch_screen("main")
-			show_cursor()
 			go(self.l, self.c)
+			disable_kkbp()
+			show_cursor()
+			set_sane_mode()
 			-- In a perfect symmetric world
 			-- we would also disable kkbp here
 			-- and switch back to sane mode.
