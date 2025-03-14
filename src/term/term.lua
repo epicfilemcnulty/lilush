@@ -271,17 +271,11 @@ local alt_screen = function()
 		l = l,
 		c = c,
 		done = function(self)
+			disable_kkbp()
 			switch_screen("main")
 			go(self.l, self.c)
-			disable_kkbp()
 			show_cursor()
 			set_sane_mode()
-			-- In a perfect symmetric world
-			-- we would also disable kkbp here
-			-- and switch back to sane mode.
-			-- But in our harsh terminal realities
-			-- we actually prefer to stay in the raw mode
-			-- most of the time...
 		end,
 	}
 end
