@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#define RELIW_VERSION "0.5.7-11-g3e7a167"
+#define RELIW_VERSION "0.5.7-16-g16896d9"
 
 static const char START_RELIW[] = "local reliw = require('reliw')\n"
                                   "local reliw_srv, err = reliw.new()\n"
@@ -54,7 +54,6 @@ typedef struct mod_lua {
 // Redis
 #include "../build/redis/mod_lua_redis.h"
 // Reliw
-#include "../build/reliw/mod_lua_reliw.acme.h"
 #include "../build/reliw/mod_lua_reliw.api.h"
 #include "../build/reliw/mod_lua_reliw.auth.h"
 #include "../build/reliw/mod_lua_reliw.h"
@@ -100,7 +99,6 @@ const mod_lua__t lua_preload[] = {
     {"reliw",           mod_lua_reliw,           &mod_lua_reliw_SIZE          },
     {"reliw.api",       mod_lua_reliw_api,       &mod_lua_reliw_api_SIZE      },
     {"reliw.auth",      mod_lua_reliw_auth,      &mod_lua_reliw_auth_SIZE     },
-    {"reliw.acme",      mod_lua_reliw_acme,      &mod_lua_reliw_acme_SIZE     },
     {"reliw.handle",    mod_lua_reliw_handle,    &mod_lua_reliw_handle_SIZE   },
     {"reliw.metrics",   mod_lua_reliw_metrics,   &mod_lua_reliw_metrics_SIZE  },
     {"reliw.store",     mod_lua_reliw_store,     &mod_lua_reliw_store_SIZE    },

@@ -246,9 +246,9 @@ local set_sane_mode = function()
 end
 
 local set_raw_mode = function()
-	--if not core.raw_mode() then
-	core.set_raw_mode()
-	--end
+	if not core.raw_mode() then
+		core.set_raw_mode()
+	end
 end
 
 local switch_screen = function(scr)

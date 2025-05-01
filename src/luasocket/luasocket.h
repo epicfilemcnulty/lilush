@@ -9,7 +9,7 @@
 /*-------------------------------------------------------------------------* \
 * Current socket library version
 \*-------------------------------------------------------------------------*/
-#define LUASOCKET_VERSION "LuaSocketWolfSSL 0.5.7-11-g3e7a167"
+#define LUASOCKET_VERSION "LuaSocketWolfSSL 0.5.7-16-g16896d9"
 #define LUASOCKET_COPYRIGHT "Copyright (C) 1999-2013 Diego Nehab"
 
 /*-------------------------------------------------------------------------*\
