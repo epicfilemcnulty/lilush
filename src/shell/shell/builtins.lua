@@ -1495,7 +1495,7 @@ local builtins = {
 	["wgcli"] = wgcli,
 }
 
-local dont_fork = { z = true, cd = true, setenv = true, export = true, unsetenv = true, ktl = true }
+local dont_fork = { zx = true, z = true, cd = true, setenv = true, export = true, unsetenv = true, ktl = true }
 
 local get = function(cmd)
 	for k, f in pairs(builtins) do

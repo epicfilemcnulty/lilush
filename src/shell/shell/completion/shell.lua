@@ -73,7 +73,7 @@ local search = function(self, input, history)
 			self.__candidates = utils.zx_complete(args)
 			setmetatable(self.__meta, {
 				__index = function(table, key)
-					return { source = "snippet", replace_prompt = "zx", exec_on_prom = true }
+					return { source = "snippet", replace_prompt = cmd, exec_on_prom = true }
 				end,
 			})
 			return self:available()
