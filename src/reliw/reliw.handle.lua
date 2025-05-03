@@ -19,9 +19,9 @@ local handle = function(method, query, args, headers, body, ctx)
 		host = host:match("^%[(.+)%]")
 	end
 
-	local blocked, rule = api.check_waf(store, host, query, headers)
+	local blocked, rule, ip_header = api.check_waf(store, host, query, headers)
 	if blocked then
-		local ip = headers["x-real-ip"]
+		local ip = headers[ip_header]
 		api.add_waffer(store, ip)
 		ctx.logger:log({ msg = "blocked by WAF", waf_rule = rule, query = query, vhost = host, ip = ip }, 30)
 		return "Fuck Off", 301, {

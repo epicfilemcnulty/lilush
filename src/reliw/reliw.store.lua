@@ -167,6 +167,7 @@ local check_waf = function(self, host, query, headers)
 	if not host or not query then
 		return nil
 	end
+
 	local global = self.red:cmd("HGET", self.prefix .. ":WAF", "__")
 	local per_host = self.red:cmd("HGET", self.prefix .. ":WAF", host)
 	if not global and not per_host then
@@ -178,7 +179,7 @@ local check_waf = function(self, host, query, headers)
 		if global_rules.query then
 			for _, rule in ipairs(global_rules.query) do
 				if query:match(rule) then
-					return true, rule
+					return true, rule, global_rules.ip_header or "x-forwarded-for"
 				end
 			end
 		end
@@ -186,7 +187,7 @@ local check_waf = function(self, host, query, headers)
 			for header, rules in pairs(global_rules.headers) do
 				for _, rule in ipairs(rules) do
 					if headers[header] and headers[header]:match(rule) then
-						return true, rule
+						return true, rule, global_rules.ip_header or "x-forwarded-for"
 					end
 				end
 			end
@@ -196,7 +197,7 @@ local check_waf = function(self, host, query, headers)
 		if per_host_rules.query then
 			for _, rule in ipairs(per_host_rules.query) do
 				if query:match(rule) then
-					return true, rule
+					return true, rule, per_host_rules.ip_header or "x-forwarded-for"
 				end
 			end
 		end
@@ -204,7 +205,7 @@ local check_waf = function(self, host, query, headers)
 			for header, rules in pairs(per_host_rules.headers) do
 				for _, rule in ipairs(rules) do
 					if headers[header] and headers[header]:match(rule) then
-						return true, rule
+						return true, rule, per_host_rules.ip_header or "x-forwarded-for"
 					end
 				end
 			end
