@@ -412,8 +412,34 @@ local render = function(raw, rss, conf)
 	return render_text(raw, rss, conf)
 end
 
+local all_braille =
+	"⠁⠂⠃⠄⠅⠆⠇⠈⠉⠊⠋⠌⠍⠎⠏⠐⠑⠒⠓⠔⠕⠖⠗⠘⠙⠚⠛⠜⠝⠞⠟⠠⠡⠢⠣⠤⠥⠦⠧⠨⠩⠪⠫⠬⠭⠮⠯⠰⠱⠲⠳⠴⠵⠶⠷⠸⠹⠺⠻⠼⠽⠾⠿⡀⡁⡂⡃⡄⡅⡆⡇⡈⡉⡊⡋⡌⡍⡎⡏⡐⡑⡒⡓⡔⡕⡖⡗⡘⡙⡚⡛⡜⡝⡞⡟⡠⡡⡢⡣⡤⡥⡦⡧⡨⡩⡪⡫⡬⡭⡮⡯⡰⡱⡲⡳⡴⡵⡶⡷⡸⡹⡺⡻⡼⡽⡾⡿⢀⢁⢂⢃⢄⢅⢆⢇⢈⢉⢊⢋⢌⢍⢎⢏⢐⢑⢒⢓⢔⢕⢖⢗⢘⢙⢚⢛⢜⢝⢞⢟⢠⢡⢢⢣⢤⢥⢦⢧⢨⢩⢪⢫⢬⢭⢮⢯⢰⢱⢲⢳⢴⢵⢶⢷⢸⢹⢺⢻⢼⢽⢾⢿⣀⣁⣂⣃⣄⣅⣆⣇⣈⣉⣊⣋⣌⣍⣎⣏⣐⣑⣒⣓⣔⣕⣖⣗⣘⣙⣚⣛⣜⣝⣞⣟⣠⣡⣢⣣⣤⣥⣦⣧⣨⣩⣪⣫⣬⣭⣮⣯⣰⣱⣲⣳⣴⣵⣶⣷⣸⣹⣺⣻⣼⣽⣾⣿"
+
+local mask_with_braille = function(text, hardness)
+	hardness = tonumber(hardness) or 73
+	math.randomseed(os.time())
+	local out = buffer.new()
+	local b1 = math.random(50, 255)
+	local b2 = math.random(47, 255)
+
+	for c in text:gmatch(std.utf.patterns.glob) do
+		local pos = math.random(1, 255)
+		local char = std.utf.sub(all_braille, pos, pos)
+		if math.random(1, 100) > hardness then
+			char = c
+			if pos > 99 then
+				char = term.style("bold") .. c .. term.style("reset")
+			end
+		end
+		out:put(term.color({ b1, b2, pos }), char)
+	end
+	out:put(term.color("reset"))
+	return out:get()
+end
+
 return {
 	render_text = render_text,
 	render_djot = render_djot,
+	mask_with_braille = mask_with_braille,
 	render = render,
 }
