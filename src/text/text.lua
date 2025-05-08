@@ -415,12 +415,12 @@ end
 local all_braille =
 	"⠁⠂⠃⠄⠅⠆⠇⠈⠉⠊⠋⠌⠍⠎⠏⠐⠑⠒⠓⠔⠕⠖⠗⠘⠙⠚⠛⠜⠝⠞⠟⠠⠡⠢⠣⠤⠥⠦⠧⠨⠩⠪⠫⠬⠭⠮⠯⠰⠱⠲⠳⠴⠵⠶⠷⠸⠹⠺⠻⠼⠽⠾⠿⡀⡁⡂⡃⡄⡅⡆⡇⡈⡉⡊⡋⡌⡍⡎⡏⡐⡑⡒⡓⡔⡕⡖⡗⡘⡙⡚⡛⡜⡝⡞⡟⡠⡡⡢⡣⡤⡥⡦⡧⡨⡩⡪⡫⡬⡭⡮⡯⡰⡱⡲⡳⡴⡵⡶⡷⡸⡹⡺⡻⡼⡽⡾⡿⢀⢁⢂⢃⢄⢅⢆⢇⢈⢉⢊⢋⢌⢍⢎⢏⢐⢑⢒⢓⢔⢕⢖⢗⢘⢙⢚⢛⢜⢝⢞⢟⢠⢡⢢⢣⢤⢥⢦⢧⢨⢩⢪⢫⢬⢭⢮⢯⢰⢱⢲⢳⢴⢵⢶⢷⢸⢹⢺⢻⢼⢽⢾⢿⣀⣁⣂⣃⣄⣅⣆⣇⣈⣉⣊⣋⣌⣍⣎⣏⣐⣑⣒⣓⣔⣕⣖⣗⣘⣙⣚⣛⣜⣝⣞⣟⣠⣡⣢⣣⣤⣥⣦⣧⣨⣩⣪⣫⣬⣭⣮⣯⣰⣱⣲⣳⣴⣵⣶⣷⣸⣹⣺⣻⣼⣽⣾⣿"
 
-local mask_with_braille = function(text, hardness)
+local mask_with_braille = function(text, hardness, r, g)
 	hardness = tonumber(hardness) or 73
 	math.randomseed(os.time())
 	local out = buffer.new()
-	local b1 = math.random(50, 255)
-	local b2 = math.random(47, 255)
+	local r = r or math.random(50, 255)
+	local g = g or math.random(47, 255)
 
 	for c in text:gmatch(std.utf.patterns.glob) do
 		local pos = math.random(1, 255)
@@ -431,7 +431,7 @@ local mask_with_braille = function(text, hardness)
 				char = term.style("bold") .. c .. term.style("reset")
 			end
 		end
-		out:put(term.color({ b1, b2, pos }), char)
+		out:put(term.color({ r, g, pos }), char)
 	end
 	out:put(term.color("reset"))
 	return out:get()

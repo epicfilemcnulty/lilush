@@ -5,7 +5,7 @@ local url = require("socket.url")
 local http = require("socket.http")
 local ltn12 = require("ltn12")
 local socket = require("socket")
-local json = require("cjson")
+local json = require("cjson.safe")
 
 local debug_mode = os.getenv("LILUSH_DEBUG")
 
@@ -134,6 +134,181 @@ local request = function(uri, options, timeout)
 	return nil, status
 end
 
+local sse_client = function(uri, options, callbacks)
+	local client = {}
+	local buffer = ""
+	local connected = false
+	local sock = nil
+
+	-- Parse SSE event from buffer
+	local function parse_event(data)
+		local event = {
+			event = "message",
+			data = "",
+		}
+
+		for line in data:gmatch("[^\r\n]+") do
+			if line:match("^event: ") then
+				event.event = line:sub(8)
+			elseif line:match("^data: ") then
+				event.data = line:sub(7)
+			elseif line:match("^id: ") then
+				event.id = line:sub(5)
+			elseif line:match("^retry: ") then
+				event.retry = tonumber(line:sub(8))
+			end
+		end
+
+		-- Parse JSON data if present
+		if event.data and event.data ~= "" then
+			local parsed_data = json.decode(event.data)
+			if parsed_data then
+				event.data = parsed_data
+			end
+		end
+
+		return event
+	end
+	-- Process the buffer for complete events
+	local function process_buffer()
+		while true do
+			local event_end = buffer:find("\n\n")
+			if not event_end then
+				break
+			end
+
+			local event_data = buffer:sub(1, event_end - 1)
+			buffer = buffer:sub(event_end + 2)
+
+			local event = parse_event(event_data)
+
+			-- Call the appropriate callback
+			if callbacks[event.event] then
+				callbacks[event.event](event.data)
+			elseif callbacks.message then
+				callbacks.message(event)
+			end
+
+			-- If this is the "done" event, close the connection
+			if event.event == "done" then
+				client:close()
+				if callbacks.close then
+					callbacks.close()
+				end
+				break
+			end
+		end
+	end
+
+	-- Connect to the SSE stream
+	function client:connect()
+		if connected then
+			return false, "Already connected"
+		end
+
+		-- Prepare request headers
+		local headers = {
+			["Content-Type"] = "application/json",
+			["Accept"] = "text/event-stream",
+			["Cache-Control"] = "no-cache",
+			["Connection"] = "keep-alive",
+		}
+
+		-- Add any custom headers from options
+		if options.headers then
+			for k, v in pairs(options.headers) do
+				headers[k] = v
+			end
+		end
+
+		local body = options.body or ""
+
+		sock = socket.tcp()
+
+		local parsed_url = url.parse(uri)
+		local ok, err = sock:connect(parsed_url.host, parsed_url.port)
+		if not ok and err ~= "timeout" then
+			return false, "Connection failed: " .. err
+		end
+		sock:settimeout(0) -- Non-blocking sock
+
+		local method = options.method or "GET"
+		-- Construct HTTP request
+		local request = method .. " " .. parsed_url.path .. " HTTP/1.1\r\n"
+		request = request .. "Host: " .. parsed_url.host .. ":" .. parsed_url.port .. "\r\n"
+		for k, v in pairs(headers) do
+			request = request .. k .. ": " .. v .. "\r\n"
+		end
+		request = request .. "Content-Length: " .. #body .. "\r\n"
+		request = request .. "\r\n"
+		request = request .. body
+
+		-- Send the request
+		local ok, err = sock:send(request)
+		if not ok then
+			sock:close()
+			return false, "Failed to send request: " .. err
+		end
+
+		connected = true
+
+		-- Trigger connect callback
+		if callbacks.connect then
+			callbacks.connect()
+		end
+
+		return true
+	end
+	-- Update function to process incoming data
+	function client:update()
+		if not connected or not sock then
+			return false
+		end
+
+		-- Try to receive data
+		local chunk, status, partial = sock:receive("*a")
+		local data = chunk or partial
+
+		if data and #data > 0 then
+			buffer = buffer .. data
+			process_buffer()
+		end
+
+		-- Check if connection is closed
+		if status == "closed" then
+			connected = false
+			sock:close()
+			sock = nil
+
+			if callbacks.close then
+				callbacks.close()
+			end
+
+			return false
+		end
+
+		return true
+	end
+	-- Close the connection
+	function client:close()
+		if connected and sock then
+			sock:close()
+			sock = nil
+			connected = false
+			if callbacks.close then
+				callbacks.close()
+			end
+		end
+	end
+
+	-- Check if still connected
+	function client:is_connected()
+		return connected
+	end
+
+	return client
+end
+
 -- HTTP Server related stuff below
 local parse_args = function(body)
 	local args = {}
@@ -174,6 +349,7 @@ return {
 	html_to_djot = html_to_djot,
 	make_form_data = make_form_data,
 	request = request,
+	sse_client = sse_client,
 	parse_args = parse_args,
 	parse_form_data = parse_form_data,
 }
