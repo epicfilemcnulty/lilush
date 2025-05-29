@@ -248,6 +248,13 @@ local pipe_table = function(headers, tbl)
 	return lines
 end
 
+local empty = function(tbl)
+	if type(tbl) == "table" and next(tbl) == nil then
+		return true
+	end
+	return false
+end
+
 local tbl = {
 	render = render,
 	print = print_tbl,
@@ -261,6 +268,7 @@ local tbl = {
 	longest = longest,
 	contains = contains,
 	shuffle = shuffle,
+	empty = empty,
 	include_keys = include_keys,
 	exclude_keys = exclude_keys,
 	sort_by_str_len = sort_by_str_len,

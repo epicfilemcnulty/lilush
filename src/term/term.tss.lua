@@ -145,10 +145,10 @@ local apply = function(self, elements, content, position)
 	if obj.after then
 		text = text .. obj.after
 	end
-	if props.fg == props.bg and props.bg == props.s and props.s == {} then
+	if props.fg == props.bg and props.bg == "reset" and std.tbl.empty(props.s) then
 		return term.style("reset") .. text
 	end
-	if props.s == {} then
+	if std.tbl.empty(props.s) then
 		props.s = { "reset" }
 	end
 	return term.style(unpack(props.s)) .. term.color(props.fg, props.bg) .. text .. term.style("reset")

@@ -1,7 +1,7 @@
 FROM alpine:3.21 AS builder
 LABEL maintainer="vlad@deviant.guru"
 
-ARG WOLFSSL_TAG=v5.7.4-stable
+ARG WOLFSSL_TAG=v5.8.0-stable
 ARG LUAJIT_TAG=v2.1
 ARG ARCH=x86_64
 
