@@ -302,7 +302,6 @@ local new = function(config)
 			local metadata = self.completion.__meta[self.completion.__chosen]
 
 			local op = { type = OP.COMPLETION_PROMOTION, line = self.last_op.line, completion = self.completion:get() }
-			-- TODO: we should replace spaces with ␥ for file completions here...
 			if metadata.replace_prompt then
 				if metadata.trim_promotion then
 					promoted = promoted:gsub("^%s+", "")

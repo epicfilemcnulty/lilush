@@ -26,7 +26,10 @@ local filesystem = function(self, arg, filter, perms)
 			if f:match("^" .. file) and stat.perms:match(perms) then
 				local unesc_file = file:gsub("%%", "")
 				if stat.mode == "d" then
-					table.insert(dirs, std.utf.sub(f, std.utf.len(unesc_file) + 1) .. "/")
+					local completion = std.utf.sub(f, std.utf.len(unesc_file) + 1)
+					-- Replace spaces with Unicode replacement character for completion
+					completion = completion:gsub(" ", "␣") .. "/"
+					table.insert(dirs, completion)
 				elseif stat.mode == "l" then
 					local trailing = " "
 					if stat.target then
@@ -39,9 +42,15 @@ local filesystem = function(self, arg, filter, perms)
 							trailing = "/"
 						end
 					end
-					table.insert(links, std.utf.sub(f, std.utf.len(unesc_file) + 1) .. trailing)
+					local completion = std.utf.sub(f, std.utf.len(unesc_file) + 1)
+					-- Replace spaces with Unicode replacement character for completion
+					completion = completion:gsub(" ", "␣") .. trailing
+					table.insert(links, completion)
 				else
-					table.insert(files, std.utf.sub(f, std.utf.len(unesc_file) + 1) .. " ")
+					local completion = std.utf.sub(f, std.utf.len(unesc_file) + 1)
+					-- Replace spaces with Unicode replacement character for completion
+					completion = completion:gsub(" ", "␣") .. " "
+					table.insert(files, completion)
 				end
 			end
 		end
