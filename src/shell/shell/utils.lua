@@ -113,7 +113,10 @@ local parse_cmdline = function(input, with_inlines)
 			end
 			local before = input:sub(start, v.p[1] - 1)
 			for w in before:gmatch("([^ ]+)") do
-				table.insert(args, replace_envs_and_home(w))
+				w = replace_envs_and_home(w)
+				-- Restore spaces from Unicode replacement character
+				w = w:gsub("␣", " ")
+				table.insert(args, w)
 			end
 			local width = 1
 			if v.t == "curlies" then
@@ -123,15 +126,23 @@ local parse_cmdline = function(input, with_inlines)
 			if v.t ~= "singles" then
 				complex_arg = replace_envs_and_home(complex_arg)
 			end
+			-- Restore spaces from Unicode replacement character
+			complex_arg = complex_arg:gsub("␣", " ")
 			table.insert(args, complex_arg)
 		end
 		local after = input:sub(sorted[#sorted].p[2] + 1)
 		for w in after:gmatch("([^ ]+)") do
-			table.insert(args, replace_envs_and_home(w))
+			w = replace_envs_and_home(w)
+			-- Restore spaces from Unicode replacement character
+			w = w:gsub("␣", " ")
+			table.insert(args, w)
 		end
 	else
 		for w in input:gmatch("([^ ]+)") do
-			table.insert(args, replace_envs_and_home(w))
+			w = replace_envs_and_home(w)
+			-- Restore spaces from Unicode replacement character
+			w = w:gsub("␣", " ")
+			table.insert(args, w)
 		end
 	end
 	local cmd = table.remove(args, 1)
