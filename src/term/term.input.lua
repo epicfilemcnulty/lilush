@@ -3,7 +3,6 @@
 local std = require("std")
 local term = require("term")
 local style = require("term.tss")
-local state = require("term.input.state")
 local view = require("term.input.view")
 local buffer = require("string.buffer")
 local socket = require("socket")
@@ -233,6 +232,20 @@ local simple_get = function()
 	return nil
 end
 
+-- Enum for operation types (previously in separate state file)
+local OP = {
+	NONE = 0,
+	INSERT = 1,
+	DELETE = 2,
+	CURSOR_MOVE = 3,
+	POSITION_CHANGE = 4,
+	HISTORY_SCROLL = 5,
+	COMPLETION_SCROLL = 6,
+	COMPLETION_PROMOTION = 7,
+	COMPLETION_PROMOTION_FULL = 8,
+	FULL_CHANGE = 9,
+}
+
 --[[
     Input Object functions & methods.
 ]]
@@ -263,18 +276,415 @@ local new = function(config)
 	config = std.tbl.merge(default_config, config)
 	config.rss = nil
 
-	local s = state.new(config)
-	local v = view.new(s)
-
 	local input = {
-		state = s,
-		view = v,
+		-- State fields (previously in separate state object)
+		buffer = "",
+		cursor = 0,
+		position = 1,
+		completion = config.completion,
+		history = config.history,
+		prompt = config.prompt,
+		window = { w = config.win_w, h = config.win_h },
+		config = config,
+		tab_long = false,
+		-- Last operation tracking
+		last_op = {
+			type = OP.NONE,
+			position = 0,
+		},
+		-- Tab state
 		tab_state = {
 			start = nil,
 			last_release = nil,
 			long = false,
 			double_tap = false,
 		},
+
+		-- State methods (previously in separate state object)
+		prompt_len = function(self)
+			local len = 0
+			local prompt = ""
+			if self.prompt then
+				prompt = self.prompt:get() or ""
+				len = std.utf.len(prompt)
+			end
+			return len, prompt
+		end,
+
+		max_visible_width = function(self)
+			local prompt_len = self:prompt_len()
+			local available_width = self.window.w - self.config.c - prompt_len
+			local max = math.min(self.config.width or self.window.w, available_width)
+			return max
+		end,
+
+		update_window_size = function(self, new_h, new_w)
+			self.window.h = new_h
+			self.window.w = new_w
+
+			-- Adjust visible width if needed
+			if self.config.width then
+				self.config.width = math.min(new_w - 1, self.config.width)
+			end
+
+			-- Ensure cursor position is valid
+			local max_visible = self:max_visible_width()
+			if self.cursor > max_visible then
+				self.cursor = max_visible
+				local content_length = std.utf.len(self.buffer)
+				if content_length > max_visible then
+					self.position = math.max(1, content_length - max_visible + 1)
+				end
+			end
+		end,
+
+		update_cursor = function(self, new_cursor)
+			if new_cursor == self.cursor then
+				return false
+			end
+			local max_width = self:max_visible_width()
+			local buf_len = std.utf.len(self.buffer)
+
+			if new_cursor > buf_len then
+				new_cursor = buf_len
+			end
+
+			local op = { type = OP.CURSOR_MOVE }
+			-- Adjust position if cursor would go beyond visible area
+			if new_cursor > max_width then
+				self.position = self.position + (new_cursor - max_width)
+				self.cursor = max_width
+				op.type = OP.POSITION_CHANGE
+			elseif new_cursor < 0 then
+				if self.position > 1 then
+					op.type = OP.POSITION_CHANGE
+					self.position = self.position + new_cursor
+					if self.position < 1 then
+						self.position = 1
+					end
+				end
+				self.cursor = 0
+			else
+				self.cursor = new_cursor
+			end
+			return op
+		end,
+
+		set_position = function(self, l, c)
+			if l then
+				self.config.l = l
+			end
+			if c then
+				self.config.c = c
+			end
+		end,
+
+		get_content = function(self)
+			return self.buffer
+		end,
+
+		insert = function(self, char)
+			local buf_len = std.utf.len(self.buffer)
+			local insert_pos = self.position + self.cursor - 1
+
+			local op = { type = OP.INSERT, position = insert_pos + 1 }
+			self.last_op = op
+			if self.cursor == 0 then
+				if self.position == 1 then
+					self.buffer = char .. self.buffer
+				else
+					self.buffer = std.utf.sub(self.buffer, 1, self.position)
+						.. char
+						.. std.utf.sub(self.buffer, self.position + 1)
+				end
+				self.cursor = 1
+				return true
+			end
+
+			if buf_len == insert_pos then
+				self.buffer = self.buffer .. char
+				local cursor_op = self:update_cursor(self.cursor + 1)
+				-- if it's a cursor move, we change the op to the insert,
+				-- but if it's a position change, we just pass it through
+				if cursor_op.type ~= OP.CURSOR_MOVE then
+					self.last_op = cursor_op
+				end
+				return true
+			end
+
+			self.buffer = std.utf.sub(self.buffer, 1, insert_pos) .. char .. std.utf.sub(self.buffer, insert_pos + 1)
+			local cursor_op = self:update_cursor(self.cursor + 1)
+			if cursor_op.type ~= OP.CURSOR_MOVE then
+				self.last_op = cursor_op
+			end
+			return true
+		end,
+
+		backspace = function(self)
+			local buf_len = std.utf.len(self.buffer)
+			if buf_len == 0 then
+				return false
+			end
+
+			local delete_pos = self.position + self.cursor - 1
+			if self.cursor == 0 and self.position == 1 then
+				return false
+			end
+
+			local op = { type = OP.DELETE, position = delete_pos, line = self.last_op.line }
+			self.last_op = op
+
+			if self.cursor == 0 then
+				if self.position > 1 then
+					-- Move position back and delete from there
+					self.position = self.position - 1
+					delete_pos = self.position
+					self.buffer = std.utf.sub(self.buffer, 1, delete_pos - 1)
+						.. std.utf.sub(self.buffer, delete_pos + 1)
+					self.last_op.type = OP.POSITION_CHANGE
+					return true
+				end
+				return false
+			end
+
+			if delete_pos == buf_len then
+				self.buffer = std.utf.sub(self.buffer, 1, buf_len - 1)
+				local cursor_op = self:update_cursor(self.cursor - 1)
+				if cursor_op.type ~= OP.CURSOR_MOVE then
+					self.last_op = cursor_op
+				end
+				return true
+			end
+
+			self.buffer = std.utf.sub(self.buffer, 1, delete_pos - 1) .. std.utf.sub(self.buffer, delete_pos + 1)
+			local cursor_op = self:update_cursor(self.cursor - 1)
+			if cursor_op.type ~= OP.CURSOR_MOVE then
+				self.last_op = cursor_op
+			end
+			return true
+		end,
+
+		move_left = function(self)
+			if self.cursor > 0 or self.position > 1 then
+				self.last_op = self:update_cursor(self.cursor - 1)
+				return true
+			end
+			return false
+		end,
+
+		move_right = function(self)
+			self.last_op = self:update_cursor(self.cursor + 1)
+			return true
+		end,
+
+		end_of_line = function(self)
+			local buf_len = std.utf.len(self.buffer)
+			if self.position + self.cursor - 1 < buf_len then
+				self.last_op = self:update_cursor(buf_len)
+				return true
+			end
+			return false
+		end,
+
+		start_of_line = function(self)
+			if self.cursor > 0 or self.position > 1 then
+				self.last_op = self:update_cursor(-std.utf.len(self.buffer))
+				return true
+			end
+			return false
+		end,
+
+		history_up = function(self)
+			if not self.history then
+				return false
+			end
+
+			if self.history:up() then
+				local op = { type = OP.HISTORY_SCROLL, line = self.last_op.line, len = std.utf.len(self.buffer) }
+				if #self.buffer > 0 and self.history.position == #self.history.entries then
+					self.history:stash(self.buffer)
+				end
+				self.buffer = self.history:get()
+				self.cursor = 0
+				self.position = 1
+				self.last_op = op
+				return true
+			end
+			return false
+		end,
+
+		history_down = function(self)
+			if not self.history then
+				return false
+			end
+
+			if self.history:down() then
+				local op = { type = OP.HISTORY_SCROLL, line = self.last_op.line, len = std.utf.len(self.buffer) }
+				self.buffer = self.history:get()
+				self.cursor = 0
+				self.position = 1
+				self.last_op = op
+				return true
+			end
+			return self:scroll_completion()
+		end,
+
+		add_to_history = function(self)
+			if self.history and #self.buffer > 0 then
+				self.history:add(self.buffer)
+			end
+		end,
+
+		scroll_completion = function(self, direction)
+			if not self.completion or not self.completion:available() then
+				return false
+			end
+
+			local op = { type = OP.COMPLETION_SCROLL, line = self.last_op.line, completion = self.completion:get() }
+			direction = direction or "down"
+			local total = #self.completion.__candidates
+			if direction == "down" then
+				self.completion.__chosen = self.completion.__chosen + 1
+				if self.completion.__chosen > total then
+					self.completion.__chosen = 1
+				end
+			else
+				self.completion.__chosen = self.completion.__chosen - 1
+				if self.completion.__chosen < 1 then
+					self.completion.__chosen = total
+				end
+			end
+			self.last_op = op
+			return true
+		end,
+
+		promote_completion = function(self)
+			if not self.completion or not self.completion:available() then
+				return false
+			end
+
+			local promoted = self.completion:get(true)
+			local metadata = self.completion.__meta[self.completion.__chosen]
+
+			local op = { type = OP.COMPLETION_PROMOTION, line = self.last_op.line, completion = self.completion:get() }
+			if metadata.replace_prompt then
+				if metadata.trim_promotion then
+					promoted = promoted:gsub("^%s+", "")
+				elseif metadata.reduce_spaces then
+					promoted = promoted:gsub("(%s+)", " ")
+				end
+				self.buffer = metadata.replace_prompt .. promoted
+				op.type = OP.COMPLETION_PROMOTION_FULL
+			else
+				self.buffer = self.buffer .. promoted
+			end
+			self.completion:flush()
+			self.last_op = op
+			if metadata.exec_on_prom then
+				self:add_to_history()
+			end
+			return metadata.exec_on_prom and "execute" or true
+		end,
+
+		search_completion = function(self)
+			if not self.completion then
+				return false
+			end
+			if self.buffer:match("%s$") then
+				self.completion:flush()
+				return false
+			end
+			return self.completion:search(self.buffer, self.history)
+		end,
+
+		external_editor = function(self)
+			local tmp_file = "/tmp/lilush_edit_" .. std.nanoid()
+			std.fs.write_file(tmp_file, self.buffer)
+			local editor = os.getenv("EDITOR") or "vi"
+			local pid = std.ps.launch(editor, nil, nil, nil, tmp_file)
+			local _, status = std.ps.wait(pid)
+			local result = std.fs.read_file(tmp_file)
+			if result then
+				std.fs.remove(tmp_file)
+				self.buffer = result
+			else
+				result = "can't get editor output"
+			end
+			self.last_op.type = OP.FULL_CHANGE
+			return self:end_of_line()
+		end,
+
+		handle_ctl = function(self, shortcut)
+			self.last_op.last_line = self.config.l
+
+			if shortcut == "TAB" then
+				if self.completion and self.completion:available() then
+					if #self.completion.__candidates == 1 then
+						return self:promote_completion()
+					end
+					if self.tab_long then
+						return self:scroll_completion()
+					end
+					return self:promote_completion()
+				end
+				return nil
+			end
+
+			if shortcut == "BACKSPACE" then
+				return self:backspace()
+			end
+
+			if shortcut == "LEFT" then
+				return self:move_left()
+			elseif shortcut == "RIGHT" then
+				return self:move_right()
+			elseif shortcut == "UP" then
+				return self:history_up()
+			elseif shortcut == "DOWN" then
+				return self:history_down()
+			end
+
+			if shortcut == "HOME" or shortcut == "CTRL+a" then
+				return self:start_of_line()
+			end
+			if shortcut == "END" or shortcut == "CTRL+e" then
+				return self:end_of_line()
+			end
+
+			if shortcut == "ALT+ENTER" then
+				return self:external_editor()
+			end
+
+			if shortcut == "ENTER" then
+				if self.completion and self.completion:available() then
+					local metadata = self.completion.__meta[self.completion.__chosen]
+					if metadata and metadata.exec_on_prom then
+						return self:promote_completion()
+					end
+				end
+				-- If buffer is empty, increment line and redraw
+				if self.buffer == "" then
+					self.config.l = self.config.l + 1
+					if self.config.l > self.window.h then
+						self.config.l = self.window.h
+					end
+					self.last_op = {
+						type = OP.FULL_CHANGE,
+					}
+					return true
+				end
+				self:add_to_history()
+				return "execute"
+			end
+
+			if shortcut == "ESC" then
+				if self.buffer == "" then
+					return "exit"
+				end
+				return self:scroll_completion("up")
+			end
+			return "combo", shortcut
+		end,
 
 		handle_tab_state = function(self, event)
 			if event == 1 then
@@ -315,8 +725,8 @@ local new = function(config)
 			if key == "TAB" then
 				local long_tab = self:handle_tab_state(event)
 				if event == 3 then -- Only process TAB on key release
-					self.state.tab_long = long_tab
-					return self.state:handle_ctl(key)
+					self.tab_long = long_tab
+					return self:handle_ctl(key)
 				end
 				return nil
 			end
@@ -326,7 +736,7 @@ local new = function(config)
 				-- TODO: We need to replace this with something better,
 				-- reading clipboard one char at a time does not seem to be an efficient way...
 				for utf_char in key:gmatch(std.utf.patterns.glob) do
-					self.state:insert(utf_char)
+					self:insert(utf_char)
 					self.view:display()
 				end
 				return nil
@@ -340,9 +750,9 @@ local new = function(config)
 			-- Handle regular keys
 			if mods <= 2 and std.utf.len(key) < 2 then
 				if shifted then
-					return self.state:insert(shifted)
+					return self:insert(shifted)
 				end
-				return self.state:insert(key)
+				return self:insert(key)
 			end
 
 			-- Handle the controls
@@ -355,17 +765,17 @@ local new = function(config)
 				shortcut = mod_string .. "+" .. key
 			end
 
-			return self.state:handle_ctl(shortcut)
+			return self:handle_ctl(shortcut)
 		end,
 
 		run = function(self, exit_events)
-			local exit_events = exit_events or { execute = true, exit = true }
+			exit_events = exit_events or { execute = true, exit = true }
 			local event, combo
 			repeat
 				if term.resized() then
 					local new_h, new_w = term.window_size()
-					if new_h ~= self.state.window.h or new_w ~= self.state.window.w then
-						self.state:update_window_size(new_h, new_w)
+					if new_h ~= self.window.h or new_w ~= self.window.w then
+						self:update_window_size(new_h, new_w)
 						self.view:display(true)
 					end
 				end
@@ -374,7 +784,7 @@ local new = function(config)
 					event
 					and (
 						not exit_events[event]
-						or (self.state.last_op.type == state.OP.COMPLETION_PROMOTION_FULL and event == "execute")
+						or (self.last_op.type == OP.COMPLETION_PROMOTION_FULL and event == "execute")
 					)
 				then
 					self.view:display()
@@ -383,44 +793,36 @@ local new = function(config)
 			return event, combo
 		end,
 
-		get_content = function(self)
-			return self.state:get_content()
-		end,
-
-		render = function(self)
-			return self.state:get_content()
-		end,
-
 		display = function(self, full_redraw)
 			self.view:display(full_redraw)
 		end,
 
 		prompt_set = function(self, options)
-			if self.state.prompt then
-				self.state.prompt:set(options)
+			if self.prompt then
+				self.prompt:set(options)
 			end
 		end,
 
 		prompt_get = function(self)
-			if self.state.prompt then
-				return self.state.prompt:get()
+			if self.prompt then
+				return self.prompt:get()
 			end
 			return ""
 		end,
 
-		set_position = function(self, l, c)
-			return self.state:set_position(l, c)
-		end,
-
 		flush = function(self)
-			self.state.buffer = ""
-			self.state.cursor = 0
-			self.state.position = 1
-			if self.state.completion then
-				self.state.completion:flush()
+			self.buffer = ""
+			self.cursor = 0
+			self.position = 1
+			if self.completion then
+				self.completion:flush()
 			end
 		end,
 	}
+
+	-- Create view and initialize it with the input object
+	input.view = view.new(input)
+	input.OP = OP
 	return input
 end
 
@@ -430,4 +832,5 @@ return {
 	mods_to_string = mods_to_string,
 	string_to_mods = string_to_mods,
 	new = new,
+	OP = OP, -- Export OP for any external users that might need it
 }
