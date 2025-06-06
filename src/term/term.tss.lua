@@ -113,7 +113,8 @@ local apply = function(self, elements, content, position)
 	local ulen = std.utf.len(text)
 	if props.w ~= 0 then
 		if obj.fill then
-			text = string.rep(text, props.w)
+			text = string.rep(text, math.ceil(props.w / ulen))
+			text = std.utf.sub(text, 1, props.w)
 			ulen = std.utf.len(text)
 		end
 		if props.clip == 0 then
