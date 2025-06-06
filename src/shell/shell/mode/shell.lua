@@ -77,8 +77,8 @@ end
 -- cause they need access to the mode's self object.
 
 local rehash = function(self, cmd, args)
-	if self.input.state.completion then
-		self.input.state.completion:update()
+	if self.input.completion then
+		self.input.completion:update()
 	end
 	return 0
 end
@@ -233,7 +233,7 @@ local env_secrets_combo = function(self, combo)
 	if no_vault_vars then
 		return false
 	end
-	local prompt_blocks = self.input.state.prompt.blocks
+	local prompt_blocks = self.input.prompt.blocks
 	if not prompt_blocks:match("vault") then
 		prompt_blocks = prompt_blocks .. ",vault"
 	end
@@ -262,7 +262,7 @@ local env_secrets_combo = function(self, combo)
 end
 
 local run = function(self)
-	local input = self:replace_aliases(self.input:render())
+	local input = self:replace_aliases(self.input:get_content())
 	local pipeline, err = utils.parse_pipeline(input, true)
 	if not pipeline then
 		return 255, "invalid pipeline: " .. tostring(err)
@@ -298,7 +298,7 @@ local run = function(self)
 end
 
 local run_once = function(self)
-	local input = self.input:render()
+	local input = self.input:get_content()
 	local pipeline, err = utils.parse_pipeline(input, true)
 	if not pipeline then
 		return 255, "invalid pipeline: " .. tostring(err)
