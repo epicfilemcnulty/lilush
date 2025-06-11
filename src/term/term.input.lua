@@ -699,7 +699,7 @@ local new = function(config)
 				self.tab_state.long = false
 
 				if self.tab_state.start then
-					if now - self.tab_state.start > config.tab_timing then
+					if now - self.tab_state.start > self.config.tab_timing then
 						self.tab_state.long = true
 					end
 				end
@@ -707,7 +707,7 @@ local new = function(config)
 				self.tab_state.start = nil
 
 				if self.tab_state.last_release then
-					self.tab_state.double_tap = (now - self.tab_state.last_release <= config.tab_timing * 2)
+					self.tab_state.double_tap = (now - self.tab_state.last_release <= self.config.tab_timing * 2)
 				end
 
 				self.tab_state.last_release = now
