@@ -2,7 +2,7 @@
 set -euo pipefail
 
 base_dir=${PWD%/build}
-dirs=(luasocket std crypto djot redis reliw)
+dirs=(luasocket std crypto acme botls)
 
 headers_from_luamod () {
     file_name="${1##*/}"
@@ -44,12 +44,11 @@ do_headers() {
 
 do_linking() {
     ar rcs liblilush.a ${base_dir}/src/cjson/*.o ${base_dir}/src/luasocket/*.o ${base_dir}/src/std/*.o ${base_dir}/src/crypto/*.o
-    clang -Os -s -O3 -Wall -Wl,-E -o reliw_bin ${base_dir}/src/reliw.c -I/usr/local/include/luajit-2.1 -I/usr/local/include/wolfssl -L/usr/local/lib -lluajit-5.1 -Wl,--whole-archive -lwolfssl liblilush.a -Wl,--no-whole-archive -static
+    clang -Os -s -O3 -Wall -Wl,-E -o botls_bin ${base_dir}/src/botls.c -I/usr/local/include/luajit-2.1 -I/usr/local/include/wolfssl -L/usr/local/lib -lluajit-5.1 -Wl,--whole-archive -lwolfssl liblilush.a -Wl,--no-whole-archive -static
 }
 
 do_install () {
-    mv reliw_bin /usr/local/bin/reliw
-    setcap 'CAP_NET_BIND_SERVICE=+eip' /usr/local/bin/reliw
+    mv botls_bin /usr/local/bin/botls
 }
 
 case ${1} in
