@@ -44,6 +44,7 @@ typedef struct mod_lua {
 // Crypto primitives from WolfSSL
 #include "../build/crypto/mod_lua_crypto.h"
 // Term
+#include "../build/term/mod_lua_term.gfx.h"
 #include "../build/term/mod_lua_term.h"
 #include "../build/term/mod_lua_term.input.completion.h"
 #include "../build/term/mod_lua_term.input.h"
@@ -109,6 +110,7 @@ const mod_lua__t lua_preload[] = {
     {"text",                             mod_lua_text,                             &mod_lua_text_SIZE                        },
     {"term.widgets",                     mod_lua_term_widgets,                     &mod_lua_term_widgets_SIZE                },
     {"term.tss",                         mod_lua_term_tss,                         &mod_lua_term_tss_SIZE                    },
+    {"term.gfx",                         mod_lua_term_gfx,                         &mod_lua_term_gfx_SIZE                    },
     {"term.input",                       mod_lua_term_input,                       &mod_lua_term_input_SIZE                  },
     {"term.input.view",                  mod_lua_term_input_view,                  &mod_lua_term_input_view_SIZE             },
     {"term.input.history",               mod_lua_term_input_history,               &mod_lua_term_input_history_SIZE          },

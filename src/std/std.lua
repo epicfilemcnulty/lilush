@@ -50,7 +50,7 @@ local function envsubst(filename)
 end
 
 local escape_magic_chars = function(str)
-    local str = str or ""
+	local str = str or ""
 	-- escape all possible magic characters that are used in Lua string patterns
 	return str:gsub("[+*%%%.%$[%]%?%(%)-]", "%%%1")
 end
@@ -111,9 +111,9 @@ local function environ()
 	for i, s in ipairs(strings) do
 		local name = s:match("^([^=]+)")
 		local value = s:match("^[^=]+=(.*)")
-        if name then
-    	    env[name] = value
-        end
+		if name then
+			env[name] = value
+		end
 	end
 	return env
 end
@@ -155,6 +155,7 @@ local std = {
 	txt = txt,
 	environ = environ,
 	clockticks = core.clockticks,
+	create_shm = core.create_shm,
 	sleep = sleep,
 	sleep_ms = sleep_ms,
 	module_available = module_available,

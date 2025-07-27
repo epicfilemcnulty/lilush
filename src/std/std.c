@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
@@ -65,6 +66,44 @@ int deviant_sleep(lua_State *L) {
     int seconds = luaL_checkint(L, 1);
     sleep(seconds);
     return 0;
+}
+
+static int deviant_create_shm(lua_State *L) {
+    // Get arguments from Lua stack
+    const char *name = luaL_checkstring(L, 1);
+    size_t data_len;
+    const char *data = luaL_checklstring(L, 2, &data_len);
+
+    // Create shared memory object
+    int fd = shm_open(name, O_CREAT | O_RDWR, 0666);
+    if (fd == -1) {
+        RETURN_ERR(L);
+    }
+    // Set size
+    if (ftruncate(fd, data_len) == -1) {
+        close(fd);
+        shm_unlink(name);
+        RETURN_ERR(L);
+    }
+
+    // Map memory
+    void *ptr = mmap(NULL, data_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (ptr == MAP_FAILED) {
+        close(fd);
+        shm_unlink(name);
+        RETURN_ERR(L);
+    }
+
+    // Copy data
+    memcpy(ptr, data, data_len);
+
+    // Cleanup
+    munmap(ptr, data_len);
+    close(fd);
+
+    // Return success
+    lua_pushinteger(L, 0);
+    return 1;
 }
 
 int deviant_sleep_ms(lua_State *L) {
@@ -548,7 +587,8 @@ static int deviant_stat(lua_State *L) {
     }
 
     char perm_str[5];
-    sprintf(perm_str, "%o", (st.st_mode & 0777)); // 0777 is an octal mask to get the file permissions
+    sprintf(perm_str, "%o",
+            (st.st_mode & 0777)); // 0777 is an octal mask to get the file permissions
 
     lua_newtable(L);
     lua_pushstring(L, "mode");
@@ -601,6 +641,7 @@ static luaL_Reg funcs[] = {
     {"pipe",            deviant_pipe                   },
     {"close",           deviant_close                  },
     {"open",            deviant_open                   },
+    {"create_shm",      deviant_create_shm             },
     {"read",            deviant_read                   },
     {"write",           deviant_write                  },
     {"getpid",          deviant_getpid                 },

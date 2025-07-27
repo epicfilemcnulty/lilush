@@ -19,6 +19,11 @@ local json = require("cjson.safe")
 ]]
 
 local get_certs_expire_time = function(self)
+	--[[ TODO: Refactor this stuff,
+		we should rely on acme.store.${plugin} methods
+		here to check all certificates, the hardcode below
+		only works for the acme.store.file plugin...
+	]]
 	if not std.fs.dir_exists(self.__config.data_dir .. "/certs") then
 		self.logger:log(
 			{ process = "acme", msg = "no cert_dir found", cert_dir = self.__config.data_dir .. "/certs" },
