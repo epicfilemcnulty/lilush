@@ -69,13 +69,19 @@ local send_data = function(data, options)
 		io.flush()
 
 		-- Send middle chunks
+		local opts = ""
+		-- If we are sending frames, make sure that we specify `a=f`
+		-- in each chunk
+		if options.a and options.a == "f" then
+			opts = "a=f,"
+		end
 		for i = 2, #chunks - 1 do
-			io.write(string.format("\027_Gm=1;%s\027\\", chunks[i]))
+			io.write(string.format("\027_G%sm=1;%s\027\\", opts, chunks[i]))
 			io.flush()
 		end
 
 		-- Send final chunk
-		io.write(string.format("\027_Gm=0;%s\027\\", chunks[#chunks]))
+		io.write(string.format("\027_G%sm=0;%s\027\\", opts, chunks[#chunks]))
 		io.flush()
 	else
 		-- Single chunk transmission
