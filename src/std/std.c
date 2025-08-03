@@ -69,7 +69,6 @@ int deviant_sleep(lua_State *L) {
 }
 
 static int deviant_create_shm(lua_State *L) {
-    // Get arguments from Lua stack
     const char *name = luaL_checkstring(L, 1);
     size_t data_len;
     const char *data = luaL_checklstring(L, 2, &data_len);

@@ -12,6 +12,14 @@ local conv = require("std.conv")
 local mime = require("std.mime")
 local logger = require("std.logger")
 
+--[[
+
+    Some of the module's functions make use of `math.random`,
+    but it's user's responsibility to properly initialize random
+    generator with something like `math.randomseed(os.time())`...
+
+]]
+
 local function sleep(seconds)
 	core.sleep(seconds)
 end
@@ -33,7 +41,7 @@ local system_users = function()
 	end
 	setmetatable(users, {
 		__index = function(tbl, key)
-			return { login = "unknown", gid = "unknown" }
+			return { login = "unknown", gid = -1 }
 		end,
 	})
 	return users
@@ -50,23 +58,22 @@ local function envsubst(filename)
 end
 
 local escape_magic_chars = function(str)
-	local str = str or ""
+	str = str or ""
 	-- escape all possible magic characters that are used in Lua string patterns
 	return str:gsub("[+*%%%.%$[%]%?%(%)-]", "%%%1")
 end
 
 local function salt(length)
-	math.randomseed(os.time())
 	local length = length or 16
 	local salt = buffer.new()
 	for i = 1, length do
+		-- we intentionally exclude 0 here
 		salt:put(string.char(math.random(255)))
 	end
 	return salt:get()
 end
 
 local function uuid()
-	math.randomseed(os.time())
 	local template = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"
 	return string.gsub(template, "[xy]", function(c)
 		local v = (c == "x") and math.random(0, 0xf) or math.random(8, 0xb)
@@ -78,13 +85,12 @@ end
 -- UUIDs are ugly fucks to look at, I'll give ya that...
 
 local function nanoid(length)
-	math.randomseed(os.time())
 	local charset = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_"
 	length = length or 21
 	local id = ""
 	for i = 1, length do
-		local rand = math.random(0, 63)
-		local char = charset:sub(rand + 1, rand + 1)
+		local rand = math.random(64)
+		local char = charset:sub(rand, rand)
 		id = id .. char
 	end
 	return id
