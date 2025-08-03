@@ -192,25 +192,38 @@ int deviant_read(lua_State *L) {
     if (count == 0) {
         size_t buffer_size = 1024;
         buffer             = (char *)malloc(buffer_size);
+        if (buffer == NULL) {
+            RETURN_CUSTOM_ERR(L, "out of memory");
+        }
 
         size_t total_bytes_read = 0;
         while ((bytes_read = read(fd, buffer + total_bytes_read, buffer_size - total_bytes_read)) > 0) {
             total_bytes_read += bytes_read;
 
-            if (total_bytes_read == buffer_size) {
+            if (total_bytes_read >= buffer_size) {
                 buffer_size *= 2;
-                buffer = (char *)realloc(buffer, buffer_size);
+                char *new_buffer = (char *)realloc(buffer, buffer_size);
+                if (new_buffer == NULL) {
+                    free(buffer);
+                    RETURN_CUSTOM_ERR(L, "out of memory");
+                }
+                buffer = new_buffer;
             }
         }
 
         if (bytes_read < 0) {
+            free(buffer);
             RETURN_ERR(L);
         }
         lua_pushlstring(L, buffer, total_bytes_read);
     } else {
         buffer     = (char *)malloc(count);
+        if (buffer == NULL) {
+            RETURN_CUSTOM_ERR(L, "out of memory");
+        }
         bytes_read = read(fd, buffer, count);
         if (bytes_read < 0) {
+            free(buffer);
             RETURN_ERR(L);
         }
         lua_pushlstring(L, buffer, bytes_read);
