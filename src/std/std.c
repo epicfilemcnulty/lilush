@@ -633,13 +633,18 @@ static int deviant_readlink(lua_State *L) {
         RETURN_ERR(L);
     }
     if (S_ISLNK(file_stat.st_mode)) {
-        char target[1024];
-        ssize_t len = readlink(filename, target, sizeof(target) - 1);
+        char *target = malloc(file_stat.st_size + 1);
+        if (target == NULL) {
+            RETURN_CUSTOM_ERR(L, "out of memory");
+        }
+        ssize_t len = readlink(filename, target, file_stat.st_size);
         if (len == -1) {
-            len = 0;
+            free(target);
+            RETURN_ERR(L);
         }
         target[len] = '\0';
         lua_pushstring(L, target);
+        free(target);
         return 1;
     }
     RETURN_CUSTOM_ERR(L, "not a link");
