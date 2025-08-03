@@ -147,7 +147,7 @@ local find_by_inode = function(inode)
 		local fds = fs.list_files("/proc/" .. pid .. "/fd", ".", "l", true) or {}
 		for fd, st in pairs(fds) do
 			-- might be misleading -- with this clause we are only looking for sockets...
-			if st.target:match("socket:%[" .. inode .. "%]") then
+			if st.target and st.target:match("socket:%[" .. inode .. "%]") then
 				local proc_stats = fs.read_file("/proc/" .. pid .. "/stat") or ""
 				local proc_name = proc_stats:match("^%d+ %(([^)]+)%)") or "n/a"
 				return proc_name .. "(" .. pid .. ")"

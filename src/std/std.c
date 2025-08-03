@@ -547,6 +547,7 @@ static int deviant_fast_list_dir(lua_State *L) {
     for (;;) {
         nread = syscall(SYS_getdents, fd, buf, FLSD_BUF_SIZE);
         if (nread == -1) {
+            close(fd);
             RETURN_ERR(L);
         }
         if (nread == 0)
@@ -563,6 +564,7 @@ static int deviant_fast_list_dir(lua_State *L) {
             bpos += d->d_reclen;
         }
     }
+    close(fd);
     return 1; /* table is already on top */
 }
 
