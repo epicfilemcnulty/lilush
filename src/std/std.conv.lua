@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-FileCopyrightText: © 2025 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 
 local buffer = require("string.buffer")

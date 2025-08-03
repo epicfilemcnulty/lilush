@@ -3,7 +3,7 @@
 - [x] ACME client
 - [ ] PostgreSQL library
 - [ ] Djot rendering refactor: add divs and quotes support; navigation
-- [ ] Kitty graphics protocol support
+- [x] Kitty graphics protocol support
 - [ ] Add basic `curl` alternative to shell builtins
 - [ ] HTTP/2.0
 - [x] Digital signatures from WolfCrypt for proper packaging/plugins support
