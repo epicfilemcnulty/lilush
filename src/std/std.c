@@ -217,7 +217,7 @@ int deviant_read(lua_State *L) {
         }
         lua_pushlstring(L, buffer, total_bytes_read);
     } else {
-        buffer     = (char *)malloc(count);
+        buffer = (char *)malloc(count);
         if (buffer == NULL) {
             RETURN_CUSTOM_ERR(L, "out of memory");
         }
@@ -354,7 +354,7 @@ int deviant_waitpid(lua_State *L) {
     ret = waitpid(pid, &status, WNOHANG);
     if (ret >= 0) {
         lua_pushinteger(L, ret);
-        if WIFEXITED (status) {
+        if (WIFEXITED(status)) {
             lua_pushinteger(L, WEXITSTATUS(status));
             return 2;
         }
