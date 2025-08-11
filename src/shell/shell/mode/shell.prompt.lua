@@ -161,7 +161,7 @@ local python_prompt = function(self)
 		.. tss:apply("prompts.shell.sep", ")")
 end
 
-local available_blocks = {
+local blocks_map = {
 	aws = aws_prompt,
 	git = git_prompt,
 	user = user_prompt,
@@ -176,27 +176,41 @@ local set = function(self, options)
 	for k, v in pairs(options) do
 		self[k] = v
 	end
-	self.blocks = self.blocks or "user,dir"
-	std.ps.setenv("LILUSH_PROMPT", self.blocks)
+	-- Sanity check for valid blocks
+	for i, b in pairs(self.blocks) do
+		if not blocks_map[b] then
+			table.remove(self.blocks, i)
+			self.blocks[b] = nil
+		end
+	end
 end
 
 local get = function(self)
-	local enabled = {}
-	local enabled_blocks = os.getenv("LILUSH_PROMPT") or self.blocks
-	for b in enabled_blocks:gmatch("(%w+),?") do
-		table.insert(enabled, b)
-	end
 	local prompt = buffer.new()
-	for _, b in ipairs(enabled) do
-		if available_blocks[b] then
-			local out = available_blocks[b](self)
-			if out then
-				prompt:put(out)
-			end
+	for _, b in ipairs(self.blocks) do
+		local out = blocks_map[b](self)
+		if out then
+			prompt:put(out)
 		end
+	end
+	if self.lines and self.lines > 1 then
+		prompt:put(tss:apply("prompts.shell.sep", "["))
+		prompt:put(tss:apply("prompts.shell.sep", tostring(self.line)))
+		prompt:put(tss:apply("prompts.shell.sep", "]"))
 	end
 	prompt:put("$ ")
 	return prompt:get()
+end
+
+local toggle_block = function(self, block)
+	if blocks_map[block] then
+		local idx = std.tbl.contains(self.blocks, block)
+		if idx then
+			table.remove(self.blocks, idx)
+		else
+			table.insert(self.blocks, block)
+		end
+	end
 end
 
 local new = function(options)
@@ -205,12 +219,19 @@ local new = function(options)
 		user = os.getenv("USER") or "nobody",
 		hostname = tostring(std.fs.read_file("/etc/hostname")):gsub("\n", ""),
 		pwd = std.fs.cwd() or "",
-		blocks = os.getenv("LILUSH_PROMPT") or "user,dir",
+		blocks = {},
 		vault_status = "unknown",
 		get = get,
 		set = set,
+		toggle_block = toggle_block,
 	}
 	prompt:set(options)
+	if #prompt.blocks == 0 then
+		local user_blocks_str = os.getenv("LILUSH_PROMPT") or "user,dir"
+		for b in user_blocks_str:gmatch("(%w+),?") do
+			table.insert(prompt.blocks, b)
+		end
+	end
 	return prompt
 end
 

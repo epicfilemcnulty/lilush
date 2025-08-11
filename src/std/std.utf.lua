@@ -72,6 +72,17 @@ utf = {
 		end
 		return count, esc_count
 	end,
+	find_all_spaces = function(str)
+		local spaces = {}
+		local i = 1
+		for c in str:gmatch(utf.patterns.glob) do
+			if c:match("%s") then
+				table.insert(spaces, i)
+			end
+			i = i + 1
+		end
+		return spaces
+	end,
 	sub = function(str, i, j)
 		if not str or not i then
 			return nil, "no string or index"

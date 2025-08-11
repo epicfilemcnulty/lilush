@@ -3,7 +3,6 @@
 local std = require("std")
 local term = require("term")
 local style = require("term.tss")
-local input = require("term.input")
 
 local default_rss = {
 	align = "center",
@@ -194,7 +193,7 @@ local chooser = function(content, opts)
 	end
 	w.label = ""
 	while true do
-		local key = input.simple_get()
+		local key = term.simple_get()
 		if key == "ESC" then
 			if w.label ~= "" then
 				w.label = ""
@@ -314,7 +313,7 @@ local form = function(content, opts)
 	end
 
 	repeat
-		local key = input.simple_get()
+		local key = term.simple_get()
 		if key == "ESC" then
 			w:cleanup()
 			return w.results
@@ -418,7 +417,7 @@ local file_chooser = function(title, start_dir, rss, patterns)
 		render_files()
 		local key
 		repeat
-			key = input.simple_get()
+			key = term.simple_get()
 			if key then
 				if key == "UP" and idx > 1 then
 					idx = idx - 1
