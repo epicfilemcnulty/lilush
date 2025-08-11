@@ -121,9 +121,7 @@ local python_env = function(self, cmd, args)
 		if virtual_env then
 			std.ps.setenv("PATH", self.old_path)
 			std.ps.unsetenv("VIRTUAL_ENV")
-			local prompt = os.getenv("LILUSH_PROMPT") or ""
-			local new_prompt = prompt:gsub("python,?", "")
-			std.ps.setenv("LILUSH_PROMPT", new_prompt)
+			self.input.prompt:toggle_block("python")
 			self:rehash()
 		end
 	end
@@ -157,8 +155,7 @@ local python_env = function(self, cmd, args)
 		self.old_path = path
 		std.ps.setenv("PATH", python_path .. ":" .. path)
 		self:rehash()
-		local prompt = os.getenv("LILUSH_PROMPT") or ""
-		std.ps.setenv("LILUSH_PROMPT", "python," .. prompt)
+		self.input.prompt:toggle_block("python")
 	end
 	return 0
 end
@@ -317,35 +314,17 @@ end
 
 local toggle_blocks_combo = function(self, combo)
 	local map = { ["ALT+k"] = "kube", ["ALT+a"] = "aws", ["ALT+g"] = "git", ["ALT+v"] = "vault" }
-
-	local prompt = os.getenv("LILUSH_PROMPT") or ""
-	local blocks = {}
-	local toggled = false
-	for b in prompt:gmatch("(%w+),?") do
-		if b ~= map[combo] then
-			table.insert(blocks, b)
-		else
-			toggled = true
-		end
-	end
-	if not toggled then
-		if map[combo] == "git" then
-			table.insert(blocks, map[combo])
-		else
-			table.insert(blocks, 1, map[combo])
-		end
-	end
-	self.input:prompt_set({ blocks = table.concat(blocks, ",") })
+	self.input.prompt:toggle_block(map[combo])
 	return true
 end
 
 local new = function(input)
 	local mode = {
 		combos = {
-			["CTRL+s"] = settings,
 			["ALT+k"] = toggle_blocks_combo,
 			["ALT+a"] = toggle_blocks_combo,
 			["ALT+g"] = toggle_blocks_combo,
+			["ALT+p"] = toggle_blocks_combo,
 			["ALT+v"] = env_secrets_combo,
 		},
 		aliases = {},
@@ -369,14 +348,12 @@ local new = function(input)
 	mode:check_config_dirs()
 	mode:load_config()
 	std.ps.setenv("PWD", mode.pwd)
-	local prompts = os.getenv("LILUSH_PROMPT") or "user,dir"
 	if mode.input.prompt then
 		mode.input:prompt_set({
 			home = mode.home,
 			user = mode.user,
 			hostname = mode.hostname,
 			pwd = mode.pwd,
-			prompts = prompts,
 		})
 	end
 	if mode.input.completion then

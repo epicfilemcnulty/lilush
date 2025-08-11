@@ -64,7 +64,7 @@ local escape_magic_chars = function(str)
 end
 
 local function salt(length)
-	local length = length or 16
+	length = length or 16
 	local salt = buffer.new()
 	for i = 1, length do
 		-- we intentionally exclude 0 here

@@ -121,7 +121,9 @@ end
 
 local run_once = function(self)
 	local cmd = table.concat(arg, " ") or ""
-	self.__mode.shell.input.buffer = cmd
+	-- This is hacky, we shall introduce
+	-- a proper method, like `set_content`...
+	self.__mode.shell.input.lines[1] = cmd
 	local status, err = self.__mode.shell:run_once()
 	if err then
 		print(err)

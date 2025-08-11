@@ -622,7 +622,7 @@ local pager_page = function(self)
 	local buf = ""
 	self:display()
 	repeat
-		local cp = input.simple_get()
+		local cp = term.simple_get()
 		if cp then
 			if cp == "q" then
 				cp = "exit"
