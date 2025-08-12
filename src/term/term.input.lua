@@ -33,7 +33,8 @@ local socket = require("socket")
 	lines = { "" },
 	line = 1,
 	cursor = 1,
-	offset = 0,
+	offset = 0, -- current position in line is offset + cursor
+    last_completion = 0, -- keeping length for clearing purposes
 	-- Tab state
 	tab_long = false,
 	tab_state = {
@@ -139,25 +140,7 @@ local handle_ctl = function(self, shortcut)
 
 	-- Add a newline on SHIFT+ENTER
 	if shortcut == "SHIFT+ENTER" then
-		-- If we are at the beginning of the line, we'll
-		-- insert the new line before the current one
-		if self.cursor == 1 and self.offset == 0 then
-			table.insert(self.lines, self.line, "")
-		elseif self.cursor + self.offset == #self.lines[self.line] + 1 then
-			--  If we are at the end, insert the new line
-			-- after the current one
-			self.line = self.line + 1
-			table.insert(self.lines, self.line, "")
-		else
-			-- Middle of the line case
-			local p = std.utf.sub(self.lines[self.line], 1, self.offset + self.cursor - 1)
-			local s = std.utf.sub(self.lines[self.line], self.offset + self.cursor, #self.lines[self.line])
-			self.lines[self.line] = p
-			self.line = self.line + 1
-			table.insert(self.lines, self.line, "")
-			table.insert(self.lines, self.line + 1, s)
-		end
-		return self:start_of_line()
+		return self:newline()
 	end
 
 	if shortcut == "ALT+ENTER" then
@@ -171,7 +154,7 @@ local handle_ctl = function(self, shortcut)
 				return self:promote_completion()
 			end
 		end
-		-- If buffer is empty, increment line and redraw
+		-- If buffer is empty just increment line and redraw
 		if self:buffer_empty() then
 			self.__cfg.l = self.__cfg.l + 1
 			if self.__cfg.l > self.__cfg.h then
@@ -179,6 +162,7 @@ local handle_ctl = function(self, shortcut)
 			end
 			return true
 		end
+
 		self:add_to_history()
 		return "execute"
 	end
@@ -209,11 +193,25 @@ local event = function(self)
 
 	-- This must be a clipboard paste...
 	if key and not mods and not event then
-		for utf_char in key:gmatch(std.utf.patterns.glob) do
-			self:insert(utf_char)
+		local b = buffer.new()
+		b:put(key)
+		local rest = io.read("*a")
+		if rest then
+			b:put(rest)
 		end
-		self:display()
-		return nil
+		for i, line in ipairs(std.txt.lines(b:get())) do
+			if i == 1 then
+				local p = std.utf.sub(self.lines[self.line], 1, self.offset + self.cursor)
+				local s = std.utf.sub(self.lines[self.line], self.offset + self.cursor)
+				self.lines[self.line] = p .. line .. s
+				self:cursor_right(std.utf.len(line))
+			else
+				self:newline()
+				self.lines[self.line] = line
+				self:end_of_line()
+			end
+		end
+		return true
 	end
 
 	-- Just ignore key releases
@@ -260,6 +258,28 @@ local run = function(self, exit_events)
 	return event, combo
 end
 
+local newline = function(self)
+	-- If we are at the beginning of the line, we'll
+	-- insert the new line before the current one
+	if self.cursor == 1 and self.offset == 0 then
+		table.insert(self.lines, self.line, "")
+	elseif self.cursor + self.offset == #self.lines[self.line] + 1 then
+		--  If we are at the end, insert the new line
+		-- after the current one
+		self.line = self.line + 1
+		table.insert(self.lines, self.line, "")
+	else
+		-- Middle of the line case
+		local p = std.utf.sub(self.lines[self.line], 1, self.offset + self.cursor - 1)
+		local s = std.utf.sub(self.lines[self.line], self.offset + self.cursor, #self.lines[self.line])
+		self.lines[self.line] = p
+		self.line = self.line + 1
+		table.insert(self.lines, self.line, "")
+		table.insert(self.lines, self.line + 1, s)
+	end
+	return self:start_of_line()
+end
+
 local clear_all = function(self)
 	term.go(self.__cfg.l, self.__cfg.c)
 	-- Since we want to clear the whole input box,
@@ -281,7 +301,7 @@ end
 
 local clear_from_cursor = function(self)
 	local pl, _ = self:prompt_len()
-	term.go(self.__cfg.l, self.__cfg.c + pl + self.cursor)
+	term.go(self.__cfg.l, self.__cfg.c + pl + self.cursor - 1)
 	local count = self:max_width() - self.cursor
 	term.write(string.rep(self.__cfg.blank, count))
 	term.move("left", count)
@@ -331,16 +351,22 @@ local full_redraw = function(self)
 	return true
 end
 
-local cursor_right = function(self)
-	if self.cursor < self:max_width() then
-		self.cursor = self.cursor + 1
+local cursor_right = function(self, count)
+	count = count or 1
+	local mw = self:max_width()
+	if self.cursor + count < mw then
+		-- Simple case: cursor stays within visible area
+		self.cursor = self.cursor + count
 	else
-		self.offset = self.offset + 1
+		local original_cursor = self.cursor
+		self.cursor = mw
+		self.offset = self.offset + (original_cursor + count - mw)
 	end
 end
 
 local cursor_left = function(self)
 	if self.cursor > 1 then
+		-- Simple case: cursor moves left within visible area
 		self.cursor = self.cursor - 1
 	elseif self.offset > 0 then
 		self.offset = self.offset - 1
@@ -359,6 +385,7 @@ local move_right = function(self)
 			return true
 		end
 	elseif #self.lines > 1 then
+		-- Move to next line if available
 		if self.line < #self.lines then
 			self.line = self.line + 1
 			self:start_of_line()
@@ -369,15 +396,18 @@ end
 
 local move_left = function(self)
 	if self.cursor > 1 then
+		-- Simple case: move cursor left within visible area
 		term.move("left")
 		self:cursor_left()
 		return false
 	end
 	if self.offset > 0 then
+		-- Complex case: scroll content right to show earlier text
 		self:cursor_left()
 		return true
 	end
 	if self.line > 1 then
+		-- Move to previous line if available
 		self.line = self.line - 1
 		self:end_of_line()
 		return true
@@ -391,11 +421,13 @@ local move_to_previous_space = function(self)
 	local line_upto_cursor = std.utf.sub(self.lines[self.line], 1, pos - 1)
 	if line_upto_cursor:match("%s") then
 		local spaces = std.utf.find_all_spaces(line_upto_cursor)
-		local last_space = spaces[#spaces] or math.huge
-		local distance = pos - last_space
-		if self.cursor > distance then
-			self.cursor = self.cursor - distance
-			return true
+		if #spaces > 0 then
+			local last_space = spaces[#spaces]
+			local distance = pos - last_space
+			if self.cursor > distance then
+				self.cursor = self.cursor - distance
+				return true
+			end
 		end
 	end
 	return false
@@ -619,10 +651,9 @@ local new = function(config)
 		handle_ctl = handle_ctl,
 		event = event,
 		run = run,
+		newline = newline,
 		insert = insert,
 		backspace = backspace,
-		draw_completion = draw_completion,
-		full_redraw = full_redraw,
 		cursor_right = cursor_right,
 		cursor_left = cursor_left,
 		move_right = move_right,
@@ -637,6 +668,8 @@ local new = function(config)
 		scroll_completion = scroll_completion,
 		promote_completion = promote_completion,
 		external_editor = external_editor,
+		draw_completion = draw_completion,
+		full_redraw = full_redraw,
 		display = function(self)
 			term.hide_cursor()
 			self:full_redraw()
@@ -675,7 +708,8 @@ local new = function(config)
 				self.cursor = max_w
 				local line_len = std.utf.len(self.lines[self.line])
 				if line_len > max_w then
-					self.offset = math.max(1, line_len - max_w + 1)
+					-- offset is 0-indexed: position in buffer = offset + cursor
+					self.offset = math.max(0, line_len - max_w + 1)
 				end
 			end
 		end,
@@ -736,16 +770,20 @@ local new = function(config)
 			local line_len = std.utf.len(self.lines[self.line])
 			local mw = self:max_width()
 			if line_len < mw then
+				-- cursor is 1-indexed: position after last character
 				self.cursor = line_len + 1
 			else
-				self.offset = line_len - mw
+				-- offset is 0-indexed: position in buffer = offset + cursor
+				-- cursor at max width, offset adjusted to show end of line
+				self.offset = line_len - mw + 1
 				self.cursor = mw
 			end
 			return true
 		end,
 		start_of_line = function(self)
+			-- Move to beginning: cursor at position 1, no horizontal scroll
 			self.cursor = 1
-			self.offset = 0
+			self.offset = 0 -- offset is 0-indexed
 			return true
 		end,
 		flush = function(self)
@@ -755,6 +793,7 @@ local new = function(config)
 			self.cursor = 1
 			if self.completion then
 				self.completion:flush()
+				self.last_completion = 0
 			end
 		end,
 	}
