@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#define BOTLS_VERSION "0.5.8"
+#define BOTLS_VERSION "0.5.8-8-g2acaeb8"
 
 static const char START_BOTLS[] = "local botls = require('botls')\n"
                                   "local bot, err = botls.new()\n"
