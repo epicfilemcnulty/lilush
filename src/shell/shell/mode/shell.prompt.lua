@@ -161,13 +161,28 @@ local python_prompt = function(self)
 		.. tss:apply("prompts.shell.sep", ")")
 end
 
+local ssh_prompt = function(self)
+	local config_file = self.home .. "/.ssh/config"
+	local target = std.fs.readlink(config_file)
+	if target then
+		local profile = target:match("profiles/([^/]+)/config")
+		if profile then
+			return tss:apply("prompts.shell.sep", "(")
+				.. tss:apply("prompts.shell.ssh.logo")
+				.. tss:apply("prompts.shell.ssh.profile", profile)
+				.. tss:apply("prompts.shell.sep", ")")
+		end
+	end
+end
+
 local blocks_map = {
 	aws = aws_prompt,
-	git = git_prompt,
-	user = user_prompt,
-	dir = dir_prompt,
 	kube = kube_prompt,
 	python = python_prompt,
+	user = user_prompt,
+	dir = dir_prompt,
+	git = git_prompt,
+	ssh = ssh_prompt,
 	vault = vault_prompt,
 }
 
@@ -177,20 +192,23 @@ local set = function(self, options)
 		self[k] = v
 	end
 	-- Sanity check for valid blocks
-	for i, b in pairs(self.blocks) do
+	for i, b in ipairs(self.blocks) do
 		if not blocks_map[b] then
 			table.remove(self.blocks, i)
-			self.blocks[b] = nil
 		end
 	end
 end
 
+local blocks_order = { "aws", "kube", "ssh", "user", "dir", "git", "python", "vault" }
+
 local get = function(self)
 	local prompt = buffer.new()
-	for _, b in ipairs(self.blocks) do
-		local out = blocks_map[b](self)
-		if out then
-			prompt:put(out)
+	for _, b in ipairs(blocks_order) do
+		if std.tbl.contains(self.blocks, b) then
+			local out = blocks_map[b](self)
+			if out then
+				prompt:put(out)
+			end
 		end
 	end
 	if self.lines and self.lines > 1 then

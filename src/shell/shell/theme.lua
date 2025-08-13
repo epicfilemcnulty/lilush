@@ -232,6 +232,10 @@ local prompts_default = {
 			logo = { fg = 222, content = " ", s = "bold" },
 			env = { fg = 39, s = "bold,dim", bg = { 0, 65, 140 } },
 		},
+		ssh = {
+			logo = { fg = 176, s = "dim", content = "⟆⟆ℍ" },
+			profile = { fg = 99, s = "bold" },
+		},
 		dir = { fg = 251, w = 25, clip = 3 },
 	},
 }

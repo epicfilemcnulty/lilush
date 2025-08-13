@@ -709,37 +709,56 @@ end
 --[[ 
     SSH helpers
 ]]
+
+local set_ssh_symlinks = function(profile)
+	local home = os.getenv("HOME") or ""
+	local conf = {
+		{
+			source = "profiles/" .. profile .. "/config",
+			dest = home .. "/.ssh/config",
+		},
+		{
+			source = "profiles/" .. profile .. "/keys",
+			dest = home .. "/.ssh/keys",
+		},
+		{
+			source = "profiles/" .. profile .. "/known_hosts",
+			dest = home .. "/.ssh/known_hosts",
+		},
+	}
+	for _, f in ipairs(conf) do
+		local st = std.fs.stat(f.dest)
+		if not st then
+			local _, err = std.fs.symlink(f.source, f.dest)
+			if err then
+				return nil, err
+			end
+		elseif st.mode == "l" then
+			local ret, err = std.fs.remove(f.dest)
+			if not ret then
+				return nil, err
+			end
+			ret, err = std.fs.symlink(f.source, f.dest)
+			if err then
+				return nil, err
+			end
+		end
+	end
+end
+
 local ssh_profile = function(cmd, args)
 	local home = os.getenv("HOME") or ""
 	local args = args or {}
 	local profile = args[1] or ""
-	local profile_relative_path = "profiles/" .. profile
-	local ssh_config = home .. "/.ssh/config"
 
-	if not std.fs.file_exists(home .. "/.ssh/" .. profile_relative_path) then
+	if not std.fs.file_exists(home .. "/.ssh/profiles/" .. profile .. "/config") then
 		errmsg("no such profile")
 		return 255
 	end
-	local st = std.fs.stat(ssh_config)
-	if not st then
-		local ret, err = std.fs.symlink(profile_relative_path, ssh_config)
-		if ret then
-			return 0
-		end
+	local _, err = set_ssh_symlinks(profile)
+	if err then
 		errmsg(err)
 		return 255
-	end
-	if st.mode == "l" then
-		local ret, err = std.fs.remove(ssh_config)
-		if not ret then
-			errmsg(err)
-			return 255
-		end
-		local ret, err = std.fs.symlink(profile_relative_path, ssh_config)
-		if not ret then
-			errmsg(err)
-			return 255
-		end
 	end
 	return 0
 end

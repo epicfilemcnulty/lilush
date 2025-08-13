@@ -72,13 +72,11 @@ local ssh_profile_completions = function(self, args)
 	local candidates = {}
 	if args[1] then
 		local home = os.getenv("HOME") or ""
-		local files = std.fs.list_files(home .. "/.ssh/profiles/")
+		local dirs = std.fs.list_dir(home .. "/.ssh/profiles/")
 		local profiles = {}
-		if files then
-			for file, st in pairs(files) do
-				if st.mode == "f" then
-					table.insert(profiles, file)
-				end
+		if dirs then
+			for _, d in ipairs(dirs) do
+				table.insert(profiles, d)
 			end
 		end
 		for _, profile in ipairs(profiles) do
