@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-FileCopyrightText: © 2025 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 
 local std = require("std")

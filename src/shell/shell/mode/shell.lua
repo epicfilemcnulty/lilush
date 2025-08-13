@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-FileCopyrightText: © 2025 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local std = require("std")
 local term = require("term")
@@ -230,12 +230,9 @@ local env_secrets_combo = function(self, combo)
 	if no_vault_vars then
 		return false
 	end
-	local prompt_blocks = self.input.prompt.blocks
-	if not prompt_blocks:match("vault") then
-		prompt_blocks = prompt_blocks .. ",vault"
-	end
+	self.input.prompt:toggle_block("vault")
 	if not vault_login() then
-		self.input:prompt_set({ blocks = prompt_blocks, vault_status = "error" })
+		self.input:prompt_set({ vault_status = "error" })
 		return true
 	end
 	local results = widgets.chooser(
@@ -249,10 +246,10 @@ local env_secrets_combo = function(self, combo)
 		end
 		self.vault_vars = vault_vars
 		if fetch_env_secrets(selected_envs) then
-			self.input:prompt_set({ blocks = prompt_blocks, vault_status = "unlocked" })
+			self.input:prompt_set({ vault_status = "unlocked" })
 		else
 			self:clear_env_secrets()
-			self.input:prompt_set({ blocks = prompt_blocks, vault_status = "error" })
+			self.input:prompt_set({ vault_status = "error" })
 		end
 	end
 	return true
@@ -313,17 +310,25 @@ local run_once = function(self)
 end
 
 local toggle_blocks_combo = function(self, combo)
-	local map = { ["ALT+k"] = "kube", ["ALT+a"] = "aws", ["ALT+g"] = "git", ["ALT+v"] = "vault" }
-	self.input.prompt:toggle_block(map[combo])
-	return true
+	local selected = {}
+	for _, b in ipairs(self.input.prompt.blocks) do
+		selected[b] = true
+	end
+	local results = widgets.chooser({ "user", "dir", "ssh", "kube", "aws", "git", "vault" }, {
+		multiple_choice = true,
+		selected = selected,
+		rss = theme.widgets.shell,
+		title = "Choose prompt blocks to be enabled",
+	})
+	if results and #results > 0 then
+		self.input.prompt.blocks = results
+		return true
+	end
 end
 
 local new = function(input)
 	local mode = {
 		combos = {
-			["ALT+k"] = toggle_blocks_combo,
-			["ALT+a"] = toggle_blocks_combo,
-			["ALT+g"] = toggle_blocks_combo,
 			["ALT+p"] = toggle_blocks_combo,
 			["ALT+v"] = env_secrets_combo,
 		},

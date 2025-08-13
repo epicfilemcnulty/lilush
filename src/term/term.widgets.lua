@@ -183,7 +183,7 @@ local chooser = function(content, opts)
 	w.kind = "chooser"
 	if opts.multiple_choice then
 		w.kind = "chooser_multi"
-		w.selected = {}
+		w.selected = opts.selected or {}
 	end
 	w.idx = 1
 	w:init()

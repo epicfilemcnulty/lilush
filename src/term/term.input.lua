@@ -358,9 +358,8 @@ local cursor_right = function(self, count)
 		-- Simple case: cursor stays within visible area
 		self.cursor = self.cursor + count
 	else
-		local original_cursor = self.cursor
+		self.offset = self.offset + (self.cursor + count - mw)
 		self.cursor = mw
-		self.offset = self.offset + (original_cursor + count - mw)
 	end
 end
 
