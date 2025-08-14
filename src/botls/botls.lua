@@ -360,14 +360,16 @@ local manage = function(self)
 		-- Calculate sleep duration
 		local sleep_duration = math.random(10, 30)
 		if min_expire_time > 0 then
-			local min = 1
-			local max = min_expire_time - self.__config.renew_time
-			if max > 0 then
-				min = math.ceil(max * 0.8)
+			local time_until_renewal = min_expire_time - self.__config.renew_time
+			if time_until_renewal > 3600 then -- More than 1 hour until renewal needed
+				local min = math.max(1, math.ceil(time_until_renewal * 0.8))
+				local max = time_until_renewal
+				sleep_duration = math.random(min, max)
+			else
+				-- Use short sleep when renewals are active or imminent
+				sleep_duration = math.random(10, 30)
 			end
-			sleep_duration = math.random(min, max)
 		end
-
 		self.logger:log({ process = "acme", msg = "sleeping", duration = sleep_duration })
 		std.sleep(sleep_duration)
 	end
