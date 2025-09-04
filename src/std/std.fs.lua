@@ -112,6 +112,10 @@ local function remove(path, recursive)
 	return core.remove(path)
 end
 
+local rename = function(src, dst)
+	return core.rename(src, dst)
+end
+
 local function list_files(dir, pattern, mode, resolve_links)
 	local resolve_links = resolve_links or false
 	local files = {}
@@ -196,6 +200,7 @@ local fs = {
 	symlink = symlink,
 	readlink = readlink,
 	remove = remove,
+	rename = rename,
 	file_exists = file_exists,
 	list_files = list_files,
 	list_dir = list_dir,
