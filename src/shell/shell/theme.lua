@@ -218,13 +218,13 @@ local prompts_default = {
 			hostname = { fg = "yellow" },
 		},
 		kube = {
-			logo = { fg = 182, s = "bold", content = " " },
+			logo = { fg = 182, s = "bold", content = " " },
 			profile = { fg = 175, before = "" },
 			ns = { fg = 176, before = "" },
 		},
 		vault = {
 			unlocked = { fg = 210, s = "bold", content = " " },
-			locked = { fg = 70, s = "bold", content = " " },
+			locked = { fg = 70, s = "bold", content = " " },
 			unknown = { fg = 59, s = "bold", content = " " },
 			error = { fg = 124, s = "bold", content = " " },
 		},
@@ -233,7 +233,7 @@ local prompts_default = {
 			env = { fg = 39, s = "bold,dim", bg = { 0, 65, 140 } },
 		},
 		ssh = {
-			logo = { fg = 176, s = "dim", content = "⟆⟆ℍ" },
+			logo = { fg = 176, s = "dim", content = "🔒" },
 			profile = { fg = 99, s = "bold" },
 		},
 		dir = { fg = 251, w = 25, clip = 3 },

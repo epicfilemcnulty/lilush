@@ -451,6 +451,19 @@ int deviant_file_remove(lua_State *L) {
     }
 }
 
+int deviant_file_rename(lua_State *L) {
+    const char *src = luaL_checkstring(L, 1);
+    const char *dst = luaL_checkstring(L, 2);
+    int ret;
+    ret = rename(src, dst);
+    if (ret == 0) {
+        lua_pushboolean(L, 1);
+        return 1;
+    } else {
+        RETURN_ERR(L);
+    }
+}
+
 int deviant_exec(lua_State *L) {
 
     int n = lua_gettop(L); /* number of arguments */
@@ -684,6 +697,7 @@ static luaL_Reg funcs[] = {
     {"stat",            deviant_stat                   },
     {"readlink",        deviant_readlink               },
     {"remove",          deviant_file_remove            },
+    {"rename",          deviant_file_rename            },
     {"symlink",         deviant_symlink                },
     {NULL,              NULL                           }
 };
