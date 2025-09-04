@@ -176,7 +176,9 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 	end
 	if el.tag == "link" then
 		if tss.__style.hide_links then
-			tss.__style.link.url.content = ""
+			tss.__style.link.url.content = ""
+			tss.__style.link.url.after = ""
+			tss.__style.link.url.before = ""
 		end
 		local elements = get_classes(el, el.tag)
 		local target = el.destination or el.reference

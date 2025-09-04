@@ -45,6 +45,7 @@ local mime_types = {
 	["video/x-msvideo"] = { avi = true },
 	["video/mpeg"] = { mpeg = true },
 	["video/mp4"] = { mp4 = true },
+	["video/matroska"] = { mkv = true },
 	["video/webm"] = { webm = true },
 
 	["application/atom+xml"] = { atom = true },
@@ -102,6 +103,7 @@ local mime_info = function(filename)
 	local info = {
 		type = m_type,
 		default_app = default_app,
+		cmdline = "xdg-open",
 	}
 	local home = os.getenv("HOME") or ""
 	local content

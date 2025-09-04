@@ -403,21 +403,8 @@ local kat = function(cmd, args)
 		return 127
 	end
 	local mime_info = std.mime.info(args.pathname)
-	local swallow_cmd = os.getenv("LILUSH_SWALLOW_CMD")
-	if (mime_info.type:match("^image") or mime_info.type == "application/pdf") and mime_info.cmdline then
-		local cmdline = { mime_info.cmdline:match("^%S+"), args.pathname }
-		if swallow_cmd then
-			table.insert(cmdline, 1, swallow_cmd)
-		end
-		term.set_sane_mode()
-		std.ps.exec(table.unpack(cmdline))
-		return 0
-	end
 	if not mime_info.type:match("^text") and not std.txt.valid_utf(args.pathname) then
-		local cmdline = { "xdg-open", args.pathname }
-		if swallow_cmd then
-			table.insert(cmdline, 1, swallow_cmd)
-		end
+		local cmdline = { "dtach", "-n", "/tmp/lrun_" .. std.nanoid(), mime_info.cmdline:match("^%S+"), args.pathname }
 		term.set_sane_mode()
 		std.ps.exec(table.unpack(cmdline))
 		return 0
@@ -712,6 +699,9 @@ end
 
 local set_ssh_symlinks = function(profile)
 	local home = os.getenv("HOME") or ""
+	local cp = std.fs.readlink(home .. "/.ssh/config") or ""
+	cp = cp:match("profiles/([^/]+)/config")
+
 	local conf = {
 		{
 			source = "profiles/" .. profile .. "/config",
@@ -720,10 +710,6 @@ local set_ssh_symlinks = function(profile)
 		{
 			source = "profiles/" .. profile .. "/keys",
 			dest = home .. "/.ssh/keys",
-		},
-		{
-			source = "profiles/" .. profile .. "/known_hosts",
-			dest = home .. "/.ssh/known_hosts",
 		},
 	}
 	for _, f in ipairs(conf) do
@@ -744,6 +730,8 @@ local set_ssh_symlinks = function(profile)
 			end
 		end
 	end
+	std.fs.rename(home .. "/.ssh/known_hosts", home .. "/.ssh/profiles/" .. cp .. "/known_hosts")
+	std.fs.rename(home .. "/.ssh/profiles/" .. profile .. "/known_hosts", home .. "/.ssh/known_hosts")
 end
 
 local ssh_profile = function(cmd, args)
