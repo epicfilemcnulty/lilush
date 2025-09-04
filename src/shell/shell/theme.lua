@@ -233,7 +233,7 @@ local prompts_default = {
 			env = { fg = 39, s = "bold,dim", bg = { 0, 65, 140 } },
 		},
 		ssh = {
-			logo = { fg = 176, s = "dim", content = "🔒" },
+			logo = { fg = 176, s = "dim", content = " " },
 			profile = { fg = 99, s = "bold" },
 		},
 		dir = { fg = 251, w = 25, clip = 3 },
