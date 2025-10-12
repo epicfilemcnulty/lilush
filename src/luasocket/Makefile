@@ -1,9 +1,6 @@
 # luasocket src/makefile
 #
 
-# lua version to build against
-LUAV?=5.1
-
 # MYCFLAGS: to be set by user if needed
 MYCFLAGS?=
 
@@ -14,34 +11,6 @@ MYLDFLAGS?=
 # debug mode causes luasocket to collect and returns timing information useful
 # for testing and debugging luasocket itself
 DEBUG?=NODEBUG
-
-LUAPREFIX?=/usr/local
-CDIR?=lib/lua/$(LUAV)
-LDIR?=share/lua/$(LUAV)
-
-# prefix: /usr/local /usr /opt/local /sw
-# the top of the default install tree
-prefix?=$(LUAPREFIX)
-
-# DESTDIR: (no default)
-# used by package managers to install into a temporary destination
-DESTDIR?=
-
-print:
-	@echo PLAT=linux
-	@echo LUAV=$(LUAV)
-	@echo DEBUG=$(DEBUG)
-	@echo prefix=$(prefix)
-	@echo LUAINC=$(LUAINC)
-	@echo LUALIB=$(LUALIB)
-	@echo INSTALL_TOP_CDIR=$(INSTALL_TOP_CDIR)
-	@echo INSTALL_TOP_LDIR=$(INSTALL_TOP_LDIR)
-	@echo CFLAGS=$(CFLAGS)
-	@echo LDFLAGS=$(LDFLAGS)
-
-
-.c.obj:
-	$(CC) $(CFLAGS) //Fo"$@" //c $<
 
 #------
 # Output file names
@@ -120,16 +89,11 @@ SERIAL_OBJS=\
 #------
 # Targets
 #
-linux:
-	$(MAKE) all-unix
-
-all: $(SOCKET_SO) $(MIME_SO)
+all: $(SOCKET_SO) $(MIME_SO) $(UNIX_SO) $(SERIAL_SO)
 
 $(SOCKET_SO): $(SOCKET_OBJS)
 
 $(MIME_SO): $(MIME_OBJS)
-
-all-unix: all $(UNIX_SO) $(SERIAL_SO)
 
 $(UNIX_SO): $(UNIX_OBJS) $(SSL_OBJS)
 
@@ -139,7 +103,7 @@ clean:
 	rm -f $(SOCKET_SO) $(SOCKET_OBJS) $(SERIAL_OBJS)
 	rm -f $(MIME_SO) $(UNIX_SO) $(SERIAL_SO) $(MIME_OBJS) $(UNIX_OBJS) $(SSL_OBJS)
 
-.PHONY: all linux default clean echo none
+.PHONY: all clean
 
 #------
 # List of dependencies
