@@ -1,63 +1,31 @@
-// SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
-// SPDX-License-Identifier: GPL-3.0-or-later
-#include <assert.h>
-#include <libgen.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
+local start_code = [[
+static const char EXEC_BUILTIN[] = "local builtins = require('shell.builtins')\n"
+                                   "local builtin = builtins.get(cmd)\n"
+                                   "if builtin then\n"
+                                   "  return builtin.func(builtin.name, arg)\n"
+                                   "end\n"
+                                   "print('no such builtin:' .. tostring(cmd))\n"
+                                   "return -1";
+ 
+static const char START_SHELL[] = "local sh = require('shell')\n"
+                                  "local core = require('std.core')\n"
+                                  "core.register_signal(2)\n"
+                                  "local shell = sh.new() shell:run()";
+ 
+static const char RUN_SHELL_CMD[] = "local sh = require('shell')\n"
+                                    "local shell = sh.new_mini() shell:run()";
+ 
+static const char PRELOAD_INIT[] = "local std = require('std')\n"
+                                   "local home = os.getenv('HOME') or '/tmp'\n"
+                                   "local lilush_modules_path = './?.lua;' .. home .. "
+                                   "'/.local/share/lilush/packages/?.lua;' .. home .. "
+                                   "'/.local/share/lilush/packages/?/init.lua;/usr/local/share/lilush/?.lua;/"
+                                   "usr/local/share/lilush/?/init.lua'\n"
+                                   "std.ps.setenv('LUA_PATH', lilush_modules_path)\n"
+                                   "package.path = lilush_modules_path\n";
+]]
 
-#include "lilush.h"
-#include <lauxlib.h>
-#include <lua.h>
-#include <lualib.h>
-
-#include "full.h"
-
-void preload_modules(lua_State *const L) {
-    assert(L != NULL);
-
-    lua_gc(L, LUA_GCSTOP, 0);
-    luaL_openlibs(L);
-    lua_gc(L, LUA_GCRESTART, 0);
-
-    lua_getglobal(L, "package");
-    lua_getfield(L, -1, "preload");
-
-    luaL_register(L, NULL, c_preload);
-
-    for (size_t i = 0; lua_preload[i].name != NULL; i++) {
-        int rc = luaL_loadbuffer(L, lua_preload[i].code, *lua_preload[i].size, lua_preload[i].name);
-        if (rc != 0) {
-            const char *err;
-
-            switch (rc) {
-            case LUA_ERRRUN:
-                err = "runtime error";
-                break;
-            case LUA_ERRSYNTAX:
-                err = "syntax error";
-                break;
-            case LUA_ERRMEM:
-                err = "memory error";
-                break;
-            case LUA_ERRERR:
-                err = "generic error";
-                break;
-            case LUA_ERRFILE:
-                err = "file error";
-                break;
-            default:
-                err = "unknown error";
-                break;
-            }
-
-            fprintf(stderr, "%s: %s\n", lua_preload[i].name, err);
-            exit(EXIT_FAILURE);
-        }
-        lua_setfield(L, -2, lua_preload[i].name);
-    }
-}
-
+local custom_main = [[
 int main(int argc, char **argv) {
     int error;
     lua_State *L = luaL_newstate();
@@ -108,7 +76,7 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (strcmp(argv[1], "-v") == 0) {
-        fprintf(stdout, "version %s\n", LILUSH_VERSION);
+        fprintf(stdout, "version {{VERSION}}\n");
         return 0;
     }
 
@@ -141,4 +109,34 @@ int main(int argc, char **argv) {
         return 1;
     }
     return 0;
+}
+]]
+
+return {
+	binary = "lilush",
+	luamods = {
+		"luasocket",
+		"std",
+		"crypto",
+		"term",
+		"text",
+		"djot",
+		"redis",
+		"shell",
+		"vault",
+		"dns",
+		"argparser",
+		"acme",
+	},
+	c_libs = {
+		"cjson",
+		"luasocket",
+		"std",
+		"crypto",
+		"term",
+		"wireguard",
+	},
+	install_path = "/usr/bin/lilush",
+	start_code = start_code,
+	custom_main = custom_main,
 }

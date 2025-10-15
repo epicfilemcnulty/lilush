@@ -1,0 +1,12 @@
+BasedOnStyle: llvm
+IndentWidth: 4
+ColumnLimit: 120
+AllowShortFunctionsOnASingleLine: None
+KeepEmptyLinesAtTheStartOfBlocks: true
+AlignTrailingComments: true
+AlignAfterOpenBracket: true
+AlignArrayOfStructures: Left
+AlignConsecutiveAssignments: AcrossComments
+AlignConsecutiveMacros: Consecutive
+AlignEscapedNewlines: Left
+PointerAlignment: Right
