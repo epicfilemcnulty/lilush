@@ -1,17 +1,27 @@
-// SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
+// SPDX-FileCopyrightText: © 2022–2025 Vladimir Zorin <vladimir@deviant.guru>
 // SPDX-License-Identifier: GPL-3.0-or-later
+
 #include <assert.h>
 #include <libgen.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-#include "lilush.h"
 #include <lauxlib.h>
 #include <lua.h>
 #include <lualib.h>
 
-#include "botls.h"
+typedef struct mod_lua {
+    const char *const name;
+    const char *const code;
+    const size_t *const size;
+} mod_lua__t;
+
+{{START_CODE}}
+
+{{LUAMODS}}
+
+{{CLIBS}}
 
 void preload_modules(lua_State *const L) {
     assert(L != NULL);
@@ -56,25 +66,4 @@ void preload_modules(lua_State *const L) {
         }
         lua_setfield(L, -2, lua_preload[i].name);
     }
-}
-
-int main(int argc, char **argv) {
-    int error;
-    lua_State *L = luaL_newstate();
-    preload_modules(L);
-
-    if (argc > 1) {
-        if (strcmp(argv[1], "-v") == 0) {
-            fprintf(stdout, "version %s\n", BOTLS_VERSION);
-            return 0;
-        }
-        fprintf(stderr, "Uknown argument\n");
-        return 1;
-    }
-    error = luaL_dostring(L, START_BOTLS);
-    if (error) {
-        fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
-        return 1;
-    }
-    return 0;
 }
