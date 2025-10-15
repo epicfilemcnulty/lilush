@@ -404,6 +404,7 @@ local kat = function(cmd, args)
 	end
 	local mime_info = std.mime.info(args.pathname)
 	if not mime_info.type:match("^text") and not std.txt.valid_utf(args.pathname) then
+		math.randomseed(os.time())
 		local cmdline = { "dtach", "-n", "/tmp/lrun_" .. std.nanoid(), mime_info.cmdline:match("^%S+"), args.pathname }
 		term.set_sane_mode()
 		std.ps.exec(table.unpack(cmdline))
