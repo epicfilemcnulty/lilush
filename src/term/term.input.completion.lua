@@ -12,7 +12,7 @@ local flush = function(self)
 	self.__candidates = {}
 	self.__chosen = 0
 	self.__meta.replace_args = false
-	self.__meta.exec_on_promotion = false
+	self.__meta.exec_on_prom = false
 end
 
 local available = function(self)
