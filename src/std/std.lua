@@ -124,6 +124,12 @@ local function environ()
 	return env
 end
 
+local hostname = function()
+	local name = fs.read_file("/etc/hostname") or ""
+	name = name:gsub("\n", "")
+	return name
+end
+
 local progress_icons = { "⣿", "⣗", "⡯", "⣦", "⣢", "⣲", "⣶", "⣮", "⣦", "⢿", "⡟", "⣤" }
 local progress_icon = function()
 	local pid = ps.launch({
@@ -171,6 +177,7 @@ local std = {
 	nanoid = nanoid,
 	salt = salt,
 	system_users = system_users,
+	hostname = hostname,
 	progress_icon = progress_icon,
 }
 return std
