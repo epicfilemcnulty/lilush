@@ -19,7 +19,7 @@ LABEL maintainer="vlad@deviant.guru"
 
 COPY --from=builder /scratch/ /
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=builder /usr/local/bin/botls /usr/local/bin/botls
+COPY --from=builder /build/botls /usr/local/bin/botls
 COPY --from=builder /usr/bin/dumb-init /usr/bin/dumb-init
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]

@@ -130,6 +130,7 @@ return {
 	},
 	c_libs = {
 		"cjson",
+		"inotify",
 		"luasocket",
 		"std",
 		"crypto",

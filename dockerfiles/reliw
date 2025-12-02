@@ -20,7 +20,7 @@ LABEL maintainer="vlad@deviant.guru"
 
 COPY --from=builder /scratch/ /
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=builder /usr/local/bin/reliw /usr/local/bin/reliw
+COPY --from=builder /build/reliw /usr/local/bin/reliw
 COPY --from=builder /usr/bin/dumb-init /usr/bin/dumb-init
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
