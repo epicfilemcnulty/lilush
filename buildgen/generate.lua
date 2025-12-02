@@ -2,6 +2,18 @@
 
 local std = require("std")
 
+local show_output = function(out, msg)
+	print("==========================================")
+	print(msg)
+	print("==========================================")
+	print("STDOUT:")
+	print("-------")
+	print(table.concat(out.stdout, "\n"))
+	print("STDERR:")
+	print("-------")
+	print(table.concat(out.stderr, "\n"))
+end
+
 std.ps.unsetenv("LUA_PATH")
 package.path =
 	"./?.lua;/usr/share/luajit-2.1/?.lua;/usr/local/share/lua/5.1/?.lua;/usr/local/share/lua/5.1/?/init.lua;/usr/share/lua/5.1/?.lua;/usr/share/lua/5.1/?/init.lua"
@@ -80,8 +92,11 @@ local ar_args = ""
 
 for _, lib in ipairs(app_config.c_libs) do
 	std.fs.chdir(pwd .. "/src/" .. lib)
-	std.ps.exec_simple("make")
-	std.ps.exec_simple("sh -c 'strip --strip-debug --strip-unneeded *.o'")
+	show_output(std.ps.exec_simple("make"), "Building module: " .. lib .. "...")
+	show_output(
+		std.ps.exec_simple("sh -c 'strip --strip-debug --strip-unneeded *.o'"),
+		"Stripping object files: " .. lib .. "..."
+	)
 
 	local obj_files = std.fs.list_files(".", "%.o$")
 	for obj, _ in pairs(obj_files) do
@@ -162,16 +177,19 @@ std.fs.write_file(pwd .. "/src/" .. app_config.binary .. ".c", tmpl)
 
 std.fs.chdir(pwd .. "/src")
 local ar_cmd = "ar rcs liblilush.a" .. ar_args
-std.ps.exec_simple(ar_cmd)
+show_output(std.ps.exec_simple(ar_cmd), "Building static lib: " .. ar_cmd)
+
+std.fs.mkdir("/build")
 
 local clang_cmd = "clang -Os -s -O3 -Wall -Wl,-E -o "
+	.. "/build/"
 	.. app_config.binary
-	.. "_bin "
+	.. " "
 	.. pwd
 	.. "/src/"
 	.. app_config.binary
 	.. ".c -I/usr/local/include/luajit-2.1 -I/usr/local/include/wolfssl -L/usr/local/lib -lluajit-5.1 -Wl,--whole-archive -lwolfssl liblilush.a -Wl,--no-whole-archive -static"
 
-std.ps.exec_simple(clang_cmd)
+show_output(std.ps.exec_simple(clang_cmd), "Building the app...")
 
-std.ps.exec_simple("mv " .. app_config.binary .. "_bin " .. app_config.install_path)
+std.ps.exec_simple("cp /build/" .. app_config.binary .. " " .. app_config.install_path)

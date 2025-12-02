@@ -22,7 +22,7 @@ LABEL maintainer="vlad@deviant.guru"
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /scratch/ /
-COPY --from=builder /usr/bin/lilush /usr/bin/lilush
+COPY --from=builder /build/lilush /usr/bin/lilush
 COPY --from=builder /usr/bin/dumb-init /usr/bin/dumb-init
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]

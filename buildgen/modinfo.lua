@@ -74,6 +74,9 @@ local c_libs = {
 	std = {
 		{ "std.core", "luaopen_deviant_core" },
 	},
+	inotify = {
+		{ "inotify", "luaopen_inotify" },
+	},
 	crypto = {
 		{ "crypto.core", "luaopen_crypto_core" },
 	},
