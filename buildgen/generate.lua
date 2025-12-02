@@ -12,6 +12,8 @@ local show_output = function(out, msg)
 	print("STDERR:")
 	print("-------")
 	print(table.concat(out.stderr, "\n"))
+	print("-------")
+	print("STATUS: " .. out.status)
 end
 
 std.ps.unsetenv("LUA_PATH")

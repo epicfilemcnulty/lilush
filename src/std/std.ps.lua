@@ -124,7 +124,7 @@ local exec_simple = function(cmd, nowait)
 	if nowait then
 		dummy, code = waitpid(pid)
 	else
-		code = wait(pid)
+		dummy, code = wait(pid)
 	end
 	return {
 		status = code or 255,
