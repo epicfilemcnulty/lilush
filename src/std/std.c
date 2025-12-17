@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -664,6 +665,71 @@ static int deviant_readlink(lua_State *L) {
     RETURN_CUSTOM_ERR(L, "not a link");
 }
 
+// Helper function to serialize a float32 as raw bytes (little-endian)
+static void write_float32_le(float value, uint8_t *out) {
+    union {
+        float f;
+        uint32_t u;
+    } v;
+
+    v.f = value;
+
+    out[0] = (uint8_t)(v.u & 0xFF);
+    out[1] = (uint8_t)((v.u >> 8) & 0xFF);
+    out[2] = (uint8_t)((v.u >> 16) & 0xFF);
+    out[3] = (uint8_t)((v.u >> 24) & 0xFF);
+}
+
+// Serialize a 3D point coordinates x, y, z as a 12-byte binary string,
+// essentially making it a vector, ready to be stored and searched using
+// vector search
+int deviant_packvec(lua_State *L) {
+    float x = (float)luaL_checknumber(L, 1);
+    float y = (float)luaL_checknumber(L, 2);
+    float z = (float)luaL_checknumber(L, 3);
+
+    uint8_t buf[12];
+
+    write_float32_le(x, buf);
+    write_float32_le(y, buf + 4);
+    write_float32_le(z, buf + 8);
+
+    lua_pushlstring(L, (const char *)buf, 12);
+    return 1;
+}
+
+// Unserialize a vector of 3D point coordinates back into x, y, z
+int deviant_unpackvec(lua_State *L) {
+    size_t len;
+    const uint8_t *buf = (const uint8_t *)luaL_checklstring(L, 1, &len);
+
+    if (len != 12) {
+        return luaL_error(L, "unpackvec: expected 12 bytes, got %zu", len);
+    }
+
+    union {
+        uint32_t u;
+        float f;
+    } v;
+
+    // x
+    v.u     = (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) | ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 24);
+    float x = v.f;
+
+    // y
+    v.u     = (uint32_t)buf[4] | ((uint32_t)buf[5] << 8) | ((uint32_t)buf[6] << 16) | ((uint32_t)buf[7] << 24);
+    float y = v.f;
+
+    // z
+    v.u     = (uint32_t)buf[8] | ((uint32_t)buf[9] << 8) | ((uint32_t)buf[10] << 16) | ((uint32_t)buf[11] << 24);
+    float z = v.f;
+
+    lua_pushnumber(L, x);
+    lua_pushnumber(L, y);
+    lua_pushnumber(L, z);
+    return 3;
+}
+
 static luaL_Reg funcs[] = {
     {"clockticks",      deviant_clockticks             },
     {"kill",            deviant_kill                   },
@@ -699,6 +765,8 @@ static luaL_Reg funcs[] = {
     {"remove",          deviant_file_remove            },
     {"rename",          deviant_file_rename            },
     {"symlink",         deviant_symlink                },
+    {"pack3d",          deviant_packvec                },
+    {"unpack3d",        deviant_unpackvec              },
     {NULL,              NULL                           }
 };
 

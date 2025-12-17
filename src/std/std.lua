@@ -179,5 +179,7 @@ local std = {
 	system_users = system_users,
 	hostname = hostname,
 	progress_icon = progress_icon,
+	pack3d = core.pack3d,
+	unpack3d = core.unpack3d,
 }
 return std

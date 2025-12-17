@@ -33,7 +33,7 @@ local valid_utf = function(filename)
 end
 
 local function lines(raw)
-	local raw = raw or ""
+	raw = raw or ""
 	local lines = {}
 	if not raw:match("\n") then
 		table.insert(lines, raw)
@@ -50,7 +50,7 @@ local function lines(raw)
 end
 
 local function template(tmpl, sub_tbl, pattern)
-	local pattern = pattern or "%${([^}]+)}"
+	pattern = pattern or "%${([^}]+)}"
 	if sub_tbl then
 		return string.gsub(tmpl, pattern, sub_tbl)
 	end
@@ -65,9 +65,9 @@ local function template(tmpl, sub_tbl, pattern)
 end
 
 local indent_lines = function(input, ind, exclude)
-	local input = input or {}
-	local ind = ind or 0
-	local exclude = exclude or {}
+	input = input or {}
+	ind = ind or 0
+	exclude = exclude or {}
 	setmetatable(exclude, {
 		__index = function(t, k)
 			return false
@@ -85,7 +85,7 @@ local indent_lines = function(input, ind, exclude)
 	else
 		input_lines = lines(input)
 	end
-	if ind == 0 then
+	if type(ind) == "number" and ind == 0 then
 		return input_lines
 	end
 	local output = {}
@@ -132,9 +132,9 @@ end
 ]]
 --
 local lines_of = function(input, width, force_split, remove_extra_spaces)
-	local input = input or ""
-	local width = tonumber(width) or 80
-	local margin = math.ceil(width * 0.05)
+	input = input or ""
+	width = tonumber(width) or 80
+	margin = math.ceil(width * 0.05)
 	local buf = buffer.new()
 	local state = {
 		count = 0,
@@ -200,7 +200,9 @@ local lines_of = function(input, width, force_split, remove_extra_spaces)
 end
 
 local limit = function(str, max, prefix)
-	local prefix = prefix or 1
+	str = str or ""
+	max = max or math.huge
+	prefix = prefix or 1
 	local utf_len = utf.len(str)
 	if utf_len > max then
 		local extra = utf_len - max
@@ -255,8 +257,9 @@ local split_by = function(input, pattern, ltrim, rtrim)
 end
 
 local align = function(text, max, side)
-	local side = side or "left"
-	local text = tostring(text)
+	text = tostring(text)
+	max = max or math.huge
+	side = side or "left"
 	if side == "left" then
 		local suf = max - utf.len(text)
 		return text .. string.rep(" ", suf)

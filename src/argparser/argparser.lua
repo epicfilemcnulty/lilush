@@ -199,6 +199,12 @@ local prepare_data = function(tbl)
 			default = ""
 			fmt_name = fmt_name .. "{.req ." .. rest.kind .. "}"
 		else
+			if default == "" then
+				-- empty string here breaks the pipe table rendering somehow,
+				-- and it should be fixed! But for now let's just replace the empty
+				-- string with a space :)
+				default = " "
+			end
 			fmt_name = fmt_name .. "{." .. rest.kind .. "}"
 			default = "`" .. tostring(default) .. "`{.def ." .. rest.kind .. "}"
 		end
