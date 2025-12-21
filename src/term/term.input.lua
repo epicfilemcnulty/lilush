@@ -38,8 +38,7 @@ local socket = require("socket")
 	-- Tab state
 	tab_long = false,
 	tab_state = {
-	  start = nil,
-	  last_release = nil,
+	  start = nil, last_release = nil,
 	  long = false,
 	  double_tap = false,
 	},
@@ -446,6 +445,11 @@ local move_to_next_space = function(self)
 	return false
 end
 
+local sync_cursor = function(self)
+	local pl = self:prompt_len()
+	term.go(self.__cfg.l, self.__cfg.c + pl + self.cursor - 1)
+end
+
 local insert = function(self, char)
 	local line_len = std.utf.len(self.lines[self.line])
 	local pos = self.offset + self.cursor
@@ -461,6 +465,12 @@ local insert = function(self, char)
 			self:cursor_right()
 			self:search_completion()
 			self:draw_completion()
+			-- Ensure terminal cursor is positioned correctly when no new completion is drawn
+			-- This fixes the bug where cursor doesn't move on the last character of a completion,
+			-- but it's kinda an ad hoc solution...
+			if self.last_completion == 0 then
+				self:sync_cursor()
+			end
 			term.show_cursor()
 			return false
 		end
@@ -644,7 +654,6 @@ local new = function(config)
 		completion = config.completion,
 		history = config.history,
 		prompt = config.prompt,
-
 		-- Methods
 		handle_tab_state = handle_tab_state,
 		handle_ctl = handle_ctl,
@@ -668,6 +677,7 @@ local new = function(config)
 		promote_completion = promote_completion,
 		external_editor = external_editor,
 		draw_completion = draw_completion,
+		sync_cursor = sync_cursor,
 		full_redraw = full_redraw,
 		display = function(self)
 			term.hide_cursor()
