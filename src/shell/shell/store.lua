@@ -13,6 +13,10 @@ local init_redis_store = function(redis_url)
 	return red
 end
 
+local write_to_channel = function(self, payload)
+	return self.redis:cmd("PUBLISH", self.prefix .. "debug" .. self.suffix, payload)
+end
+
 local get_file = function(self, filename)
 	local filename = filename or ""
 	return std.fs.read_file(self.storage_dir .. "/" .. filename)
@@ -107,8 +111,8 @@ local close = function(self, no_keepalive)
 end
 
 local new = function(options)
-	local hostname = tostring(std.fs.read_file("/etc/hostname")):gsub("\n", ""):gsub("%s+", "")
-	if hostname == "nil" then
+	local hostname = std.hostname()
+	if hostname == "" then
 		hostname = "amnesia"
 	end
 	local user = os.getenv("USER") or "nobody"
@@ -152,6 +156,7 @@ local new = function(options)
 		save_llm_chat = save_llm_chat,
 		load_llm_chat = load_llm_chat,
 		list_llm_chats = list_llm_chats,
+		write = write_to_channel,
 		close = close,
 	}
 	return obj
