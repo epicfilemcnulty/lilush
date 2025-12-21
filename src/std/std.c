@@ -75,7 +75,7 @@ static int deviant_create_shm(lua_State *L) {
     const char *data = luaL_checklstring(L, 2, &data_len);
 
     // Create shared memory object
-    int fd = shm_open(name, O_CREAT | O_RDWR, 0666);
+    int fd = shm_open(name, O_CREAT | O_RDWR | O_CLOEXEC, 0666);
     if (fd == -1) {
         RETURN_ERR(L);
     }
@@ -152,7 +152,7 @@ int deviant_pipe(lua_State *L) {
 
     int pipefd[2];
 
-    if (pipe(pipefd) == -1) {
+    if (pipe2(pipefd, O_CLOEXEC) == -1) {
         RETURN_ERR(L);
     }
 
@@ -312,14 +312,28 @@ int deviant_open(lua_State *L) {
     int mode             = luaL_optinteger(L, 2, 0);
     switch (mode) {
     case 0:
-        fd = open(pathname, O_RDONLY, 0);
+        fd = open(pathname, O_RDONLY | O_CLOEXEC, 0);
         break;
     case 1:
-        fd = open(pathname, O_WRONLY | O_CREAT, 0644);
+        fd = open(pathname, O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
         break;
     case 2:
-        fd = open(pathname, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        fd = open(pathname, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
         break;
+    case 3:
+        fd = open(pathname, O_RDWR | O_CLOEXEC, 0);
+        break;
+    case 4:
+        fd = open(pathname, O_RDWR | O_CREAT | O_CLOEXEC, 0644);
+        break;
+    case 5:
+        fd = open(pathname, O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0644);
+        break;
+    case 6:
+        fd = open(pathname, O_RDWR | O_APPEND | O_CREAT | O_CLOEXEC, 0644);
+        break;
+    default:
+        RETURN_CUSTOM_ERR(L, "invalid mode (expected 0-6)");
     }
     if (fd == -1) {
         RETURN_ERR(L);
@@ -551,7 +565,7 @@ static int deviant_fast_list_dir(lua_State *L) {
     char d_type;
 
     /* open directory */
-    fd = open(path, O_RDONLY | O_DIRECTORY);
+    fd = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (fd == -1) {
         RETURN_ERR(L);
     }

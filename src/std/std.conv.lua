@@ -17,6 +17,7 @@ local bytes_human = function(size)
 	return human_size
 end
 
+-- This format is used in `/proc/net/route` for IPv4 addresses
 local hex_ipv4 = function(hex_ip_str)
 	local ip_hex = hex_ip_str:sub(1, 8)
 	local port_hex = hex_ip_str:sub(10)
