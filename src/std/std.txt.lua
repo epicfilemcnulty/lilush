@@ -105,7 +105,7 @@ end
 
 local indent = function(input, ind, newline)
 	local indented = indent_lines(input, ind)
-	local newline = newline or "\r\n"
+	newline = newline or "\r\n"
 	return table.concat(indented, newline)
 end
 
