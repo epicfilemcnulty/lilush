@@ -64,7 +64,7 @@ local mime_types = {
 }
 
 local mime_type = function(filename)
-	local filename = filename or ""
+	filename = filename or ""
 	local extension = filename:match("%.(%w+)$")
 	if extension then
 		for t, exts in pairs(mime_types) do
@@ -77,7 +77,7 @@ local mime_type = function(filename)
 end
 
 local mime_default_app = function(m_type)
-	local m_type = m_type or ""
+	m_type = m_type or ""
 	local home = os.getenv("HOME") or ""
 	local mime_apps_xdg_system = fs.read_file("/etc/xdg/mimeapps.list") or ""
 	local mime_apps_usr_share = fs.read_file("/usr/share/applications/mimeapps.list") or ""

@@ -6,11 +6,11 @@ local txt = require("std.txt")
 
 local render
 render = function(t, indent)
-	local t = t or "nil"
+	t = t or "nil"
 	if type(t) ~= "table" then
 		return tostring(t)
 	end
-	local indent = indent or 1
+	indent = indent or 1
 	local buf = buffer.new()
 	if indent == 1 then
 		buf:put("{\n")
@@ -57,7 +57,7 @@ end
 
 local merge_tables
 merge_tables = function(defaults, options)
-	local defaults = defaults or {}
+	defaults = defaults or {}
 	if options then
 		for k, v in pairs(options) do
 			if (type(v) == "table") and (type(defaults[k] or false) == "table") then
@@ -109,8 +109,8 @@ local sort_keys = function(t)
 end
 
 local function include_keys(t, pattern)
-	local t = t or {}
-	local pattern = pattern or ".*"
+	t = t or {}
+	pattern = pattern or ".*"
 	local matched = {}
 	for _, v in ipairs(t) do
 		if v:match("^" .. pattern) then
@@ -121,8 +121,8 @@ local function include_keys(t, pattern)
 end
 
 local function exclude_keys(t, pattern)
-	local t = t or {}
-	local pattern = pattern or ".*"
+	t = t or {}
+	pattern = pattern or ".*"
 	local matched = {}
 	for _, v in ipairs(t) do
 		if not v:match("^" .. pattern) then
@@ -134,7 +134,7 @@ end
 
 local function longest(t)
 	local max = 0
-	local t = t or {}
+	t = t or {}
 	for _, v in ipairs(t) do
 		if type(v) == "string" then
 			local utf_len = utf.len(v)
@@ -147,7 +147,7 @@ local function longest(t)
 end
 
 local contains = function(tbl, element, fuzzy)
-	local tbl = tbl or {}
+	tbl = tbl or {}
 	for i, v in ipairs(tbl) do
 		if v == element then
 			return i
@@ -198,8 +198,8 @@ end
 
 local calc_table_maxes = function(headers, tbl)
 	local maxes = {}
-	local headers = headers or {}
-	local tbl = tbl or {}
+	headers = headers or {}
+	tbl = tbl or {}
 	for i, header in ipairs(headers) do
 		local h_name, h_align = parse_pipe_table_header(header)
 		maxes[h_name] = utf.len(h_name)

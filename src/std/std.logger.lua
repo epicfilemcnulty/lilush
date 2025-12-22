@@ -7,7 +7,7 @@ local tbl = require("std.tbl")
 local log_levels = { debug = 0, access = 10, info = 20, warn = 30, error = 40 }
 
 local log = function(self, msg, level)
-	local level = level or 20
+	level = level or 20
 	if type(level) == "string" then
 		level = log_levels[level] or 20
 	end
@@ -57,8 +57,8 @@ local new = function(lvl, to_stderr, stdout, stderr)
 	-- `to_stderr` to stderr
 	stdout = stdout or io.stdout
 	stderr = stderr or io.stderr
-	local to_stderr = to_stderr or 100
-	local lvl = lvl or 20
+	to_stderr = to_stderr or 100
+	lvl = lvl or 20
 	if type(lvl) == "string" then
 		lvl = log_levels[lvl] or 20
 	end

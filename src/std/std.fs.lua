@@ -117,12 +117,12 @@ local rename = function(src, dst)
 end
 
 local function list_files(dir, pattern, mode, resolve_links)
-	local resolve_links = resolve_links or false
+	pattern = pattern or "^.*"
+	mode = mode or "f"
+	resolve_links = resolve_links or false
 	local files = {}
-	local mode = mode or "f"
 	local items, err = list_dir(dir)
 	if items then
-		local pattern = pattern or "^.*"
 		for _, f in ipairs(items) do
 			if f ~= "." and f ~= ".." then
 				if f:match(pattern) then
@@ -159,7 +159,7 @@ local function dir_exists(filename)
 end
 
 local function file_exists(filename, mode)
-	local mode = mode or "f"
+	mode = mode or "f"
 	local st = core.stat(filename)
 	if st and st.mode:match(mode) then
 		return true
