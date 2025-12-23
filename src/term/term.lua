@@ -157,15 +157,28 @@ end
 local cursor_position = function()
 	write("\027[6n")
 	local response = ""
+
+	-- Read ESC
+	local c = io.read(1)
+	if not c or string.byte(c) ~= 27 then
+		return nil
+	end
+
+	-- Read [
+	c = io.read(1)
+	if not c or c ~= "[" then
+		return nil
+	end
+
+	-- Read until 'R' terminator
 	repeat
-		local r = io.read(1)
-		if r then
-			if r ~= "\027" and r ~= "[" then
-				response = response .. r
-			end
+		c = io.read(1)
+		if c and c ~= "R" then
+			response = response .. c
 		end
-	until r == nil
-	if response then
+	until not c or c == "R"
+
+	if response and c == "R" then
 		local line = tonumber(response:match("^(%d+)"))
 		local column = tonumber(response:match("^%d+;(%d+)"))
 		return line, column
@@ -199,21 +212,34 @@ end
 
 --[[
  `has_kkbp` checks for the kkbp support.
- 
+
  We issue a request for kkbp enhancement flags status and for
  the primary device attributes. If we get the kkbp response
- first (which ends with `u`), the protocol is supported. ]]
+ first (CSI ? flags u), the protocol is supported. If we get
+ the device attributes response first (CSI ? ... c), it's not. ]]
 local has_kkbp = function()
 	write("\027[?u\027[c")
 	local buf = buffer.new()
+	local esc_received = false
+	local bracket_received = false
+
 	repeat
 		local c = io.read(1)
 		if c then
-			buf:put(c)
+			if not esc_received and string.byte(c) == 27 then
+				esc_received = true
+			elseif esc_received and not bracket_received and c == "[" then
+				bracket_received = true
+			elseif bracket_received then
+				buf:put(c)
+			end
 		end
-	until not c or c == "u"
+	until not c or c == "u" or c == "c"
+
 	local answer = buf:get()
-	if answer:match("u$") then
+	-- kkbp response format: ? flags u (where flags can be empty or digits)
+	-- DA response format: ? number ; number ... c
+	if answer:match("^%?%d*u$") then
 		return true
 	end
 	return false
@@ -242,6 +268,16 @@ local disable_kkbp = function()
 	io.flush()
 end
 
+local enable_bracketed_paste = function()
+	write("\027[?2004h")
+	io.flush()
+end
+
+local disable_bracketed_paste = function()
+	write("\027[?2004l")
+	io.flush()
+end
+
 local set_sane_mode = function()
 	core.set_sane_mode()
 end
@@ -267,11 +303,13 @@ local alt_screen = function()
 	local l, c = cursor_position()
 	switch_screen("alt")
 	enable_kkbp()
+	enable_bracketed_paste()
 	hide_cursor()
 	return {
 		l = l,
 		c = c,
 		done = function(self)
+			disable_bracketed_paste()
 			disable_kkbp()
 			switch_screen("main")
 			go(self.l, self.c)
@@ -319,6 +357,34 @@ local kkbp_codes = {
 	["57439"] = "VOLUME_UP",
 	["57440"] = "VOLUME_MUTE",
 	["57451"] = "RIGHT_HYPER",
+	["57399"] = "KP_0",
+	["57400"] = "KP_1",
+	["57401"] = "KP_2",
+	["57402"] = "KP_3",
+	["57403"] = "KP_4",
+	["57404"] = "KP_5",
+	["57405"] = "KP_6",
+	["57406"] = "KP_7",
+	["57407"] = "KP_8",
+	["57408"] = "KP_9",
+	["57409"] = "KP_DECIMAL",
+	["57410"] = "KP_DIVIDE",
+	["57411"] = "KP_MULTIPLY",
+	["57412"] = "KP_SUBTRACT",
+	["57413"] = "KP_ADD",
+	["57414"] = "KP_ENTER",
+	["57415"] = "KP_EQUAL",
+	["57416"] = "KP_SEPARATOR",
+	["57417"] = "KP_LEFT",
+	["57418"] = "KP_RIGHT",
+	["57419"] = "KP_UP",
+	["57420"] = "KP_DOWN",
+	["57421"] = "KP_PAGE_UP",
+	["57422"] = "KP_PAGE_DOWN",
+	["57423"] = "KP_HOME",
+	["57424"] = "KP_END",
+	["57425"] = "KP_INSERT",
+	["57426"] = "KP_DELETE",
 	["D"] = "LEFT",
 	["C"] = "RIGHT",
 	["A"] = "UP",
@@ -327,7 +393,16 @@ local kkbp_codes = {
 	["F"] = "END",
 	["P"] = "F1",
 	["Q"] = "F2",
+	["R"] = "F3",
 	["S"] = "F4",
+	["57365"] = "F5",
+	["57366"] = "F6",
+	["57367"] = "F7",
+	["57368"] = "F8",
+	["57369"] = "F9",
+	["57370"] = "F10",
+	["57371"] = "F11",
+	["57372"] = "F12",
 	["E"] = "KP_BEGIN",
 	["9"] = "TAB",
 	["13"] = "ENTER",
@@ -364,9 +439,9 @@ local get = function()
 		return nil
 	end
 	if string.byte(csi) ~= 27 then
-		-- Sequence does not start from the ESC,
-		-- so it must be "paste" terminal event
-		return csi .. io.read("*a")
+		-- With PE flag 15 and bracketed paste mode, this shouldn't happen
+		-- for normal input, but handle it gracefully just in case
+		return csi
 	end
 	csi = io.read(1)
 	if not csi or csi ~= "[" then
@@ -380,6 +455,39 @@ local get = function()
 		end
 	until not c or c:match(stop_chars)
 	local seq = buf:get()
+
+	-- Handle bracketed paste mode (ESC[200~ starts paste, ESC[201~ ends it)
+	if seq == "200~" then
+		local paste_buf = buffer.new()
+		local esc_seq = ""
+		repeat
+			local p = io.read(1)
+			if p then
+				if string.byte(p) == 27 then
+					-- Potential end sequence
+					esc_seq = p
+					p = io.read(1)
+					if p == "[" then
+						esc_seq = esc_seq .. p
+						-- Read the rest: should be "201~"
+						local end_marker = io.read(4) -- "201~"
+						if end_marker == "201~" then
+							break
+						else
+							-- False alarm, add to paste buffer
+							paste_buf:put(esc_seq .. end_marker)
+						end
+					else
+						paste_buf:put(esc_seq)
+						if p then paste_buf:put(p) end
+					end
+				else
+					paste_buf:put(p)
+				end
+			end
+		until not p
+		return paste_buf:get()
+	end
 
 	local modifiers = "1"
 	local event = "1"
@@ -533,6 +641,8 @@ local _M = {
 	has_kkbp = has_kkbp,
 	enable_kkbp = enable_kkbp,
 	disable_kkbp = disable_kkbp,
+	enable_bracketed_paste = enable_bracketed_paste,
+	disable_bracketed_paste = disable_bracketed_paste,
 	get = get,
 	simple_get = simple_get,
 	mods_to_string = mods_to_string,
