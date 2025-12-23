@@ -137,10 +137,8 @@ local handle_ctl = function(self, shortcut)
 		return self:end_of_line()
 	end
 
-	-- Add a newline on CTRL+ENTER
-	-- Note, our code (might be a kitty restriction? doubtly though...) in term.mods_to_string (or term.get) is
-	-- bugged and does not work for the SHIFT+ENTER shortcut
-	if shortcut == "CTRL+ENTER" then
+	-- Add a newline on SHIFT+ENTER
+	if shortcut == "SHIFT+ENTER" then
 		return self:newline()
 	end
 
