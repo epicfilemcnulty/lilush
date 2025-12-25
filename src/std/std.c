@@ -255,6 +255,30 @@ int deviant_pipe_file(lua_State *L) {
     return 1;
 }
 
+// Transforms a raw file descriptor into a Lua FILE* object
+// Usage: file = core.fdopen(fd, mode)
+// mode: "r" for read, "w" for write, "a" for append
+// Returns FILE* object on success, nil + error message on failure
+int deviant_fdopen(lua_State *L) {
+    int fd = luaL_checkinteger(L, 1);
+    const char *mode = luaL_checkstring(L, 2);
+
+    // Validate mode
+    if (mode[0] != 'r' && mode[0] != 'w' && mode[0] != 'a') {
+        lua_pushnil(L);
+        lua_pushstring(L, "mode must be 'r', 'w', or 'a'");
+        return 2;
+    }
+
+    if (!push_fd_handle(L, fd, mode)) {
+        lua_pushnil(L);
+        lua_pushstring(L, "failed to create FILE* from fd");
+        return 2;
+    }
+
+    return 1;
+}
+
 int deviant_write(lua_State *L) {
 
     int fd             = luaL_checkinteger(L, 1);
@@ -842,6 +866,7 @@ static luaL_Reg funcs[] = {
     {"dup2",            deviant_dup2                   },
     {"pipe",            deviant_pipe                   },
     {"pipe_file",       deviant_pipe_file              },
+    {"fdopen",          deviant_fdopen                 },
     {"close",           deviant_close                  },
     {"open",            deviant_open                   },
     {"create_shm",      deviant_create_shm             },
