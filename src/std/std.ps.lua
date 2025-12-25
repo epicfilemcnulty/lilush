@@ -29,8 +29,10 @@ local function fork()
 	return core.fork()
 end
 
--- Raw file descriptor based pipe (legacy interface)
--- For new code, consider using pipe_file() which returns Lua FILE objects
+-- Raw file descriptor based pipe.
+-- It should be used when you need to pass raw file descriptors
+-- to system calls, i.e. in exec and the like.
+-- When you don't need that, consider using pipe_file(), which returns Lua FILE objects
 local function pipe()
 	local p, err = core.pipe()
 	if p == nil then
@@ -75,26 +77,19 @@ local function pipe()
 			read = read,
 			write = write,
 			close_out = close_read,
-			close_inn = close_write
+			close_inn = close_write,
 		},
 		__gc = function(self)
 			close_read(self)
 			close_write(self)
-		end
+		end,
 	})
 	return p
 end
 
 -- FILE* based pipe - returns Lua file objects compatible with io.* functions
--- This is the recommended interface for new code
 local function pipe_file()
-	local p, err = core.pipe_file()
-	if p == nil then
-		return nil, err
-	end
-	-- p.out and p.inn are now Lua FILE* objects
-	-- They support standard file methods: read(), write(), close(), setvbuf(), etc.
-	return p
+	return core.pipe_file()
 end
 
 local function getpid()

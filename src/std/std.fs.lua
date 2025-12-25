@@ -187,11 +187,21 @@ local function write_file(filename, text)
 	return nil, err
 end
 
+-- Transforms a raw file descriptor into a Lua FILE* object
+-- Usage: file = fdopen(fd, mode)
+-- mode: "r" for read, "w" for write, "a" for append
+-- Returns FILE* object on success, nil + error message on failure
+-- Note: The original fd is closed; the FILE* owns a duplicate descriptor
+local function fdopen(fd, mode)
+	return core.fdopen(fd, mode)
+end
+
 local fs = {
 	cwd = cwd,
 	stat = stat,
 	read_file = read_file,
 	write_file = write_file,
+	fdopen = fdopen,
 	dir_exists = dir_exists,
 	empty_dir = empty_dir,
 	mkdir = mkdir,
