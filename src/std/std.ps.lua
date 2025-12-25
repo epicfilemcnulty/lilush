@@ -29,28 +29,71 @@ local function fork()
 	return core.fork()
 end
 
--- It might be better to just return Lua FILE
--- objects from core.pipe instead of raw file descriptors,
--- then we could use io.write, io.read & co...
--- If only I were smart enough to do that, duh.
+-- Raw file descriptor based pipe (legacy interface)
+-- For new code, consider using pipe_file() which returns Lua FILE objects
 local function pipe()
 	local p, err = core.pipe()
 	if p == nil then
 		return nil, err
 	end
+
 	local read = function(self, count)
-		return core.read(self.out, count)
+		local result, err = core.read(self.out, count)
+		if result == nil then
+			return nil, err
+		end
+		return result
 	end
+
 	local write = function(self, data, count)
-		return core.write(self.inn, data, count)
+		local result, err = core.write(self.inn, data, count)
+		if result == nil then
+			return nil, err
+		end
+		return result
 	end
+
 	local close_read = function(self)
-		core.close(self.out)
+		if self._out_open then
+			core.close(self.out)
+			self._out_open = false
+		end
 	end
+
 	local close_write = function(self)
-		core.close(self.inn)
+		if self._inn_open then
+			core.close(self.inn)
+			self._inn_open = false
+		end
 	end
-	setmetatable(p, { __index = { read = read, write = write, close_out = close_read, close_inn = close_write } })
+
+	p._out_open = true
+	p._inn_open = true
+
+	setmetatable(p, {
+		__index = {
+			read = read,
+			write = write,
+			close_out = close_read,
+			close_inn = close_write
+		},
+		__gc = function(self)
+			close_read(self)
+			close_write(self)
+		end
+	})
+	return p
+end
+
+-- FILE* based pipe - returns Lua file objects compatible with io.* functions
+-- This is the recommended interface for new code
+local function pipe_file()
+	local p, err = core.pipe_file()
+	if p == nil then
+		return nil, err
+	end
+	-- p.out and p.inn are now Lua FILE* objects
+	-- They support standard file methods: read(), write(), close(), setvbuf(), etc.
 	return p
 end
 
@@ -166,6 +209,7 @@ local ps = {
 	dup = dup,
 	dup2 = dup2,
 	pipe = pipe,
+	pipe_file = pipe_file,
 	exec = exec,
 	exec_simple = exec_simple,
 	exec_one_line = exec_one_line,

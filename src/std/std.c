@@ -20,6 +20,7 @@
 
 #include <lauxlib.h>
 #include <lua.h>
+#include <lualib.h>
 
 extern char **environ;
 
@@ -160,6 +161,95 @@ int deviant_pipe(lua_State *L) {
     lua_pushinteger(L, pipefd[0]);
     lua_setfield(L, -2, "out");
     lua_pushinteger(L, pipefd[1]);
+    lua_setfield(L, -2, "inn");
+
+    return 1;
+}
+
+/*
+
+LuaJIT does not expose the Lua 5.2+ `luaL_Stream` helpers or the `UDTYPE_IO_FILE` constructor
+that the standard `io` library uses internally.
+
+Creating a userdata and filling a FILE* via `fdopen` produces a userdata without the expected metatable/type,
+so Lua-side `:write`/`:read` reject it as “FILE* expected, got userdata”.
+
+The standard LuaJIT `io` library is the only code that can produce FILE* userdata
+with the proper metatable (`LUA_FILEHANDLE` == "FILE*") and builtin methods.
+We therefore need to route fd → io handle through the `io` module.
+
+Reopening an existing fd through `/proc/self/fd/<n>` with `io.open(path, mode)` yields a
+genuine Lua file handle while keeping buffering and mode consistent. Immediately closing
+the original fd avoids leaks; the reopened handle owns the duplicated
+descriptor created by `io.open`.
+
+Another way to do this is via `io.tmpfile` + `dup2`.
+It works, but creates a temporary file and extra syscalls, and can fail
+if TMPDIR is not writable.
+*/
+
+// Push a Lua FILE* (via io.open) for an existing fd using /proc/self/fd
+// Returns 1 on success (file userdata on stack), 0 on failure
+static int push_fd_handle(lua_State *L, int fd, const char *mode) {
+    char path[64];
+    int len = snprintf(path, sizeof(path), "/proc/self/fd/%d", fd);
+    if (len < 0 || (size_t)len >= sizeof(path)) {
+        close(fd);
+        return 0;
+    }
+
+    lua_getglobal(L, "io");
+    lua_getfield(L, -1, "open");
+    lua_remove(L, -2); // remove io table
+
+    lua_pushlstring(L, path, (size_t)len);
+    lua_pushstring(L, mode);
+
+    if (lua_pcall(L, 2, 1, 0) != 0) {
+        // call failed, pop error message
+        lua_pop(L, 1);
+        close(fd);
+        return 0;
+    }
+
+    // io.open returns nil+err on failure
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        close(fd);
+        return 0;
+    }
+
+    // io.open created a new fd; close the original to avoid leaks
+    close(fd);
+    return 1;
+}
+
+// Function to create a pipe with FILE*-based interface for
+// pipe's ends
+int deviant_pipe_file(lua_State *L) {
+    int pipefd[2];
+
+    if (pipe2(pipefd, O_CLOEXEC) == -1) {
+        RETURN_ERR(L);
+    }
+
+    // Create table to hold both file handles
+    lua_newtable(L);
+
+    // Create read end as FILE* in "r" mode
+    if (!push_fd_handle(L, pipefd[0], "r")) {
+        close(pipefd[1]);
+        lua_pop(L, 1); // pop the table
+        RETURN_CUSTOM_ERR(L, "failed to create read end FILE* object");
+    }
+    lua_setfield(L, -2, "out");
+
+    // Create write end as FILE* in "w" mode
+    if (!push_fd_handle(L, pipefd[1], "w")) {
+        // Note: pipefd[0] will be cleaned up by Lua GC
+        lua_pop(L, 1); // pop the table
+        RETURN_CUSTOM_ERR(L, "failed to create write end FILE* object");
+    }
     lua_setfield(L, -2, "inn");
 
     return 1;
@@ -751,6 +841,7 @@ static luaL_Reg funcs[] = {
     {"dup",             deviant_dup                    },
     {"dup2",            deviant_dup2                   },
     {"pipe",            deviant_pipe                   },
+    {"pipe_file",       deviant_pipe_file              },
     {"close",           deviant_close                  },
     {"open",            deviant_open                   },
     {"create_shm",      deviant_create_shm             },
@@ -785,7 +876,6 @@ static luaL_Reg funcs[] = {
 };
 
 int luaopen_deviant_core(lua_State *L) {
-
     /* Return the module */
     luaL_newlib(L, funcs);
     return 1;
