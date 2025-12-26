@@ -5,6 +5,7 @@
 - [ ] Djot rendering refactor: add divs and quotes support; navigation
 - [x] Kitty graphics protocol support
 - [ ] Add basic `curl` alternative to shell builtins
+- [ ] Add LPeg (?)
 - [ ] HTTP/2.0
 - [x] Digital signatures from WolfCrypt for proper packaging/plugins support
 - [ ] Curve25519 & session keys
