@@ -97,10 +97,10 @@ end
 
 local render_chooser_option = function(self, idx)
 	local option = self.content[idx]
-	term.go(self.l + (self.title ~= "" and 3 or 1) + idx - 1, self.c + 1)
+	local content_col = self.kind == "chooser_multi" and self.c or (self.c + 1)
+	term.go(self.l + self.content_start + idx - 1, content_col)
 
 	if self.kind == "chooser_multi" then
-		term.move("left", 1)
 		if self.selected[option] then
 			term.write(self.tss:apply("option.marked"))
 		else
@@ -120,7 +120,7 @@ local goto_field = function(self, idx, to_input)
 	if to_input then
 		c = c + std.utf.len(label)
 	end
-	term.go(self.l + (self.title ~= "" and 3 or 1) + idx - 1, c)
+	term.go(self.l + self.content_start + idx - 1, c)
 end
 
 local render_form_field = function(self, idx)
@@ -140,7 +140,7 @@ local render_form_field = function(self, idx)
 end
 
 local new_widget = function(opts)
-	local opts = opts or {}
+	opts = opts or {}
 	local widget = {
 		l = opts.l or 1,
 		c = opts.c or 1,
@@ -150,6 +150,7 @@ local new_widget = function(opts)
 		tss = style.merge(default_rss, opts.rss),
 		kind = opts.kind or "widget",
 	}
+	widget.content_start = widget.title ~= "" and 3 or 1
 	local win_y, win_x = term.window_size()
 	if not opts.l or not opts.c then
 		widget.l = opts.l or math.floor((win_y - widget.h) / 2) - math.floor(win_y * 0.05)
@@ -166,8 +167,8 @@ local new_widget = function(opts)
 end
 
 local chooser = function(content, opts)
-	local opts = opts or {}
-	local content = content or {}
+	opts = opts or {}
+	content = content or {}
 	if #content == 0 then
 		return ""
 	end
@@ -205,8 +206,8 @@ local chooser = function(content, opts)
 		elseif key == "ENTER" then
 			if w.kind == "chooser_multi" then
 				local result = {}
-				for option, selected in pairs(w.selected) do
-					if selected then
+				for _, option in ipairs(w.content) do
+					if w.selected[option] then
 						table.insert(result, option)
 					end
 				end
@@ -236,7 +237,7 @@ local chooser = function(content, opts)
 			w.label = w.label .. key
 			w:draw_top_border()
 			for i, option in ipairs(w.content) do
-				if option:match(w.label) then
+				if option:find(w.label, 1, true) then
 					if w.idx ~= i then
 						local prev_idx = w.idx
 						w.idx = i
@@ -265,29 +266,24 @@ local form = function(content, opts)
 		return false
 	end
 
-	local opts = opts or {}
+	opts = opts or {}
 	if not opts.meta then
 		opts.meta = {}
 	end
-	local title = opts.title or ""
-	local title_len = std.utf.len(title)
-	local max_label = std.tbl.longest(content)
-	local max_input = 0
-	for i, label in ipairs(content) do
-		local field_input = 10
-		if opts.meta[label] then
-			field_input = opts.meta[label].w or 10
-		end
-		if field_input > max_input then
-			max_input = field_input
-		end
-	end
-	local total_len = max_label + max_input
-	if title_len > total_len then
-		total_len = title_len
-	end
-	opts.w = total_len + 5
-	opts.h = #content
+    local title = opts.title or ""
+    local title_len = std.utf.len(title)
+    local max_label = std.tbl.longest(content)
+    local max_input = 0
+    for _, label in ipairs(content) do
+        local field_input = 10
+        if opts.meta[label] then
+            field_input = opts.meta[label].w or 10
+        end
+        max_input = math.max(max_input, field_input)
+    end
+    local total_len = math.max(title_len, max_label + max_input)
+    opts.w = total_len + 5
+    opts.h = #content
 
 	local w = new_widget(opts)
 	w.content = content
@@ -321,7 +317,7 @@ local form = function(content, opts)
 		if key == "ENTER" then
 			local label = w.content[w.idx]
 			local display_label = w.tss:apply("form.label", label)
-			local y = w.l + (w.title ~= "" and 3 or 1) + w.idx - 1
+			local y = w.l + w.content_start + w.idx - 1
 			local x = w.c + 1 + std.utf.len(display_label)
 			if w.meta[label] and w.meta[label].secret then
 				w.tss.__style.form.input.content = "*"
@@ -362,6 +358,8 @@ local form = function(content, opts)
 end
 
 --[==[
+ TODO: refactor this
+
 local file_chooser = function(title, start_dir, rss, patterns)
 	local state = term.alt_screen()
 	local invoke_dir = std.fs.cwd()
