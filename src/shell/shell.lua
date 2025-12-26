@@ -41,6 +41,7 @@ local exit_combo = function(self, combo)
 		return true
 	end
 	term.disable_kkbp()
+	term.disable_bracketed_paste()
 	term.set_sane_mode()
 	os.exit(0)
 end
@@ -62,6 +63,7 @@ local run = function(self)
 		os.exit(29)
 	end
 	term.enable_kkbp()
+	term.enable_bracketed_paste()
 	term.clear()
 
 	self.__mode[self.__chosen_mode].input:display(true)
@@ -73,7 +75,6 @@ local run = function(self)
 				io.flush()
 				term.write("\r\n")
 				term.disable_kkbp()
-				io.read("*a")
 				term.set_sane_mode()
 
 				local cwd = std.fs.cwd()
