@@ -156,12 +156,11 @@ local builtins_default = {
 		line_num = { fg = 60, selected = { s = "bold,inverted" } },
 		search_match = { fg = { 38, 62, 38 }, bg = 31, s = "italic,bold" },
 		status_line = {
-			bg = 31,
-			fg = { 38, 62, 38 },
+			fg = "cyan",
 			filename = { after = " ※ " },
 			total_lines = { after = " ※ " },
 			size = { after = " ※ " },
-			position = { fg = { 30, 54, 30 } },
+			position = { s = "bold,italic" },
 			search = {
 				input = { bg = 31, fg = { 38, 62, 38 }, s = "bold,inverted" },
 				pattern = { before = "/", s = "bold" },

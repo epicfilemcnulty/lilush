@@ -567,7 +567,7 @@ local pager_search = function(self, combo)
 		term.show_cursor()
 		event = buf:run()
 		term.hide_cursor()
-		pattern = buf:render()
+		pattern = buf:get_content()
 		if pattern == "" then
 			self.__search.idx = 0
 			self.__state.cursor_line = 0
