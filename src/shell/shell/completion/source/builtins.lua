@@ -57,6 +57,7 @@ local new = function()
 			digg = true,
 			rehash = true,
 			run_script = true,
+			job = true,
 		},
 		aliases = {},
 	}

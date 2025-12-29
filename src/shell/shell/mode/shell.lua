@@ -10,6 +10,7 @@ local style = require("term.tss")
 local tss = style.new(theme)
 local storage = require("shell.store")
 local vault = require("vault")
+local jobs = require("shell.jobs")
 
 local check_config_dirs = function(self)
 	if not std.fs.dir_exists(self.home .. "/.config/lilush") then
@@ -287,6 +288,7 @@ local run = function(self)
 	if not status and not err then
 		status = 0
 	end
+	jobs.reap()
 	self:clear_env_secrets()
 	return status, err
 end
@@ -302,9 +304,12 @@ local run_once = function(self)
 	end
 	local cmd = pipeline[1].cmd
 	if tlb[cmd] then
-		return self[cmd](self, cmd, pipeline[1].args)
+		local status, err = self[cmd](self, cmd, pipeline[1].args)
+		jobs.reap()
+		return status, err
 	else
 		local status, err = utils.run_pipeline(pipeline, nil, builtins)
+		jobs.reap()
 		return status, err
 	end
 end
