@@ -11,6 +11,7 @@ local git_subcommands = {
 	["log"] = true,
 	["pull"] = true,
 	["push"] = true,
+	["branch"] = true,
 }
 
 local docker_subcommands = {
@@ -36,6 +37,13 @@ local ktl_subcommands = {
 	["delete"] = true,
 	["apply"] = true,
 	["logs"] = true,
+}
+
+local job_subcommands = {
+	["list"] = true,
+	["start"] = true,
+	["kill"] = true,
+	["attach"] = true,
 }
 
 local kubectl_profile_completions = function(self, args)
@@ -134,7 +142,22 @@ local docker_completions = function(self, args)
 	return candidates
 end
 
+local job_completions = function(self, args)
+	local candidates = {}
+	local arg = args[#args]
+	for cmd, _ in pairs(job_subcommands) do
+		if cmd:match("^" .. std.escape_magic_chars(arg)) then
+			table.insert(candidates, cmd:sub(#arg + 1))
+		end
+	end
+	std.tbl.sort_by_str_len(candidates)
+	return candidates
+end
+
 local list = {
+	["job"] = function(self, args)
+		return job_completions(self, args)
+	end,
 	["git"] = function(self, args)
 		return git_completions(self, args)
 	end,

@@ -1,5 +1,15 @@
 -- SPDX-FileCopyrightText: © 2025 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
+
+--[[
+    Simple in-memory job manager for PTY-backed background jobs.
+    Each job runs on its own PTY; a logger child drains the PTY to a log file
+    (or /dev/null) while detached so the job never blocks on output.
+
+    Attaching temporarily stops the logger and streams PTY I/O to the terminal
+    until the user detaches (Ctrl-]) or the job exits.
+]]
+
 local std = require("std")
 local core = require("std.core")
 
@@ -9,7 +19,15 @@ local jobs = {
 	order = {},
 }
 
-local detach_key = 29 -- Ctrl-]
+--[[
+   Default detach key is `Ctrl-]` which maps to ASCII GS (0x1D, decimal 29).
+
+   To pick a different Ctrl key, use: code = string.byte("X") & 0x1F (Ctrl-X in this case)
+
+   Override with LILUSH_JOB_DETACH_KEY (numeric ASCII code), e.g.
+   `export LILUSH_JOB_DETACH_KEY=20` for `Ctrl-T`
+]]
+local detach_key = tonumber(os.getenv("LILUSH_JOB_DETACH_KEY") or "") or 29
 
 local start_logger = function(master_fd, log_path)
 	local pid = std.ps.fork()
@@ -19,7 +37,8 @@ local start_logger = function(master_fd, log_path)
 	if pid ~= 0 then
 		return pid
 	end
-	local log_fd = core.open(log_path, 5)
+	local target = log_path or "/dev/null"
+	local log_fd = core.open(target, 5)
 	if not log_fd then
 		os.exit(127)
 	end
@@ -35,8 +54,9 @@ local start_logger = function(master_fd, log_path)
 	os.exit(0)
 end
 
-local start = function(cmd, args)
+local start = function(cmd, args, opts)
 	local args = args or {}
+	local opts = opts or {}
 	local pty, err = std.ps.pty_open()
 	if not pty then
 		return nil, err
@@ -68,6 +88,9 @@ local start = function(cmd, args)
 	jobs.next_id = jobs.next_id + 1
 
 	local log_path = "/tmp/lilush_job_" .. tostring(id) .. ".log"
+	if opts.log == false then
+		log_path = nil
+	end
 	local logger_pid = start_logger(pty.master, log_path)
 	local entry = {
 		id = id,

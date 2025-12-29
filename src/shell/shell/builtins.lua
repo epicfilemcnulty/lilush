@@ -410,7 +410,7 @@ local kat = function(cmd, args)
 			errmsg("no handler for file type: " .. mime_info.type)
 			return 127
 		end
-		local job, err = jobs.start(viewer, { args.pathname })
+		local job, err = jobs.start(viewer, { args.pathname }, { log = false })
 		if not job then
 			errmsg(err)
 			return 127
@@ -452,34 +452,48 @@ local job_help = [[
 
   Manage background jobs.
 
-  job start <cmd> [args...]
-  job list
-  job kill <id> [signal]
-  job attach <id>
+## Usage
 
-  Detach key during attach: Ctrl-]
+  * Start a job: `job start [--no-log] <cmd> [args...]`
+  * List jobs: `job list`
+  * Kill a job: `job kill <id> [signal]`
+  * Attach job: `job attach <id>`
+
+  Default detach key is *Ctrl+]*.
 ]]
 local job = function(cmd, args)
 	local sub = args[1]
-	if not sub or sub == "help" then
+	if not sub then
+		sub = "list"
+	end
+
+	if sub == "help" or sub == "-?" or sub == "--help" then
 		helpmsg(job_help)
 		return 0
 	end
+
 	if sub == "start" then
 		table.remove(args, 1)
+		local no_log = false
+		if args[1] == "--no-log" then
+			no_log = true
+			table.remove(args, 1)
+		end
 		local command = table.remove(args, 1)
 		if not command then
 			errmsg("missing command")
 			return 127
 		end
-		local j, err = jobs.start(command, args)
+		local j, err = jobs.start(command, args, { log = not no_log })
 		if not j then
 			errmsg(err)
 			return 127
 		end
 		term.write("Started job [" .. j.id .. "] pid " .. j.pid .. "\n")
 		return 0
-	elseif sub == "list" then
+	end
+
+	if sub == "list" then
 		local entries = jobs.list()
 		if #entries == 0 then
 			term.write("No jobs\n")
@@ -493,11 +507,12 @@ local job = function(cmd, args)
 			if j.status ~= "running" then
 				line = line .. " exit=" .. tostring(j.exit_status or 0)
 			end
-			line = line .. " log=" .. j.log_path
+			line = line .. " log=" .. (j.log_path or "none")
 			term.write(line .. "\n")
 		end
 		return 0
-	elseif sub == "kill" then
+	end
+	if sub == "kill" then
 		local id = tonumber(args[2] or "")
 		if not id then
 			errmsg("missing job id")
@@ -510,7 +525,8 @@ local job = function(cmd, args)
 			return 127
 		end
 		return 0
-	elseif sub == "attach" then
+	end
+	if sub == "attach" then
 		local id = tonumber(args[2] or "")
 		if not id then
 			errmsg("missing job id")

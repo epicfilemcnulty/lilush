@@ -263,7 +263,7 @@ int deviant_pipe_file(lua_State *L) {
 // mode: "r" for read, "w" for write, "a" for append
 // Returns FILE* object on success, nil + error message on failure
 int deviant_fdopen(lua_State *L) {
-    int fd = luaL_checkinteger(L, 1);
+    int fd           = luaL_checkinteger(L, 1);
     const char *mode = luaL_checkstring(L, 2);
 
     // Validate mode
@@ -443,8 +443,8 @@ int deviant_tcsetpgrp(lua_State *L) {
 }
 
 int deviant_tcgetpgrp(lua_State *L) {
-    int fd      = luaL_checkint(L, 1);
-    pid_t pgid  = tcgetpgrp(fd);
+    int fd     = luaL_checkint(L, 1);
+    pid_t pgid = tcgetpgrp(fd);
     if (pgid == -1) {
         RETURN_ERR(L);
     }
@@ -462,6 +462,8 @@ int deviant_tiocstty(lua_State *L) {
     return 1;
 }
 
+// Allocate a new PTY master and return { master = fd, slave = "/dev/pts/N" }.
+// Caller opens the slave path to create a controlling terminal for a child.
 int deviant_pty_open(lua_State *L) {
     int master = posix_openpt(O_RDWR | O_NOCTTY);
     if (master == -1) {
@@ -488,10 +490,12 @@ int deviant_pty_open(lua_State *L) {
     return 1;
 }
 
+// Pump I/O between STDIN/STDOUT and a PTY master fd until EOF or detach key.
+// Returns true if detached via key, false on normal EOF.
 int deviant_pty_attach(lua_State *L) {
-    int master      = luaL_checkint(L, 1);
-    int detach_key  = luaL_optint(L, 2, 29);
-    int detached    = 0;
+    int master     = luaL_checkint(L, 1);
+    int detach_key = luaL_optint(L, 2, 29);
+    int detached   = 0;
     struct pollfd fds[2];
     char buf[4096];
 
