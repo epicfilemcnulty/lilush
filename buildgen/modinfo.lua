@@ -45,6 +45,7 @@ local luamods = {
 		"shell.theme",
 		"shell.store",
 		"shell.utils",
+		"shell.jobs",
 		"shell.builtins",
 		"shell.mode.shell",
 		"shell.mode.shell.prompt",

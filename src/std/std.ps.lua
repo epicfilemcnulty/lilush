@@ -29,6 +29,38 @@ local function fork()
 	return core.fork()
 end
 
+local function setpgid(pid, pgid)
+	return core.setpgid(pid, pgid)
+end
+
+local function getpgid(pid)
+	return core.getpgid(pid)
+end
+
+local function setsid()
+	return core.setsid()
+end
+
+local function tcsetpgrp(fd, pgid)
+	return core.tcsetpgrp(fd, pgid)
+end
+
+local function tcgetpgrp(fd)
+	return core.tcgetpgrp(fd)
+end
+
+local function tiocstty(fd)
+	return core.tiocstty(fd)
+end
+
+local function pty_open()
+	return core.pty_open()
+end
+
+local function pty_attach(master, detach_key)
+	return core.pty_attach(master, detach_key)
+end
+
 -- Raw file descriptor based pipe.
 -- It should be used when you need to pass raw file descriptors
 -- to system calls, i.e. in exec and the like.
@@ -203,6 +235,14 @@ local ps = {
 	kill = kill,
 	dup = dup,
 	dup2 = dup2,
+	setpgid = setpgid,
+	getpgid = getpgid,
+	setsid = setsid,
+	tcsetpgrp = tcsetpgrp,
+	tcgetpgrp = tcgetpgrp,
+	tiocstty = tiocstty,
+	pty_open = pty_open,
+	pty_attach = pty_attach,
 	pipe = pipe,
 	pipe_file = pipe_file,
 	exec = exec,

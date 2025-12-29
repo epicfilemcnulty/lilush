@@ -5,16 +5,19 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <termios.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -416,6 +419,137 @@ int deviant_getpgid(lua_State *L) {
         RETURN_ERR(L);
     }
     lua_pushinteger(L, pgid);
+    return 1;
+}
+
+int deviant_setsid(lua_State *L) {
+    pid_t sid = setsid();
+    if (sid == -1) {
+        RETURN_ERR(L);
+    }
+    lua_pushinteger(L, sid);
+    return 1;
+}
+
+int deviant_tcsetpgrp(lua_State *L) {
+    int fd     = luaL_checkint(L, 1);
+    pid_t pgid = luaL_checkint(L, 2);
+    int ret    = tcsetpgrp(fd, pgid);
+    if (ret == -1) {
+        RETURN_ERR(L);
+    }
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int deviant_tcgetpgrp(lua_State *L) {
+    int fd      = luaL_checkint(L, 1);
+    pid_t pgid  = tcgetpgrp(fd);
+    if (pgid == -1) {
+        RETURN_ERR(L);
+    }
+    lua_pushinteger(L, pgid);
+    return 1;
+}
+
+int deviant_tiocstty(lua_State *L) {
+    int fd  = luaL_checkint(L, 1);
+    int ret = ioctl(fd, TIOCSCTTY, 0);
+    if (ret == -1) {
+        RETURN_ERR(L);
+    }
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int deviant_pty_open(lua_State *L) {
+    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    if (master == -1) {
+        RETURN_ERR(L);
+    }
+    if (grantpt(master) == -1) {
+        close(master);
+        RETURN_ERR(L);
+    }
+    if (unlockpt(master) == -1) {
+        close(master);
+        RETURN_ERR(L);
+    }
+    char *slave = ptsname(master);
+    if (slave == NULL) {
+        close(master);
+        RETURN_ERR(L);
+    }
+    lua_newtable(L);
+    lua_pushinteger(L, master);
+    lua_setfield(L, -2, "master");
+    lua_pushstring(L, slave);
+    lua_setfield(L, -2, "slave");
+    return 1;
+}
+
+int deviant_pty_attach(lua_State *L) {
+    int master      = luaL_checkint(L, 1);
+    int detach_key  = luaL_optint(L, 2, 29);
+    int detached    = 0;
+    struct pollfd fds[2];
+    char buf[4096];
+
+    fds[0].fd     = STDIN_FILENO;
+    fds[0].events = POLLIN;
+    fds[1].fd     = master;
+    fds[1].events = POLLIN;
+
+    for (;;) {
+        int ret = poll(fds, 2, -1);
+        if (ret < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            RETURN_ERR(L);
+        }
+
+        if (fds[0].revents & POLLIN) {
+            ssize_t n = read(STDIN_FILENO, buf, sizeof(buf));
+            if (n <= 0) {
+                break;
+            }
+            for (ssize_t i = 0; i < n; i++) {
+                if ((unsigned char)buf[i] == (unsigned char)detach_key) {
+                    if (i > 0) {
+                        if (write(master, buf, (size_t)i) < 0) {
+                            RETURN_ERR(L);
+                        }
+                    }
+                    detached = 1;
+                    goto done;
+                }
+            }
+            if (write(master, buf, (size_t)n) < 0) {
+                if (errno == EIO) {
+                    break;
+                }
+                RETURN_ERR(L);
+            }
+        }
+
+        if (fds[1].revents & POLLIN) {
+            ssize_t n = read(master, buf, sizeof(buf));
+            if (n <= 0) {
+                break;
+            }
+            if (write(STDOUT_FILENO, buf, (size_t)n) < 0) {
+                RETURN_ERR(L);
+            }
+        }
+
+        if (fds[1].revents & (POLLHUP | POLLERR)) {
+            break;
+        }
+    }
+
+done:
+    lua_pushboolean(L, detached);
     return 1;
 }
 
@@ -875,6 +1009,12 @@ static luaL_Reg funcs[] = {
     {"getpid",          deviant_getpid                 },
     {"getpgid",         deviant_getpgid                },
     {"setpgid",         deviant_setpgid                },
+    {"setsid",          deviant_setsid                 },
+    {"tcsetpgrp",       deviant_tcsetpgrp              },
+    {"tcgetpgrp",       deviant_tcgetpgrp              },
+    {"tiocstty",        deviant_tiocstty               },
+    {"pty_open",        deviant_pty_open               },
+    {"pty_attach",      deviant_pty_attach             },
     {"waitpid",         deviant_waitpid                },
     {"register_signal", deviant_register_signal_handler},
     {"remove_signal",   deviant_remove_signal_handler  },

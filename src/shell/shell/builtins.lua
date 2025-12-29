@@ -12,6 +12,7 @@ local text = require("text")
 local argparser = require("argparser")
 local buffer = require("string.buffer")
 local style = require("term.tss")
+local jobs = require("shell.jobs")
 
 local set_term_title = function(title)
 	local term_title_prefix = os.getenv("LILUSH_TERM_TITLE_PREFIX") or ""
@@ -404,10 +405,17 @@ local kat = function(cmd, args)
 	end
 	local mime_info = std.mime.info(args.pathname)
 	if not mime_info.type:match("^text") and not std.txt.valid_utf(args.pathname) then
-		math.randomseed(os.time())
-		local cmdline = { "dtach", "-n", "/tmp/lrun_" .. std.nanoid(), mime_info.cmdline:match("^%S+"), args.pathname }
-		term.set_sane_mode()
-		std.ps.exec(table.unpack(cmdline))
+		local viewer = mime_info.cmdline:match("^%S+")
+		if not viewer then
+			errmsg("no handler for file type: " .. mime_info.type)
+			return 127
+		end
+		local job, err = jobs.start(viewer, { args.pathname })
+		if not job then
+			errmsg(err)
+			return 127
+		end
+		term.write("Started background job [" .. job.id .. "]\n")
 		return 0
 	end
 	local render_mode = "raw"
@@ -437,6 +445,90 @@ local kat = function(cmd, args)
 	term.show_cursor()
 	term.set_sane_mode()
 	return 0
+end
+
+local job_help = [[
+: job
+
+  Manage background jobs.
+
+  job start <cmd> [args...]
+  job list
+  job kill <id> [signal]
+  job attach <id>
+
+  Detach key during attach: Ctrl-]
+]]
+local job = function(cmd, args)
+	local sub = args[1]
+	if not sub or sub == "help" then
+		helpmsg(job_help)
+		return 0
+	end
+	if sub == "start" then
+		table.remove(args, 1)
+		local command = table.remove(args, 1)
+		if not command then
+			errmsg("missing command")
+			return 127
+		end
+		local j, err = jobs.start(command, args)
+		if not j then
+			errmsg(err)
+			return 127
+		end
+		term.write("Started job [" .. j.id .. "] pid " .. j.pid .. "\n")
+		return 0
+	elseif sub == "list" then
+		local entries = jobs.list()
+		if #entries == 0 then
+			term.write("No jobs\n")
+			return 0
+		end
+		for _, j in ipairs(entries) do
+			local line = "[" .. j.id .. "] " .. j.status .. " pid=" .. j.pid .. " " .. j.cmd
+			if j.args and #j.args > 0 then
+				line = line .. " " .. table.concat(j.args, " ")
+			end
+			if j.status ~= "running" then
+				line = line .. " exit=" .. tostring(j.exit_status or 0)
+			end
+			line = line .. " log=" .. j.log_path
+			term.write(line .. "\n")
+		end
+		return 0
+	elseif sub == "kill" then
+		local id = tonumber(args[2] or "")
+		if not id then
+			errmsg("missing job id")
+			return 127
+		end
+		local signal = tonumber(args[3] or "15") or 15
+		local ok, err = jobs.kill(id, signal)
+		if not ok then
+			errmsg(err)
+			return 127
+		end
+		return 0
+	elseif sub == "attach" then
+		local id = tonumber(args[2] or "")
+		if not id then
+			errmsg("missing job id")
+			return 127
+		end
+		term.disable_kkbp()
+		term.disable_bracketed_paste()
+		term.set_raw_mode()
+		local ok, err = jobs.attach(id)
+		term.set_sane_mode()
+		if not ok then
+			errmsg(err)
+			return 127
+		end
+		return 0
+	end
+	errmsg("unknown subcommand: " .. tostring(sub))
+	return 127
 end
 
 local exec = function(cmd, args)
@@ -1501,9 +1593,20 @@ local builtins = {
 	["digg"] = dig,
 	["ps"] = kinda_ps,
 	["wgcli"] = wgcli,
+	["job"] = job,
 }
 
-local dont_fork = { zx = true, z = true, cd = true, setenv = true, export = true, unsetenv = true, ktl = true }
+local dont_fork = {
+	zx = true,
+	z = true,
+	cd = true,
+	setenv = true,
+	export = true,
+	unsetenv = true,
+	ktl = true,
+	kat = true,
+	job = true,
+}
 
 local get = function(cmd)
 	for k, f in pairs(builtins) do
