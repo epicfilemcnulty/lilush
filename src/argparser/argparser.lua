@@ -32,33 +32,22 @@
   print(args.long)
   print(args.count + 1)
   ```
+
+  Note: use `--` to stop flag parsing and pass positional arguments
+  that start with a hyphen (e.g., `-- -file`).
 ]]
 
 local std = require("std")
 
 local map_short_flag = function(self, flag)
-	for name, obj in pairs(self.schema) do
-		local short = obj.short or name:match("^(.)")
-		-- positional arguments are not allowed to have flags, they have positions, for chrissake!
-		if short == flag and not obj.idx then
-			return name
-		end
+	if self.short_flag_conflicts[flag] then
+		return nil, "Ambiguous short flag `" .. flag .. "`{.flag}"
 	end
-	return nil
+	return self.short_flag_map[flag]
 end
 
 local map_positional_arg = function(self, arg)
-	local positionals = {}
-	for name, obj in pairs(self.schema) do
-		if obj.idx then
-			table.insert(positionals, obj)
-			positionals[#positionals].name = name
-		end
-	end
-	table.sort(positionals, function(a, b)
-		return a.idx < b.idx
-	end)
-	for i, v in ipairs(positionals) do
+	for i, v in ipairs(self.positionals) do
 		if self.parsed[v.name] == nil then
 			return v.name
 		end
@@ -115,31 +104,27 @@ local parse = function(self, args)
 	if args[1] == "--help" or args[1] == "-?" then
 		return nil, self.help_text .. tostring(self.schema), true
 	end
+	if self.schema_error then
+		return nil, self.schema_error
+	end
 	local i = 1
+	local stop_parsing = false
 	while i <= #args do
-		local hyphens, flags = args[i]:match("^(%-%-?)(%w+)")
-		if hyphens and flags then
-			if #hyphens == 2 then
-				local flag = flags
-				if not self.schema[flag] or self.schema[flag].idx then
-					return nil, "No such flag `" .. flag .. "`{.flag}"
-				end
-				local ok, err = self:validate_arg(flag, args[i + 1])
-				if ok == nil then
-					return nil, err
-				end
-				if self.schema[flag].kind ~= "bool" then
-					i = i + 1
-				end
-			else
-				for f in flags:gmatch(".") do
-					local flag = self:map_short_flag(f)
-					if not flag then
-						return nil, "No such flag `" .. f .. "`{.flag}"
+		if not stop_parsing and args[i] == "--" then
+			stop_parsing = true
+			i = i + 1
+		else
+			local hyphens, flags = nil, nil
+			if not stop_parsing then
+				hyphens, flags = args[i]:match("^(%-%-?)(%w+)")
+			end
+			if hyphens and flags then
+				if #hyphens == 2 then
+					local flag = flags
+					if not self.schema[flag] or self.schema[flag].idx then
+						return nil, "No such flag `" .. flag .. "`{.flag}"
 					end
-					-- when the flag requires a value, it should be
-					-- the last flag in the string of flags
-					if self.schema[flag].kind ~= "bool" and not flags:match(f .. "$") then
+					if self.schema[flag].kind ~= "bool" and args[i + 1] == nil then
 						return nil, "`" .. flag .. "`{.flag} flag requires a value"
 					end
 					local ok, err = self:validate_arg(flag, args[i + 1])
@@ -149,20 +134,42 @@ local parse = function(self, args)
 					if self.schema[flag].kind ~= "bool" then
 						i = i + 1
 					end
+				else
+					for f in flags:gmatch(".") do
+						local flag, flag_err = self:map_short_flag(f)
+						if not flag then
+							return nil, flag_err or ("No such flag `" .. f .. "`{.flag}")
+						end
+						-- when the flag requires a value, it should be
+						-- the last flag in the string of flags
+						if self.schema[flag].kind ~= "bool" and not flags:match(f .. "$") then
+							return nil, "`" .. flag .. "`{.flag} flag requires a value"
+						end
+						if self.schema[flag].kind ~= "bool" and args[i + 1] == nil then
+							return nil, "`" .. flag .. "`{.flag} flag requires a value"
+						end
+						local ok, err = self:validate_arg(flag, args[i + 1])
+						if ok == nil then
+							return nil, err
+						end
+						if self.schema[flag].kind ~= "bool" then
+							i = i + 1
+						end
+					end
+				end
+			else
+				local arg = args[i]
+				local flag = self:map_positional_arg(arg)
+				if not flag then
+					return nil, "Too many arguments"
+				end
+				local ok, err = self:validate_arg(flag, arg)
+				if ok == nil then
+					return nil, err
 				end
 			end
-		else
-			local arg = args[i]
-			local flag = self:map_positional_arg(arg)
-			if not flag then
-				return nil, "Too many arguments"
-			end
-			local ok, err = self:validate_arg(flag, arg)
-			if ok == nil then
-				return nil, err
-			end
+			i = i + 1
 		end
-		i = i + 1
 	end
 	-- Set defaults and check for required arguments
 	for name, obj in pairs(self.schema) do
@@ -230,6 +237,31 @@ end
 local new = function(schema, help)
 	local help = help or ""
 	local schema = schema or {}
+	local positionals = {}
+	local short_flag_map = {}
+	local short_flag_conflicts = {}
+	for name, obj in pairs(schema) do
+		if obj.idx then
+			table.insert(positionals, { name = name, idx = obj.idx, multi = obj.multi })
+		else
+			local short = obj.short or name:match("^(.)")
+			if short_flag_map[short] and short_flag_map[short] ~= name then
+				short_flag_conflicts[short] = true
+			else
+				short_flag_map[short] = name
+			end
+		end
+	end
+	table.sort(positionals, function(a, b)
+		return a.idx < b.idx
+	end)
+	local schema_error = nil
+	for i, v in ipairs(positionals) do
+		if v.multi and i < #positionals then
+			schema_error = "`" .. v.name .. "` argument is multi and must be the last positional"
+			break
+		end
+	end
 	local mt = {
 		__tostring = function(tbl)
 			return "\n## Arguments table\n\n" .. table.concat(std.tbl.pipe_table(prepare_data(tbl)), "\n") .. "\n"
@@ -240,7 +272,11 @@ local new = function(schema, help)
 		help_text = help,
 		parsed = {},
 		parse = parse,
+		positionals = positionals,
 		schema = schema,
+		schema_error = schema_error,
+		short_flag_conflicts = short_flag_conflicts,
+		short_flag_map = short_flag_map,
 		validate_arg = validate_arg,
 		map_short_flag = map_short_flag,
 		map_positional_arg = map_positional_arg,
