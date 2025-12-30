@@ -70,6 +70,7 @@ local renderer_default = {
 			fn = { fg = 175 },
 			file = { fg = 152 },
 			dir = { fg = 153 },
+			status = { fg = "cyan", s = "italic" },
 		},
 	},
 }

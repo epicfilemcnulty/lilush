@@ -87,7 +87,6 @@ local error_page = function(code, hit_count, user_tmpl, img)
 	if tmpl.errors[code] then
 		local msg
 		if type(tmpl.errors[code].msg) == "table" then
-			math.randomseed(os.time())
 			msg = tmpl.errors[code].msg[math.random(1, #tmpl.errors[code].msg)]
 		else
 			msg = tmpl.errors[code].msg

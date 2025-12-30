@@ -1,5 +1,6 @@
 local start_code = [[
 static const char START_CODE[] = "local reliw = require('reliw')\n"
+                                 "math.randomseed(os.time())\n"
                                  "local reliw_srv, err = reliw.new()\n"
                                  "if not reliw_srv then print('failed to init "
                                  "RELIW: ' .. tostring(err)) os.exit(-1) end\n"

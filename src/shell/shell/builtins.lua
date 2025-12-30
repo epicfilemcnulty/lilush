@@ -499,17 +499,26 @@ local job = function(cmd, args)
 			term.write("No jobs\n")
 			return 0
 		end
+		local stat = {}
 		for _, j in ipairs(entries) do
-			local line = "[" .. j.id .. "] " .. j.status .. " pid=" .. j.pid .. " " .. j.cmd
-			if j.args and #j.args > 0 then
-				line = line .. " " .. table.concat(j.args, " ")
+			local status = j.status
+			if status ~= "running" then
+				status = status .. "(" .. tostring(j.exit_status or 0) .. ")"
 			end
-			if j.status ~= "running" then
-				line = line .. " exit=" .. tostring(j.exit_status or 0)
+			local args = ""
+			if j.args then
+				args = table.concat(j.args, " ")
 			end
-			line = line .. " log=" .. (j.log_path or "none")
-			term.write(line .. "\n")
+			table.insert(stat, {
+				"*" .. j.id .. "*",
+				"_" .. j.pid .. "_",
+				"`" .. status .. "`{.status}",
+				"`" .. j.cmd .. " " .. args .. "`{.str}",
+				"`" .. (j.log_path or "/dev/null") .. "`{.file}",
+			})
 		end
+		local list = table.concat(std.tbl.pipe_table({ "ID", "PID", "Status", "Command", "Log File" }, stat), "\n")
+		helpmsg(list)
 		return 0
 	end
 	if sub == "kill" then

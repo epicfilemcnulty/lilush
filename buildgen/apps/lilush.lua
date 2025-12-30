@@ -1,5 +1,6 @@
 local start_code = [[
-static const char EXEC_BUILTIN[] = "local builtins = require('shell.builtins')\n"
+static const char EXEC_BUILTIN[] = "math.randomseed(os.time())\n"
+                                   "local builtins = require('shell.builtins')\n"
                                    "local builtin = builtins.get(cmd)\n"
                                    "if builtin then\n"
                                    "  return builtin.func(builtin.name, arg)\n"
@@ -7,12 +8,14 @@ static const char EXEC_BUILTIN[] = "local builtins = require('shell.builtins')\n
                                    "print('no such builtin:' .. tostring(cmd))\n"
                                    "return -1";
  
-static const char START_SHELL[] = "local sh = require('shell')\n"
+static const char START_SHELL[] = "math.randomseed(os.time())\n"
+                                  "local sh = require('shell')\n"
                                   "local core = require('std.core')\n"
                                   "core.register_signal(2)\n"
                                   "local shell = sh.new() shell:run()";
  
-static const char RUN_SHELL_CMD[] = "local sh = require('shell')\n"
+static const char RUN_SHELL_CMD[] = "math.randomseed(os.time())\n"
+                                    "local sh = require('shell')\n"
                                     "local shell = sh.new_mini() shell:run()";
  
 static const char PRELOAD_INIT[] = "local std = require('std')\n"

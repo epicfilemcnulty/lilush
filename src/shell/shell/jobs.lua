@@ -87,7 +87,7 @@ local start = function(cmd, args, opts)
 	local id = jobs.next_id
 	jobs.next_id = jobs.next_id + 1
 
-	local log_path = "/tmp/lilush_job_" .. tostring(id) .. ".log"
+	local log_path = "/tmp/" .. std.nanoid() .. ".log"
 	if opts.log == false then
 		log_path = nil
 	end

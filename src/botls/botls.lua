@@ -280,8 +280,6 @@ local provider_by_domain = function(self, domain)
 end
 
 local manage = function(self)
-	math.randomseed(os.time())
-
 	while true do
 		local min_expire_time = self:get_certs_expire_time()
 
