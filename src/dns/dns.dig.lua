@@ -80,7 +80,6 @@ local simple_query = function(domain, record_type, ns, args)
 end
 
 local resolve_fullchain = function(domain, record_type, args)
-	math.randomseed(os.time())
 	local root_idx = math.random(13)
 	local root_ip = root_servers[root_idx][2]
 

@@ -419,7 +419,6 @@ local all_braille =
 
 local mask_with_braille = function(text, hardness, r, g)
 	hardness = tonumber(hardness) or 73
-	math.randomseed(os.time())
 	local out = buffer.new()
 	local r = r or math.random(50, 255)
 	local g = g or math.random(47, 255)
