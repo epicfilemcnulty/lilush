@@ -257,6 +257,7 @@ local env_secrets_combo = function(self, combo)
 end
 
 local run = function(self)
+	self.jobs:poll()
 	local input = self:replace_aliases(self.input:get_content())
 	local pipeline, err = utils.parse_pipeline(input, true)
 	if not pipeline then
@@ -282,13 +283,12 @@ local run = function(self)
 	if tlb[cmd] then
 		status, err = self[cmd](self, cmd, pipeline[1].args)
 	else
-		status, err = utils.run_pipeline(pipeline, nil, builtins)
+		status, err = utils.run_pipeline(pipeline, nil, builtins, self.jobs)
 	end
 	-- TODO: Gotta refactor all builtins to return status
 	if not status and not err then
 		status = 0
 	end
-	jobs.reap()
 	self:clear_env_secrets()
 	return status, err
 end
@@ -305,11 +305,9 @@ local run_once = function(self)
 	local cmd = pipeline[1].cmd
 	if tlb[cmd] then
 		local status, err = self[cmd](self, cmd, pipeline[1].args)
-		jobs.reap()
 		return status, err
 	else
 		local status, err = utils.run_pipeline(pipeline, nil, builtins)
-		jobs.reap()
 		return status, err
 	end
 end
@@ -338,9 +336,10 @@ local new = function(input)
 			["ALT+v"] = env_secrets_combo,
 		},
 		aliases = {},
+		jobs = jobs.new(),
 		home = os.getenv("HOME") or "HOMELESS",
 		user = os.getenv("USER") or "nobody",
-		hostname = tostring(std.fs.read_file("/etc/hostname")):gsub("\n", ""),
+		hostname = std.hostname(),
 		pwd = std.fs.cwd() or "",
 		check_config_dirs = check_config_dirs,
 		load_config = load_config,
