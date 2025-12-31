@@ -12,7 +12,6 @@ local text = require("text")
 local argparser = require("argparser")
 local buffer = require("string.buffer")
 local style = require("term.tss")
-local jobs = require("shell.jobs")
 
 local set_term_title = function(title)
 	local term_title_prefix = os.getenv("LILUSH_TERM_TITLE_PREFIX") or ""
@@ -384,7 +383,7 @@ local kat_help = [[
   can also show images.
 
 ]]
-local kat = function(cmd, args)
+local kat = function(cmd, args, jobs)
 	local parser = argparser.new({
 		raw = { kind = "bool", note = "Force raw rendering mode (no pager, no word wraps)" },
 		page = { kind = "bool", note = "Force using pager even on one screen documents" },
@@ -410,7 +409,7 @@ local kat = function(cmd, args)
 			errmsg("no handler for file type: " .. mime_info.type)
 			return 127
 		end
-		local job, err = jobs.start(viewer, { args.pathname }, { log = false })
+		local job, err = jobs:start(viewer, { args.pathname }, { log = false })
 		if not job then
 			errmsg(err)
 			return 127
@@ -461,7 +460,7 @@ local job_help = [[
 
   Default detach key is *Ctrl+]*.
 ]]
-local job = function(cmd, args)
+local job = function(cmd, args, jobs)
 	local sub = args[1]
 	if not sub then
 		sub = "list"
@@ -484,7 +483,7 @@ local job = function(cmd, args)
 			errmsg("missing command")
 			return 127
 		end
-		local j, err = jobs.start(command, args, { log = not no_log })
+		local j, err = jobs:start(command, args, { log = not no_log })
 		if not j then
 			errmsg(err)
 			return 127
@@ -494,7 +493,7 @@ local job = function(cmd, args)
 	end
 
 	if sub == "list" then
-		local entries = jobs.list()
+		local entries = jobs:list()
 		if #entries == 0 then
 			term.write("No jobs\n")
 			return 0
@@ -521,6 +520,7 @@ local job = function(cmd, args)
 		helpmsg(list)
 		return 0
 	end
+
 	if sub == "kill" then
 		local id = tonumber(args[2] or "")
 		if not id then
@@ -528,13 +528,19 @@ local job = function(cmd, args)
 			return 127
 		end
 		local signal = tonumber(args[3] or "15") or 15
-		local ok, err = jobs.kill(id, signal)
+		local ok, err = jobs:kill(id, signal)
 		if not ok then
 			errmsg(err)
 			return 127
 		end
 		return 0
 	end
+
+	if sub == "reap" then
+		jobs:reap()
+		return 0
+	end
+
 	if sub == "attach" then
 		local id = tonumber(args[2] or "")
 		if not id then
@@ -544,7 +550,7 @@ local job = function(cmd, args)
 		term.disable_kkbp()
 		term.disable_bracketed_paste()
 		term.set_raw_mode()
-		local ok, err = jobs.attach(id)
+		local ok, err = jobs:attach(id)
 		term.set_sane_mode()
 		if not ok then
 			errmsg(err)
@@ -1631,16 +1637,23 @@ local dont_fork = {
 	ktl = true,
 	kat = true,
 	job = true,
+	["aws.region"] = true,
+	["aws.profile"] = true,
+}
+
+local needy = {
+	job = true,
+	kat = true,
 }
 
 local get = function(cmd)
 	for k, f in pairs(builtins) do
 		if cmd:match("^" .. k .. "$") then
 			local fork = true
-			if dont_fork[cmd] or cmd:match("^%.%.+") or cmd:match("^aws%.") then
+			if dont_fork[cmd] or cmd:match("^%.%.+") then
 				fork = false
 			end
-			return { name = cmd, func = f, fork = fork }
+			return { name = cmd, func = f, fork = fork, needy = needy[cmd] }
 		end
 	end
 	return nil

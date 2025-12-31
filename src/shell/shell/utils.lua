@@ -274,10 +274,10 @@ run_pipeline = function(pipeline, stdout, builtins, extra)
 			local builtin = builtins.get(cmd)
 			if builtin then
 				if builtin.fork == false then
+					if builtin.needy then
+						return builtin.func(builtin.name, args, extra)
+					end
 					return builtin.func(builtin.name, args)
-				end
-				if builtin.needy then
-					builtin.extra = extra
 				end
 				cmd = builtin
 			end

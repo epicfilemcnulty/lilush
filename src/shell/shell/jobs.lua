@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: © 2025 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
 -- SPDX-License-Identifier: GPL-3.0-or-later
 
 --[[
@@ -13,12 +13,6 @@
 local std = require("std")
 local core = require("std.core")
 
-local jobs = {
-	next_id = 1,
-	entries = {},
-	order = {},
-}
-
 --[[
    Default detach key is `Ctrl-]` which maps to ASCII GS (0x1D, decimal 29).
 
@@ -27,12 +21,12 @@ local jobs = {
    Override with LILUSH_JOB_DETACH_KEY (numeric ASCII code), e.g.
    `export LILUSH_JOB_DETACH_KEY=20` for `Ctrl-T`
 ]]
-local detach_key = tonumber(os.getenv("LILUSH_JOB_DETACH_KEY") or "") or 29
+local detach_key = tonumber(os.getenv("LILUSH_JOB_DETACH_KEY")) or 29
 
 local start_logger = function(master_fd, log_path)
 	local pid = std.ps.fork()
 	if pid < 0 then
-		return nil, "failed to fork logger"
+		return nil, "failed to fork job logger"
 	end
 	if pid ~= 0 then
 		return pid
@@ -54,9 +48,9 @@ local start_logger = function(master_fd, log_path)
 	os.exit(0)
 end
 
-local start = function(cmd, args, opts)
-	local args = args or {}
-	local opts = opts or {}
+local start = function(self, cmd, args, opts)
+	args = args or {}
+	opts = opts or {}
 	local pty, err = std.ps.pty_open()
 	if not pty then
 		return nil, err
@@ -84,8 +78,8 @@ local start = function(cmd, args, opts)
 		os.exit(127)
 	end
 
-	local id = jobs.next_id
-	jobs.next_id = jobs.next_id + 1
+	local id = self.next_id
+	self.next_id = self.next_id + 1
 
 	local log_path = "/tmp/" .. std.nanoid() .. ".log"
 	if opts.log == false then
@@ -103,15 +97,14 @@ local start = function(cmd, args, opts)
 		status = "running",
 		started = os.time(),
 	}
-	jobs.entries[id] = entry
-	table.insert(jobs.order, id)
+	self.entries[id] = entry
+	table.insert(self.order, id)
 	return entry
 end
 
-local reap = function()
-	local new_order = {}
-	for _, id in ipairs(jobs.order) do
-		local job = jobs.entries[id]
+local poll = function(self)
+	for _, id in ipairs(self.order) do
+		local job = self.entries[id]
 		if job and job.status == "running" then
 			local ret, status = std.ps.waitpid(job.pid)
 			if ret and ret > 0 then
@@ -125,36 +118,43 @@ local reap = function()
 				if job.logger_pid and job.logger_pid > 0 then
 					std.ps.waitpid(job.logger_pid)
 				end
-				jobs.entries[id] = nil
-			else
-				table.insert(new_order, id)
 			end
-		elseif job then
-			jobs.entries[id] = nil
 		end
 	end
-	jobs.order = new_order
 end
 
-local list = function()
-	reap()
+-- Remove all finished jobs from the job table
+local reap = function(self)
+	local new_order = {}
+	for _, id in ipairs(self.order) do
+		local job = self.entries[id]
+		if job.status == "exited" then
+			self.entries[id] = nil
+		else
+			table.insert(new_order, id)
+		end
+	end
+	self.order = new_order
+end
+
+local list = function(self)
 	local out = {}
-	for _, id in ipairs(jobs.order) do
-		table.insert(out, jobs.entries[id])
+	for _, id in ipairs(self.order) do
+		table.insert(out, self.entries[id])
 	end
 	return out
 end
 
-local get = function(id)
-	return jobs.entries[id]
+local get = function(self, id)
+	return self.entries[id]
 end
 
-local kill = function(id, signal)
-	local job = jobs.entries[id]
+local kill = function(self, id, signal)
+	local job = self.entries[id]
 	if not job then
 		return nil, "no such job"
 	end
-	local signal = signal or 15
+	signal = tonumber(signal) or 15 -- SIGTERM by default
 	local ok, err = std.ps.kill(job.pid, signal)
 	if not ok then
 		return nil, err
@@ -162,8 +162,8 @@ local kill = function(id, signal)
 	return true
 end
 
-local attach = function(id)
-	local job = jobs.entries[id]
+local attach = function(self, id)
+	local job = self.entries[id]
 	if not job then
 		return nil, "no such job"
 	end
@@ -176,7 +176,7 @@ local attach = function(id)
 	if job.logger_pid and job.logger_pid > 0 then
 		std.ps.kill(job.logger_pid, 19)
 	end
-	std.ps.pty_attach(job.master, detach_key)
+	std.ps.pty_attach(job.master, self.detach_key)
 	if job.logger_pid and job.logger_pid > 0 then
 		std.ps.kill(job.logger_pid, 18)
 	end
@@ -184,11 +184,20 @@ local attach = function(id)
 end
 
 return {
-	start = start,
-	list = list,
-	get = get,
-	kill = kill,
-	attach = attach,
-	reap = reap,
-	detach_key = detach_key,
+	new = function()
+		local jobs = {
+			next_id = 1,
+			entries = {},
+			order = {},
+			start = start,
+			list = list,
+			get = get,
+			kill = kill,
+			attach = attach,
+			poll = poll,
+			reap = reap,
+			detach_key = detach_key,
+		}
+		return jobs
+	end,
 }
