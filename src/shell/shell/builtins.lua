@@ -531,8 +531,8 @@ local job = function(cmd, args, jobs)
 					"*" .. entry.id .. "*",
 					"_" .. entry.pid .. "_",
 					"`" .. status .. "`{.status}",
-					"`" .. entry.cmd .. table.concat(entry.args, " ") .. "`{.str}",
-					"`" .. entry.log_path .. "`{.file}",
+					"`" .. entry.cmd .. " " .. table.concat(entry.args, " ") .. "`{.str}",
+					"`" .. (entry.log_path or "/dev/null") .. "`{.file}",
 				})
 			end
 			local out = table.concat(std.tbl.pipe_table(tbl_headers, tbl_entries), "\n")
@@ -555,6 +555,7 @@ local job = function(cmd, args, jobs)
 				status,
 				" [",
 				entry.cmd,
+				" ",
 				table.concat(entry.args, " "),
 				"] log=",
 				entry.log_path or "/dev/null",
