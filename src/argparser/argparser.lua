@@ -364,7 +364,7 @@ new = function(schema, help, opts)
 	end
 	local mt = {
 		__tostring = function(tbl)
-			if next(tbl) == nil then
+			if std.tbl.empty(tbl) then
 				return "\n"
 			end
 			return "\n## Arguments table\n\n" .. table.concat(std.tbl.pipe_table(prepare_data(tbl)), "\n") .. "\n"

@@ -63,7 +63,7 @@ utf = {
 	len = function(str)
 		local count = 0
 		local esc_count = 0
-		local str = str or ""
+		local str = tostring(str) or ""
 		if str:match(utf.patterns.sgr_csi_pattern) then
 			str, esc_count = str:gsub(utf.patterns.sgr_csi_pattern, "")
 		end

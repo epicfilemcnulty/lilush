@@ -73,7 +73,7 @@ end
 local get_value_by_ref = function(tbl, ref)
 	local obj = tbl
 	for e in ref:gmatch("([^.]+)%.?") do
-		if not obj[e] then
+		if obj[e] == nil then
 			return nil
 		end
 		obj = obj[e]
@@ -113,7 +113,7 @@ local function include_keys(t, pattern)
 	pattern = pattern or ".*"
 	local matched = {}
 	for _, v in ipairs(t) do
-		if v:match("^" .. pattern) then
+		if type(v) == "string" and v:match("^" .. pattern) then
 			table.insert(matched, v)
 		end
 	end
@@ -125,7 +125,7 @@ local function exclude_keys(t, pattern)
 	pattern = pattern or ".*"
 	local matched = {}
 	for _, v in ipairs(t) do
-		if not v:match("^" .. pattern) then
+		if type(v) == "string" and not v:match("^" .. pattern) then
 			table.insert(matched, v)
 		end
 	end
@@ -148,11 +148,12 @@ end
 
 local contains = function(tbl, element, fuzzy)
 	tbl = tbl or {}
+	local element_is_string = type(element) == "string"
 	for i, v in ipairs(tbl) do
 		if v == element then
 			return i
 		end
-		if fuzzy then
+		if fuzzy and element_is_string and type(v) == "string" then
 			local esc_element = element:gsub("[+*%%%.%$[%]%?%(%)-]", "%%%1")
 			if v:match(esc_element) then
 				return i
@@ -186,7 +187,7 @@ local sort_by_str_len = function(tbl)
 end
 
 local parse_pipe_table_header = function(header)
-	local header = header or ""
+	header = header or ""
 	local name = header
 	local align = "left"
 	if type(header) == "table" then
