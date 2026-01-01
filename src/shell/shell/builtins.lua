@@ -458,7 +458,8 @@ local job = function(cmd, args, jobs)
 		subs = {
 			list = {
 				schema = {
-					json = { kind = "bool" },
+					json = { kind = "bool", note = "output as JSON" },
+					table = { kind = "bool", note = "output as table" },
 				},
 				help = "List all jobs\n",
 				default = true,
@@ -513,23 +514,49 @@ local job = function(cmd, args, jobs)
 			term.write("No jobs\n")
 			return 0
 		end
+
 		if args.__args.json then
 			std.tbl.print(json.encode(entries))
 			return 0
 		end
+		if args.__args.table then
+			local tbl_headers = { "ID", "PID", "Status", "Command", "Log path" }
+			local tbl_entries = {}
+			for _, entry in ipairs(entries) do
+				local status = entry.status
+				if entry.status ~= "running" then
+					status = status .. "(" .. tostring(entry.exit_status) .. ")"
+				end
+				table.insert(tbl_entries, {
+					"*" .. entry.id .. "*",
+					"_" .. entry.pid .. "_",
+					"`" .. status .. "`{.status}",
+					"`" .. entry.cmd .. table.concat(entry.args, " ") .. "`{.str}",
+					"`" .. entry.log_path .. "`{.file}",
+				})
+			end
+			local out = table.concat(std.tbl.pipe_table(tbl_headers, tbl_entries), "\n")
+			helpmsg(out)
+			return 0
+		end
+
 		local buf = buffer.new()
 		for _, entry in ipairs(entries) do
+			local status = entry.status
+			if entry.status ~= "running" then
+				status = status .. "(" .. tostring(entry.exit_status) .. ")"
+			end
 			buf:put(
 				"ID=",
 				entry.id,
 				" PID=",
 				entry.pid,
 				" status=",
-				entry.status,
-				" ",
+				status,
+				" [",
 				entry.cmd,
 				table.concat(entry.args, " "),
-				" log=",
+				"] log=",
 				entry.log_path or "/dev/null",
 				"\n"
 			)
