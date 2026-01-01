@@ -450,40 +450,55 @@ local job_help = [[
 : job
 
   Manage background jobs.
-
-## Usage
-
-  * Start a job: `job start [--no-log] <cmd> [args...]`
-  * List jobs: `job list`
-  * Kill a job: `job kill <id> [signal]`
-  * Attach job: `job attach <id>`
-
   Default detach key is *Ctrl+]*.
+
 ]]
 local job = function(cmd, args, jobs)
-	local sub = args[1]
-	if not sub then
-		sub = "list"
+	local parser = argparser.new({}, job_help, {
+		subs = {
+			list = {
+				schema = {
+					json = { kind = "bool" },
+				},
+				help = "List all jobs\n",
+				default = true,
+			},
+			reap = { schema = {}, help = "Clean up exited jobs\n" },
+			start = {
+				schema = {
+					quiet = { kind = "bool", note = "Don't log the output" },
+					cmd = { kind = "str", idx = 1 },
+					args = { kind = "str", idx = 2, default = {}, multi = true },
+				},
+				help = "Start a new job\n",
+			},
+			kill = {
+				schema = {
+					signal = { kind = "num", default = 15, note = "Signal to send" },
+					id = { kind = "num", idx = 1 },
+				},
+				help = "Kill a job\n",
+			},
+			attach = {
+				schema = {
+					id = { kind = "num", idx = 1 },
+				},
+				help = "Attach to a job\n",
+			},
+		},
+	})
+	local args, err, help = parser:parse(args)
+	if err then
+		if help then
+			helpmsg(err)
+			return 0
+		end
+		errmsg(err)
+		return 127
 	end
 
-	if sub == "help" or sub == "-?" or sub == "--help" then
-		helpmsg(job_help)
-		return 0
-	end
-
-	if sub == "start" then
-		table.remove(args, 1)
-		local no_log = false
-		if args[1] == "--no-log" then
-			no_log = true
-			table.remove(args, 1)
-		end
-		local command = table.remove(args, 1)
-		if not command then
-			errmsg("missing command")
-			return 127
-		end
-		local j, err = jobs:start(command, args, { log = not no_log })
+	if args.__sub == "start" then
+		local j, err = jobs:start(args.__args.cmd, args.__args.args, { log = not args.__args.quiet })
 		if not j then
 			errmsg(err)
 			return 127
@@ -492,43 +507,39 @@ local job = function(cmd, args, jobs)
 		return 0
 	end
 
-	if sub == "list" then
+	if args.__sub == "list" then
 		local entries = jobs:list()
 		if #entries == 0 then
 			term.write("No jobs\n")
 			return 0
 		end
-		local stat = {}
-		for _, j in ipairs(entries) do
-			local status = j.status
-			if status ~= "running" then
-				status = status .. "(" .. tostring(j.exit_status or 0) .. ")"
-			end
-			local args = ""
-			if j.args then
-				args = table.concat(j.args, " ")
-			end
-			table.insert(stat, {
-				"*" .. j.id .. "*",
-				"_" .. j.pid .. "_",
-				"`" .. status .. "`{.status}",
-				"`" .. j.cmd .. " " .. args .. "`{.str}",
-				"`" .. (j.log_path or "/dev/null") .. "`{.file}",
-			})
+		if args.__args.json then
+			std.tbl.print(json.encode(entries))
+			return 0
 		end
-		local list = table.concat(std.tbl.pipe_table({ "ID", "PID", "Status", "Command", "Log File" }, stat), "\n")
-		helpmsg(list)
+		local buf = buffer.new()
+		for _, entry in ipairs(entries) do
+			buf:put(
+				"ID=",
+				entry.id,
+				" PID=",
+				entry.pid,
+				" status=",
+				entry.status,
+				" ",
+				entry.cmd,
+				table.concat(entry.args, " "),
+				" log=",
+				entry.log_path or "/dev/null",
+				"\n"
+			)
+		end
+		term.write(buf:get())
 		return 0
 	end
 
-	if sub == "kill" then
-		local id = tonumber(args[2] or "")
-		if not id then
-			errmsg("missing job id")
-			return 127
-		end
-		local signal = tonumber(args[3] or "15") or 15
-		local ok, err = jobs:kill(id, signal)
+	if args.__sub == "kill" then
+		local ok, err = jobs:kill(args.__args.id, args.__args.signal)
 		if not ok then
 			errmsg(err)
 			return 127
@@ -536,21 +547,16 @@ local job = function(cmd, args, jobs)
 		return 0
 	end
 
-	if sub == "reap" then
+	if args.__sub == "reap" then
 		jobs:reap()
 		return 0
 	end
 
-	if sub == "attach" then
-		local id = tonumber(args[2] or "")
-		if not id then
-			errmsg("missing job id")
-			return 127
-		end
+	if args.__sub == "attach" then
 		term.disable_kkbp()
 		term.disable_bracketed_paste()
 		term.set_raw_mode()
-		local ok, err = jobs:attach(id)
+		local ok, err = jobs:attach(args.__args.id)
 		term.set_sane_mode()
 		if not ok then
 			errmsg(err)
@@ -558,8 +564,6 @@ local job = function(cmd, args, jobs)
 		end
 		return 0
 	end
-	errmsg("unknown subcommand: " .. tostring(sub))
-	return 127
 end
 
 local exec = function(cmd, args)

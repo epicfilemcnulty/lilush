@@ -39,6 +39,8 @@
 
 local std = require("std")
 
+local new
+
 local map_short_flag = function(self, flag)
 	if self.short_flag_conflicts[flag] then
 		return nil, "Ambiguous short flag `" .. flag .. "`{.flag}"
@@ -99,14 +101,56 @@ local validate_arg = function(self, name, arg)
 	return true
 end
 
-local parse = function(self, args)
-	local args = args or {}
-	if args[1] == "--help" or args[1] == "-?" then
-		return nil, self.help_text .. tostring(self.schema), true
+local apply_defaults = function(self)
+	for name, obj in pairs(self.schema) do
+		if obj.kind == "bool" and self.parsed[name] == nil then
+			self.parsed[name] = false
+		end
+		if obj.default == nil and self.parsed[name] == nil then
+			return nil, "`" .. name .. "` argument is not provided"
+		end
+		if obj.default and self.parsed[name] == nil then
+			self.parsed[name] = obj.default
+		end
 	end
-	if self.schema_error then
-		return nil, self.schema_error
+	return true
+end
+
+local format_subcommands = function(self)
+	if not self.subs then
+		return ""
 	end
+	local names = {}
+	for name, _ in pairs(self.subs) do
+		table.insert(names, name)
+	end
+	table.sort(names)
+	local lines = { "\n## Subcommands\n" }
+	for _, name in ipairs(names) do
+		local note = ""
+		if self.subs[name].help then
+			note = self.subs[name].help
+		elseif self.subs[name].note then
+			note = self.subs[name].note
+		end
+		if note ~= "" then
+			table.insert(lines, "- `" .. name .. "`: " .. note)
+		else
+			table.insert(lines, "- `" .. name .. "`")
+		end
+	end
+	return "\n" .. table.concat(lines, "\n") .. "\n"
+end
+
+local slice_args = function(args, start_idx)
+	local sliced = {}
+	for i = start_idx, #args do
+		table.insert(sliced, args[i])
+	end
+	return sliced
+end
+
+local parse_core = function(self, args, stop_at_subcommand)
 	local i = 1
 	local stop_parsing = false
 	while i <= #args do
@@ -159,8 +203,14 @@ local parse = function(self, args)
 				end
 			else
 				local arg = args[i]
+				if stop_at_subcommand and self.subs and self.subs[arg] then
+					return true, nil, i, arg
+				end
 				local flag = self:map_positional_arg(arg)
 				if not flag then
+					if stop_at_subcommand and self.subs and #self.positionals == 0 then
+						return nil, "No such subcommand `" .. arg .. "`{.flag}"
+					end
 					return nil, "Too many arguments"
 				end
 				local ok, err = self:validate_arg(flag, arg)
@@ -171,17 +221,50 @@ local parse = function(self, args)
 			i = i + 1
 		end
 	end
-	-- Set defaults and check for required arguments
-	for name, obj in pairs(self.schema) do
-		if obj.kind == "bool" and self.parsed[name] == nil then
-			self.parsed[name] = false
+	return true
+end
+
+local parse = function(self, args)
+	local args = args or {}
+	if args[1] == "--help" or args[1] == "-?" then
+		return nil, self.help_text .. tostring(self.schema) .. format_subcommands(self), true
+	end
+	if self.schema_error then
+		return nil, self.schema_error
+	end
+	local ok, err, sub_idx, sub_name = parse_core(self, args, self.subs ~= nil)
+	if ok == nil then
+		return nil, err
+	end
+	local ok_defaults, err_defaults = apply_defaults(self)
+	if ok_defaults == nil then
+		return nil, err_defaults
+	end
+	if self.subs then
+		if not sub_name then
+			if self.default_subcommand then
+				sub_name = self.default_subcommand
+				sub_idx = #args + 1
+			elseif self.subcommand_required then
+				return nil, "No subcommand provided"
+			end
+			if not sub_name then
+				return self.parsed
+			end
 		end
-		if obj.default == nil and self.parsed[name] == nil then
-			return nil, "`" .. name .. "` argument is not provided"
+		local sub = self.subs[sub_name]
+		if not sub or not sub.schema then
+			return nil, "Subcommand `" .. sub_name .. "`{.flag} does not define a schema"
 		end
-		if obj.default and self.parsed[name] == nil then
-			self.parsed[name] = obj.default
+		local subparser = new(sub.schema, sub.help)
+		local sub_args = slice_args(args, sub_idx + 1)
+		local sub_parsed, sub_err, sub_help = subparser:parse(sub_args)
+		if sub_err then
+			return nil, sub_err, sub_help
 		end
+		self.parsed.__sub = sub_name
+		self.parsed.__args = sub_parsed
+		return self.parsed
 	end
 	return self.parsed
 end
@@ -234,9 +317,11 @@ local prepare_data = function(tbl)
 	return headers, data
 end
 
-local new = function(schema, help)
+new = function(schema, help, opts)
 	local help = help or ""
 	local schema = schema or {}
+	local opts = opts or {}
+	local subs = opts.subs
 	local positionals = {}
 	local short_flag_map = {}
 	local short_flag_conflicts = {}
@@ -262,8 +347,26 @@ local new = function(schema, help)
 			break
 		end
 	end
+	if not schema_error and subs and #positionals > 0 then
+		schema_error = "Subcommands do not support positional arguments in the root command"
+	end
+	local default_subcommand = nil
+	if not schema_error and subs then
+		for name, sub in pairs(subs) do
+			if sub.default then
+				if default_subcommand and default_subcommand ~= name then
+					schema_error = "Multiple default subcommands are not allowed"
+					break
+				end
+				default_subcommand = name
+			end
+		end
+	end
 	local mt = {
 		__tostring = function(tbl)
+			if next(tbl) == nil then
+				return "\n"
+			end
 			return "\n## Arguments table\n\n" .. table.concat(std.tbl.pipe_table(prepare_data(tbl)), "\n") .. "\n"
 		end,
 	}
@@ -277,6 +380,9 @@ local new = function(schema, help)
 		schema_error = schema_error,
 		short_flag_conflicts = short_flag_conflicts,
 		short_flag_map = short_flag_map,
+		subs = subs,
+		default_subcommand = default_subcommand,
+		subcommand_required = opts.subcommand_required ~= false,
 		validate_arg = validate_arg,
 		map_short_flag = map_short_flag,
 		map_positional_arg = map_positional_arg,

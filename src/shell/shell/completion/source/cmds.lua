@@ -44,6 +44,7 @@ local job_subcommands = {
 	["start"] = true,
 	["kill"] = true,
 	["attach"] = true,
+	["reap"] = true,
 }
 
 local kubectl_profile_completions = function(self, args)
