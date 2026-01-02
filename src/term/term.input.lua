@@ -146,6 +146,10 @@ local handle_ctl = function(self, shortcut)
 		return self:external_editor()
 	end
 
+	if shortcut == "ALT+." then
+		return self:insert_last_arg()
+	end
+
 	if shortcut == "ENTER" then
 		if self.completion and self.completion:available() then
 			local metadata = self.completion.__meta[self.completion.__chosen]
@@ -606,6 +610,29 @@ local external_editor = function(self)
 	self:display()
 end
 
+local insert_last_arg = function(self)
+	if not self.history or #self.history.entries == 0 then
+		return false
+	end
+
+	local last_arg = self.history:last_arg()
+	if not last_arg or last_arg == "" then
+		return false
+	end
+
+	-- Insert the last arg at cursor position
+	local pos = self.offset + self.cursor
+	local line_len = std.utf.len(self.lines[self.line])
+	local p = std.utf.sub(self.lines[self.line], 1, pos - 1)
+	local s = std.utf.sub(self.lines[self.line], pos, line_len)
+	self.lines[self.line] = p .. last_arg .. s
+
+	-- Move cursor to end of inserted text
+	self:cursor_right(std.utf.len(last_arg))
+
+	return true
+end
+
 local default_rss = {
 	input = {
 		fg = 253,
@@ -676,6 +703,7 @@ local new = function(config)
 		scroll_completion = scroll_completion,
 		promote_completion = promote_completion,
 		external_editor = external_editor,
+		insert_last_arg = insert_last_arg,
 		draw_completion = draw_completion,
 		sync_cursor = sync_cursor,
 		full_redraw = full_redraw,
