@@ -3,7 +3,7 @@
 local std = require("std")
 local term = require("term")
 local widgets = require("term.widgets")
-local utils = require("shell.utils")
+local pipeline = require("shell.utils.pipeline")
 local builtins = require("shell.builtins")
 local theme = require("shell.theme")
 local style = require("term.tss")
@@ -36,13 +36,13 @@ local run_script = function(self, cmd, args)
 		for line in script:lines() do
 			line_num = line_num + 1
 			if not line:match("^#") and #line > 0 then
-				local cmd, args = utils.parse_cmdline(line, true)
+				local cmd, args = pipeline.parse_cmdline(line, true)
 				local status
 				if cmd then
 					if tlb[cmd] then
 						status = self[cmd](self, cmd, args)
 					else
-						status = utils.run_pipeline({ { cmd = cmd, args = args } }, nil, builtins)
+						status = pipeline.run({ { cmd = cmd, args = args } }, nil, builtins)
 					end
 				end
 				if status ~= nil and status ~= 0 then
@@ -259,16 +259,16 @@ end
 local run = function(self)
 	self.jobs:poll()
 	local input = self:replace_aliases(self.input:get_content())
-	local pipeline, err = utils.parse_pipeline(input, true)
-	if not pipeline then
+	local p, err = pipeline.parse(input, true)
+	if not p then
 		return 255, "invalid pipeline: " .. tostring(err)
 	end
-	if #pipeline == 0 then
+	if #p == 0 then
 		return 0
 	end
 
 	if self.input.completion then
-		for _, cmdline in ipairs(pipeline) do
+		for _, cmdline in ipairs(p) do
 			local cmd = cmdline.cmd
 			if not builtins.get(cmd) and not self.input.completion.__sources["bin"].binaries[cmd] and not tlb[cmd] then
 				if not cmd:match("^%.?/") then
@@ -278,12 +278,12 @@ local run = function(self)
 		end
 	end
 
-	local cmd = pipeline[1].cmd
+	local cmd = p[1].cmd
 	local status, err
 	if tlb[cmd] then
-		status, err = self[cmd](self, cmd, pipeline[1].args)
+		status, err = self[cmd](self, cmd, p[1].args)
 	else
-		status, err = utils.run_pipeline(pipeline, nil, builtins, self.jobs)
+		status, err = pipeline.run(p, nil, builtins, self.jobs)
 	end
 	-- TODO: Gotta refactor all builtins to return status
 	if not status and not err then
@@ -295,19 +295,19 @@ end
 
 local run_once = function(self)
 	local input = self.input:get_content()
-	local pipeline, err = utils.parse_pipeline(input, true)
-	if not pipeline then
+	local p, err = pipeline.parse(input, true)
+	if not p then
 		return 255, "invalid pipeline: " .. tostring(err)
 	end
-	if #pipeline == 0 then
+	if #p == 0 then
 		return 0
 	end
-	local cmd = pipeline[1].cmd
+	local cmd = p[1].cmd
 	if tlb[cmd] then
-		local status, err = self[cmd](self, cmd, pipeline[1].args)
+		local status, err = self[cmd](self, cmd, p[1].args)
 		return status, err
 	else
-		local status, err = utils.run_pipeline(pipeline, nil, builtins)
+		local status, err = pipeline.run(p, nil, builtins)
 		return status, err
 	end
 end
