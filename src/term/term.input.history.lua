@@ -162,6 +162,17 @@ local dir_search = function(self, input)
 	return candidates
 end
 
+local get_last_command_last_arg = function(self)
+	if std.tbl.empty(self.entries) then
+		return ""
+	end
+	-- Always get the most recent command, regardless of current position
+	local last_cmdline = self.entries[#self.entries].cmd
+	-- Extract the last space-separated argument
+	local last_arg = last_cmdline:match("(%S+)%s*$") or ""
+	return last_arg
+end
+
 local new = function(mode, store)
 	local history = {
 		store = store,
@@ -171,6 +182,7 @@ local new = function(mode, store)
 		mode = mode,
 		add = history_add,
 		get = history_get,
+		last_arg = get_last_command_last_arg,
 		up = history_up,
 		down = history_down,
 		stash = history_stash,
