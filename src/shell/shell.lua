@@ -12,7 +12,7 @@ local prompt = require("term.input.prompt")
 local storage = require("shell.store")
 local shell_mode = require("shell.mode.shell")
 local builtins = require("shell.builtins")
-local utils = require("shell.utils")
+local pipeline = require("shell.utils.pipeline")
 local theme = require("shell.theme")
 
 local show_error_msg = function(status, err)
@@ -150,10 +150,10 @@ local new = function()
 		local env_lines = std.txt.lines(env_file)
 		for _, line in ipairs(env_lines) do
 			if not line:match("^#") then
-				local cmd, args = utils.parse_cmdline("setenv " .. line, true)
+				local cmd, args = pipeline.parse_cmdline("setenv " .. line, true)
 				local status
 				if cmd then
-					status = utils.run_pipeline({ { cmd = cmd, args = args } }, nil, builtins)
+					status = pipeline.run({ { cmd = cmd, args = args } }, nil, builtins)
 				end
 			end
 		end
