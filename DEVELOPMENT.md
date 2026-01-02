@@ -1,6 +1,7 @@
 # Project Overview
 
-Lilush is a statically compiled LuaJIT interpreter for Linux that bundles a curated collection of Lua modules and C libraries. It serves dual purposes:
+Lilush is a statically compiled LuaJIT interpreter for Linux that 
+bundles a curated collection of Lua modules and C libraries. It serves dual purposes:
 
 1. A batteries-included LuaJIT runtime with networking, crypto, terminal I/O, and system utilities
 2. A feature-rich Linux shell (Lilush Shell) that showcases these capabilities
