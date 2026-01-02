@@ -431,7 +431,7 @@ local kat = function(cmd, args, jobs)
 	end
 	term.set_raw_mode()
 	term.hide_cursor()
-	local pager = utils.pager({
+	local pager = utils.pager.new({
 		exit_on_one_page = not args.page,
 		indent = args.indent,
 		render_mode = render_mode,
