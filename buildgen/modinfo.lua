@@ -46,6 +46,7 @@ local luamods = {
 		"shell.store",
 		"shell.utils",
 		"shell.utils.pager",
+		"shell.utils.pipeline",
 		"shell.jobs",
 		"shell.builtins",
 		"shell.mode.shell",
