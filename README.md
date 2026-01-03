@@ -57,7 +57,7 @@ suprisingly called _Lilush Shell_, which
 
   There are a couple of side projects, built upon lilush, that might be of interest:
 
-* [RELIW](https://github.com/epicfilemcnulty/lilush/blob/master/RELIW_README.md) is an HTTP server & framework.
+* [RELIW](src/reliw/README.md) is an HTTP server & framework.
 * [Circada]() is an IRC server & client bundle
 
 
