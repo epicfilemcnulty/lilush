@@ -62,6 +62,7 @@ The codebase is organized into self-contained modules in `src/`:
 - `vault/` - Secrets management
 - `text/` - Text processing utilities
 - `argparser/` - Argument parsing
+- `testimony/` - Miminal testing framework for Lilush
 
 **C-only Libraries:**
 
@@ -174,6 +175,18 @@ Display errors to users via:
 
 - `errmsg()` in builtins (renders with theme)
 - `show_error_msg(status, err)` in shell core
+
+## Testing
+
+Lilush uses a minimal custom test framework called `testimony` for regression prevention and refactoring safety. 
+Tests focus on core utilities (`std.*` modules) and critical logic in `term` module.
+
+### Running Tests
+
+**Run individual test file:**
+```bash
+lilush tests/test_std_tbl.lua
+```
 
 ## RELIW Framework
 
