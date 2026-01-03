@@ -202,11 +202,19 @@ end
 local limit = function(str, max, prefix)
 	str = str or ""
 	max = max or math.huge
-	prefix = prefix or 1
+	prefix = tonumber(prefix) or max
+	if prefix > max then
+		prefix = max
+	end
 	local utf_len = utf.len(str)
 	if utf_len > max then
-		local extra = utf_len - max
-		local s = utf.sub(str, 1, prefix - 1) .. "…" .. utf.sub(str, extra + prefix + 2)
+		local s
+		if max == prefix then
+			s = utf.sub(str, 1, prefix - 1) .. "…"
+		else
+			local rest = max - prefix
+			s = utf.sub(str, 1, prefix - 1) .. "…" .. utf.sub(str, utf_len - rest + 1)
+		end
 		return s
 	end
 	return str
