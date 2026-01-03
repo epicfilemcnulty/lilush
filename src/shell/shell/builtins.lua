@@ -642,7 +642,7 @@ local list_env = function(cmd, args)
 	local env = std.environ()
 	local tss = style.new(theme)
 	local matched = std.tbl.include_keys(std.tbl.sort_keys(env), arg)
-	tss.__style.builtins.envlist.var.w = std.tbl.longest(matched)
+	tss:set_property("builtins.envlist.var", "w", std.tbl.longest(matched))
 
 	local out = buffer.new()
 	for _, entry in ipairs(matched) do
@@ -1205,7 +1205,7 @@ local history = function(cmd, args)
 			buf:put(date, time, cmd, "\n")
 		end
 	end
-	local indent = tss.__style.builtins.history.global_indent or 0
+	local indent = tss:get_property("builtins.history", "global_indent") or 0
 	term.write(std.txt.indent(buf:get(), indent) .. "\n")
 	return 0
 end
