@@ -130,6 +130,7 @@ return {
 		"dns",
 		"argparser",
 		"acme",
+		"testimony",
 	},
 	c_libs = {
 		"cjson",

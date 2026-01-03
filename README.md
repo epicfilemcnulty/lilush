@@ -96,7 +96,7 @@ Right now the project is certainly in beta.
 
 - [ ] Not all planned features have been implemented
 - [ ] Documentation is lagging behind
-- [ ] No proper testing has been done
+- [ ] Test coverage is minimal
 - [ ] There are known bugs
 - [ ] There are most certainly yet undiscovered bugs, because no proper testing has been done.
 

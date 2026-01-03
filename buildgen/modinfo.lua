@@ -26,6 +26,7 @@ local luamods = {
 		"term.input.completion",
 	},
 	text = { "text" },
+	testimony = { "testimony" },
 	dns = { "dns.resolver", "dns.parser", "dns.dig" },
 	djot = { "djot", "djot.ast", "djot.attributes", "djot.block", "djot.filter", "djot.html", "djot.inline" },
 	redis = { "redis" },
