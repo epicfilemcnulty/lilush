@@ -185,7 +185,7 @@ Tests focus on core utilities (`std.*` modules) and critical logic in `term` mod
 
 **Run individual test file:**
 ```bash
-lilush tests/test_std_tbl.lua
+lilush tests/std/test_tbl.lua
 ```
 
 ## RELIW Framework
