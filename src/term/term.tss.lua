@@ -24,6 +24,9 @@ local calc_el_width = function(self, w, max)
 		return 0
 	end
 	if w < 1 then
+		if max == 0 then
+			return 0
+		end
 		return math.max(1, math.floor(max * w))
 	end
 	return math.min(w, max)
@@ -35,7 +38,9 @@ local get = function(self, el, base_props)
 	local add_style = function(tbl, s)
 		for opt in s:gmatch("([^,]+)") do
 			if opt == "reset" then
-				tbl = {}
+				for k, _ in pairs(tbl) do
+					tbl[k] = nil
+				end
 			else
 				local duplicate = false
 				for _, v in ipairs(tbl) do
@@ -135,6 +140,12 @@ local apply = function(self, elements, content, position)
 		elseif props.clip > 0 then
 			text = std.txt.limit(text, props.w, props.clip)
 		end
+		-- Final check: ensure we don't overflow the available window width
+		ulen = std.utf.len(text)
+		local available = self.__window.w - position
+		if ulen > available and available > 0 then
+			text = std.txt.limit(text, available, available)
+		end
 	else
 		if ulen > self.__window.w - position and props.clip >= 0 then
 			text = std.txt.limit(text, self.__window.w - position, self.__window.w - position)
@@ -155,6 +166,29 @@ local apply = function(self, elements, content, position)
 	return term.style(unpack(props.s)) .. term.color(props.fg, props.bg) .. text .. term.style("reset")
 end
 
+local set_property = function(self, path, property, value)
+	local obj = self.__style
+	for e in path:gmatch("([^.]+)%.?") do
+		if not obj[e] then
+			obj[e] = {}
+		end
+		obj = obj[e]
+	end
+	obj[property] = value
+end
+
+local get_property = function(self, path, property)
+	local obj = self.__style
+	for e in path:gmatch("([^.]+)%.?") do
+		if obj[e] then
+			obj = obj[e]
+		else
+			return nil
+		end
+	end
+	return obj[property]
+end
+
 local new = function(rss)
 	local win_l, win_c = term.window_size()
 	return {
@@ -163,6 +197,8 @@ local new = function(rss)
 		calc_el_width = calc_el_width,
 		get = get,
 		apply = apply,
+		set_property = set_property,
+		get_property = get_property,
 	}
 end
 
