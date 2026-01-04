@@ -46,8 +46,8 @@ The codebase is organized into self-contained modules in `src/`:
 
 **Core Libraries (Lua + C):**
 
-- `std/` - Standard library: filesystem (`std.fs`), process (`std.ps`), text (`std.txt`), tables (`std.tbl`), conversions, utilities
-- `term/` - Terminal I/O with Kitty keyboard protocol support, UTF-8, widgets, TSS (Terminal Style Sheets)
+- `std/` - Standard library: filesystem (`std.fs`), process (`std.ps`), UTF-8 (`std.utf`), text (`std.txt`), tables (`std.tbl`), conversions, utilities
+- `term/` - Terminal I/O with Kitty keyboard protocol support, widgets, TSS (Terminal Style Sheets)
 - `crypto/` - Cryptography via WolfSSL
 - `luasocket/` - Networking (TCP/UDP/Unix sockets) with SSL via WolfSSL (fork of LuaSocket + LuaSec)
 
@@ -60,7 +60,7 @@ The codebase is organized into self-contained modules in `src/`:
 - `djot/` - Djot markup processor/renderer
 - `redis/` - Redis protocol client
 - `vault/` - Secrets management
-- `text/` - Text processing utilities
+- `text/` - Text processing utilities (includes djot renderer for terminal, uses TSS for styling)
 - `argparser/` - Argument parsing
 - `testimony/` - Miminal testing framework for Lilush
 
