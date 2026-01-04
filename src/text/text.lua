@@ -24,6 +24,7 @@ local default_borders = {
 
 local default_djot_rss = {
 	wrap = 80,
+	table_wrap = false,
 	codeblock_wrap = true,
 	global_indent = 2,
 	hide_links = false,
@@ -462,8 +463,8 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 		if level then
 			indent = list_indent
 		end
-		local max_table_width = 0
-		if wrap > 0 then
+		local max_table_width = tss.__window.w - indent * 2 - 4
+		if wrap > 0 and tss.__style.table_wrap then
 			max_table_width = wrap - indent - 1
 		end
 		for i, row in ipairs(el.children) do
