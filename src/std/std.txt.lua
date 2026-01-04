@@ -199,6 +199,11 @@ local lines_of = function(input, width, force_split, remove_extra_spaces)
 	return lines(buf:get())
 end
 
+--[[ 
+    Limits the string to a max terminal display width.
+    If truncation is needed, inserts an ellipsis.
+    Note: result may be shorter than `max` when wide glyphs are present.
+]]
 local limit = function(str, max, prefix)
 	str = str or ""
 	max = max or math.huge
@@ -206,16 +211,55 @@ local limit = function(str, max, prefix)
 	if prefix > max then
 		prefix = max
 	end
-	local utf_len = utf.len(str)
-	if utf_len > max then
-		local s
-		if max == prefix then
-			s = utf.sub(str, 1, prefix - 1) .. "…"
-		else
-			local rest = max - prefix
-			s = utf.sub(str, 1, prefix - 1) .. "…" .. utf.sub(str, utf_len - rest + 1)
+	local ulen = utf.len(str)
+	local dlen = utf.display_len(str)
+	if dlen > max then
+		local ellipsis = "…"
+		local ellipsis_w = utf.display_len(ellipsis)
+		local function prefix_by_display(target)
+			if target <= 0 then
+				return ""
+			end
+			local lo, hi = 0, ulen
+			while lo < hi do
+				local mid = math.floor((lo + hi + 1) / 2)
+				local sub = utf.sub(str, 1, mid)
+				if utf.display_len(sub) <= target then
+					lo = mid
+				else
+					hi = mid - 1
+				end
+			end
+			if lo == 0 then
+				return ""
+			end
+			return utf.sub(str, 1, lo)
 		end
-		return s
+		local function suffix_by_display(target)
+			if target <= 0 then
+				return ""
+			end
+			local lo, hi = 0, ulen
+			while lo < hi do
+				local mid = math.floor((lo + hi + 1) / 2)
+				local start = ulen - mid + 1
+				local sub = utf.sub(str, start, ulen)
+				if utf.display_len(sub) <= target then
+					lo = mid
+				else
+					hi = mid - 1
+				end
+			end
+			if lo == 0 then
+				return ""
+			end
+			return utf.sub(str, ulen - lo + 1, ulen)
+		end
+		if max == prefix then
+			return prefix_by_display(prefix - ellipsis_w) .. ellipsis
+		end
+		local rest = max - prefix
+		return prefix_by_display(prefix - ellipsis_w) .. ellipsis .. suffix_by_display(rest)
 	end
 	return str
 end

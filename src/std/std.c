@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
+#include <locale.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -58,6 +60,58 @@ static int deviant_remove_signal_handler(lua_State *L) {
     // Remove the signal handler for the given signal
     signal(signum, SIG_DFL);
     return 0;
+}
+
+// Return terminal display width for a UTF-8 string (ANSI SGR sequences ignored).
+// Uses libc wcwidth to match terminal cell widths for wide glyphs.
+static int deviant_display_len(lua_State *L) {
+    static int locale_set = 0;
+    size_t len = 0;
+    const char *str = luaL_checklstring(L, 1, &len);
+    size_t i = 0;
+    int width = 0;
+    mbstate_t st;
+
+    if (!locale_set) {
+        setlocale(LC_CTYPE, "");
+        locale_set = 1;
+    }
+    memset(&st, 0, sizeof(st));
+
+    while (i < len) {
+        // Skip ANSI SGR sequences like "\033[...m"
+        if (str[i] == '\033' && i + 1 < len && str[i + 1] == '[') {
+            i += 2;
+            while (i < len && str[i] != 'm') {
+                i++;
+            }
+            if (i < len && str[i] == 'm') {
+                i++;
+            }
+            continue;
+        }
+        wchar_t wc;
+        // Decode next UTF-8 codepoint and accumulate its display width.
+        size_t ret = mbrtowc(&wc, str + i, len - i, &st);
+        if (ret == (size_t)-1 || ret == (size_t)-2) {
+            memset(&st, 0, sizeof(st));
+            width += 1;
+            i += 1;
+            continue;
+        }
+        if (ret == 0) {
+            i += 1;
+            continue;
+        }
+        int w = wcwidth(wc);
+        if (w > 0) {
+            width += w;
+        }
+        i += ret;
+    }
+
+    lua_pushinteger(L, width);
+    return 1;
 }
 
 int deviant_clockticks(lua_State *L) {
@@ -997,6 +1051,7 @@ int deviant_unpackvec(lua_State *L) {
 }
 
 static luaL_Reg funcs[] = {
+    {"display_len",     deviant_display_len            },
     {"clockticks",      deviant_clockticks             },
     {"kill",            deviant_kill                   },
     {"fork",            deviant_fork                   },
