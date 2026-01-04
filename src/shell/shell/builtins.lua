@@ -1295,6 +1295,7 @@ local kinda_ps = function(cmd, args)
 	local parser = argparser.new({
 		all = { kind = "bool", note = "Show processes of all users" },
 		json = { kind = "bool", note = "JSON output" },
+		text = { kind = "bool", note = "Plain text output" },
 		kernel = { kind = "bool", note = "Show kernel threads" },
 		format = { kind = "str", default = "pid,cmd", note = "Fields to display" },
 		extended = { kind = "bool", short = "x", note = "Shortcut for `pid,uid,state,cmdline` format" },
@@ -1450,8 +1451,16 @@ local kinda_ps = function(cmd, args)
 		return a[sort_field_idx] < b[sort_field_idx]
 	end
 	table.sort(ps_tbl, sort_func)
+	if args.text then
+		term.write("\n")
+		for _, entry in ipairs(ps_tbl) do
+			term.write(table.concat(entry, " ") .. "\n")
+		end
+		term.write("\n")
+		return 0
+	end
 	local ps_tbl_djot = std.tbl.pipe_table(ps_tbl_fields, ps_tbl)
-	term.write("\n" .. text.render_djot(table.concat(ps_tbl_djot, "\n")) .. "\n")
+	term.write("\n" .. text.render_djot(table.concat(ps_tbl_djot, "\n"), theme.renderer.kat) .. "\n")
 	return 0
 end
 
