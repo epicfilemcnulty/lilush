@@ -22,7 +22,7 @@ which is based on [Luasocket](https://github.com/lunarmodules/luasocket) and [Lu
 merged into one and refactored to work seamlessly with [WolfSSL](https://www.wolfssl.com/).
 WolfSSL is also statically compiled and incorporated into the _lilush_ binary.
 
-The binary is fewer than *2MB*, and should work fine on any *x86_64 Linux*
+The binary is smaller than *2MB*, and should work fine on any *x86_64 Linux*
 system. It's also a nice addition to a `FROM scratch` docker container, as
 _lilush_ can be used as a busybox replacement.
 
