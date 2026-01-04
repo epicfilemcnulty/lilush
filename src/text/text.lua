@@ -51,7 +51,12 @@ local default_djot_rss = {
 			plus = { content = "✚", nested = { content = "✛" } },
 			minus = { content = "▧", nested = { content = "▪" } },
 			star = { content = "⚆", nested = { content = "⦁" } },
-			task = { content = "[]", nested = { content = "[]" } },
+			task = {
+				content = "[]",
+				nested = { content = "[]" },
+				checked = { content = "[X]", nested = { content = "[X]" } },
+				unchecked = { content = "[ ]", nested = { content = "[ ]" } },
+			},
 		},
 		ol = { s = "bold" },
 	},
@@ -152,8 +157,12 @@ end
 --- @param width number Width of the block
 --- @param label string|nil Optional label for the top border
 --- @param indent number Left indentation
+--- @param opts table|nil Optional render settings (content_style, label_style)
 --- @return string Rendered block with borders
-local function render_bordered_block(tss, style_base, lines, width, label, indent)
+local function render_bordered_block(tss, style_base, lines, width, label, indent, opts)
+	opts = opts or {}
+	local content_style = opts.content_style or style_base
+	local label_style = opts.label_style or (style_base .. ".label")
 	indent = indent or 0
 	local out = ""
 	local indent_str = string.rep(" ", indent)
@@ -171,7 +180,7 @@ local function render_bordered_block(tss, style_base, lines, width, label, inden
 		-- Avoid padding the label to the block width
 		tss.__style[style_base].w = 0
 		tss.__style[style_base].align = "none"
-		local styled_label = tss:apply(style_base .. ".label", label)
+		local styled_label = tss:apply(label_style, label)
 		local label_len = std.utf.display_len(styled_label)
 		tss.__style[style_base].w = orig_w
 		tss.__style[style_base].align = orig_align
@@ -201,7 +210,7 @@ local function render_bordered_block(tss, style_base, lines, width, label, inden
 			out = out
 				.. indent_str
 				.. tss:apply(style_base .. ".border.v")
-				.. tss:apply(style_base, l)
+				.. tss:apply(content_style, l)
 				.. tss:apply(style_base .. ".border.v")
 				.. "\n"
 		end
@@ -299,44 +308,20 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 			indent = list_indent
 			out = "\n"
 		end
-		if wrap > 0 then
-			tss.__style.codeblock.w = wrap + indent + padding * 2
-			tss.__style.codeblock.border.w = wrap + indent + padding * 2
-		end
 		local elements = get_classes(el, "codeblock", tss)
-		local top_line = tss:apply("codeblock.border.top_line")
-		if el.lang and el.lang ~= "" then
-			local lang = tss:apply("codeblock.lang", el.lang)
-			local st = tss:apply(
-				"codeblock.border",
-				tss.__style.codeblock.border.top_line.before .. tss.__style.codeblock.border.top_line.content
-			)
-			local lang_len = std.utf.len(lang)
-			st = st
-				.. lang
-				.. tss:apply(
-					"codeblock.border",
-					string.rep(
-						tss.__style.codeblock.border.top_line.content,
-						wrap + indent + padding * 2 - lang_len - 1
-					) .. tss.__style.codeblock.border.top_line.after
-				)
-			top_line = st
-		end
 		local content = std.txt.lines(el.text)
 		if wrap > 0 and codeblock_wrap then
 			content = std.txt.lines_of(table.concat(content, "\n"), wrap, true)
 		end
-		out = out .. string.rep(" ", indent) .. top_line .. "\n"
-		for _, l in ipairs(content) do
-			out = out
-				.. string.rep(" ", indent)
-				.. tss:apply("codeblock.border.v")
-				.. tss:apply({ "codeblock", unpack(elements) }, l)
-				.. tss:apply("codeblock.border.v")
-				.. "\n"
+		local block_width = 0
+		if wrap > 0 then
+			block_width = wrap + indent + padding * 2
 		end
-		out = out .. string.rep(" ", indent) .. tss:apply("codeblock.border.bottom_line") .. "\n"
+		out = out
+			.. render_bordered_block(tss, "codeblock", content, block_width, el.lang, indent, {
+				content_style = { "codeblock", unpack(elements) },
+				label_style = "codeblock.lang",
+			})
 		return out .. "\n"
 	end
 	if el.tag == "div" then
@@ -445,10 +430,17 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 		local marker
 		if not list_style:match("%d") then
 			local styles = { ["X"] = "task", ["*"] = "star", ["-"] = "minus", ["+"] = "plus" }
+			local marker_style = "list.ul." .. styles[list_style]
+			if list_style == "X" and el.checkbox then
+				local state = el.checkbox == "checked" and "checked" or "unchecked"
+				if tss.__style.list.ul.task and tss.__style.list.ul.task[state] then
+					marker_style = marker_style .. "." .. state
+				end
+			end
 			if level == 1 then
-				marker = tss:apply("list.ul." .. styles[list_style])
+				marker = tss:apply(marker_style)
 			else
-				marker = tss:apply("list.ul." .. styles[list_style] .. ".nested")
+				marker = tss:apply(marker_style .. ".nested")
 			end
 		else
 			marker = tss:apply("list.ol", tostring(list_item_idx) .. ".")
