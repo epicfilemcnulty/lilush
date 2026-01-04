@@ -115,12 +115,12 @@ local apply = function(self, elements, content, position)
 	if props.indent > 0 then
 		text = string.rep(" ", props.indent) .. text
 	end
-	local ulen = std.utf.len(text)
+	local ulen = std.utf.display_len(text)
 	if props.w ~= 0 then
 		if obj.fill then
 			text = string.rep(text, math.ceil(props.w / ulen))
 			text = std.utf.sub(text, 1, props.w)
-			ulen = std.utf.len(text)
+			ulen = std.utf.display_len(text)
 		end
 		if props.clip == 0 then
 			props.clip = props.w
@@ -141,7 +141,7 @@ local apply = function(self, elements, content, position)
 			text = std.txt.limit(text, props.w, props.clip)
 		end
 		-- Final check: ensure we don't overflow the available window width
-		ulen = std.utf.len(text)
+		ulen = std.utf.display_len(text)
 		local available = self.__window.w - position
 		if ulen > available and available > 0 then
 			text = std.txt.limit(text, available, available)

@@ -2,6 +2,7 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 local bit = require("bit")
 local byte = string.byte
+local core = require("std.core")
 
 local utf
 utf = {
@@ -71,6 +72,9 @@ utf = {
 			count = count + 1
 		end
 		return count, esc_count
+	end,
+	display_len = function(str)
+		return core.display_len(str)
 	end,
 	find_all_spaces = function(str)
 		local spaces = {}

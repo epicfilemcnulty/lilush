@@ -184,6 +184,7 @@ Tests focus on core utilities (`std.*` modules) and critical logic in `term` mod
 ### Running Tests
 
 **Run individual test file:**
+
 ```bash
 lilush tests/std/test_tbl.lua
 ```
