@@ -462,6 +462,10 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 		if level then
 			indent = list_indent
 		end
+		local max_table_width = 0
+		if wrap > 0 then
+			max_table_width = wrap - indent - 1
+		end
 		for i, row in ipairs(el.children) do
 			tbl_data[i] = {}
 			for j, cell in ipairs(row.children) do
@@ -477,6 +481,42 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 			end
 		end
 		local maxes = std.tbl.calc_table_maxes(tbl_headers, tbl_data)
+		if max_table_width > 0 then
+			local cols = {}
+			local min_width = 0
+			local tbl_width = 0
+			for i, header in ipairs(tbl_headers) do
+				local h_name = std.tbl.parse_pipe_table_header(header)
+				local min = math.max(1, std.utf.len(h_name))
+				min_width = min_width + min + 3
+				tbl_width = tbl_width + maxes[h_name] + 3
+				cols[i] = { name = h_name, min = min, max = maxes[h_name] }
+			end
+			local target_width = max_table_width
+			if target_width < min_width then
+				target_width = min_width
+			end
+			while tbl_width > target_width do
+				local idx = nil
+				local room = 0
+				for i, col in ipairs(cols) do
+					local avail = col.max - col.min
+					if avail > room then
+						room = avail
+						idx = i
+					end
+				end
+				if not idx or room == 0 then
+					break
+				end
+				local dec = math.min(room, tbl_width - target_width)
+				cols[idx].max = cols[idx].max - dec
+				tbl_width = tbl_width - dec
+			end
+			for _, col in ipairs(cols) do
+				maxes[col.name] = col.max
+			end
+		end
 		local tbl_width = 0
 		local out = ""
 		for col_name, max in pairs(maxes) do
@@ -491,9 +531,10 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 			.. tss:apply("tbl.border.v")
 		for i, header in ipairs(tbl_headers) do
 			local h_name = std.tbl.parse_pipe_table_header(header)
+			local header_text = std.txt.limit(h_name, maxes[h_name])
 			out = out
 				.. " "
-				.. tss:apply("tbl.header", std.txt.align(h_name, maxes[h_name], "center"))
+				.. tss:apply("tbl.header", std.txt.align(header_text, maxes[h_name], "center"))
 				.. " "
 				.. tss:apply("tbl.border.v")
 		end
@@ -503,9 +544,10 @@ render_djot_element = function(el, tss, wrap, parent, list_item_idx)
 				out = out .. string.rep(" ", indent) .. tss:apply("tbl.border.v")
 				for j, cell in ipairs(row) do
 					local h_name, h_align = std.tbl.parse_pipe_table_header(tbl_headers[j])
+					local cell_text = std.txt.limit(cell, maxes[h_name])
 					out = out
 						.. " "
-						.. tss:apply("tbl.cell", std.txt.align(cell, maxes[h_name], h_align))
+						.. tss:apply("tbl.cell", std.txt.align(cell_text, maxes[h_name], h_align))
 						.. " "
 						.. tss:apply("tbl.border.v")
 				end
