@@ -1,5 +1,6 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: OWL-1.0 or later
+-- Licensed under the Open Weights License v1.0. See LICENSE for details.
 local std = require("std")
 local json = require("cjson.safe")
 local text = require("text")

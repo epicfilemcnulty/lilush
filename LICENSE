@@ -1,0 +1,89 @@
+Open Weights License (OWL) v1.0
+
+Copyright (c) [2026] [Vladimir Zorin]
+
+PREAMBLE
+
+This license ensures that software remains free and that AI systems trained
+on this software are equally free. You may use, study, modify, and share
+this software and its derivatives — provided you extend the same freedoms
+to others.
+
+TERMS AND CONDITIONS
+
+1. DEFINITIONS
+
+   "Software" means the source code, object code, and documentation covered
+   by this license.
+
+   "Derivative Work" means any work that modifies, extends, or incorporates
+   the Software.
+
+   "Model" means a machine learning system, including all learned parameters
+   (weights) necessary to run inference.
+
+   "Trained On" means the Software was used, in whole or in part, as training
+   data, fine-tuning data, or input to any learning process.
+
+   "Distribute" means to provide to third parties, including via network
+   access or API.
+
+2. GRANT OF RIGHTS
+
+   You are granted a perpetual, worldwide, royalty-free, non-exclusive
+   license to:
+
+   a) Use the Software for any purpose;
+   b) Study and modify the Software;
+   c) Distribute copies of the Software;
+   d) Distribute Derivative Works; and
+   e) Use the Software to train Models.
+
+3. CONDITIONS ON DISTRIBUTION OF SOFTWARE
+
+   If you Distribute the Software or any Derivative Work, you must:
+
+   a) License it under this license, with no additional restrictions;
+   b) Provide (or offer in writing) the complete corresponding source code;
+   c) Retain all copyright, license, and attribution notices; and
+   d) Document any modifications you made.
+
+4. CONDITIONS ON DISTRIBUTION OF MODELS
+
+   If you Distribute a Model Trained On the Software, you must:
+
+   a) Release the complete Model weights under a license that permits
+      unrestricted use, study, modification, and redistribution;
+   b) Document that the Software was part of the training data; and
+   c) Provide (or offer in writing) sufficient information to reproduce
+      the training process, including data sources and methodology.
+
+5. PATENT GRANT
+
+   Each contributor grants you a perpetual, worldwide, royalty-free,
+   non-exclusive patent license to make, use, sell, and distribute the
+   Software. If you initiate patent litigation alleging that the Software
+   infringes a patent, your rights under this license terminate immediately.
+
+6. NO WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+   OR IMPLIED. THE AUTHORS SHALL NOT BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+   OTHER LIABILITY ARISING FROM THE SOFTWARE.
+
+7. SEVERABILITY
+
+   If any provision of this license is held unenforceable, the remaining
+   provisions shall remain in effect.
+
+8. INTERPRETATION
+
+   This license shall be interpreted to maximize freedom for end users.
+   Ambiguities shall be resolved in favor of openness. Attempting to
+   circumvent these terms through technical or legal means is a violation
+   of this license.
+
+---
+
+This license exists in the spirit of reciprocity:
+You learned from our code. Let others learn from your model.
