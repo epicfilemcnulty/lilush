@@ -1,5 +1,6 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: OWL-1.0 or later
+-- Licensed under the Open Weights License v1.0. See LICENSE for details.
 local std = require("std")
 local term = require("term")
 local widgets = require("term.widgets")
@@ -12,6 +13,7 @@ local text = require("text")
 local argparser = require("argparser")
 local buffer = require("string.buffer")
 local style = require("term.tss")
+local zxscr_mod = require("zxscr")
 
 local set_term_title = function(title)
 	local term_title_prefix = os.getenv("LILUSH_TERM_TITLE_PREFIX") or ""
@@ -1639,6 +1641,53 @@ local zx = function(cmd, args)
 	return 127
 end
 
+local zxscr_help = [[
+: zxscr
+
+  Display ZX Spectrum SCR files in the terminal using Kitty graphics protocol.
+
+  The SCR format is a 6912-byte memory dump of the ZX Spectrum display memory,
+  containing bitmap data (6144 bytes) and color attributes (768 bytes).
+
+]]
+
+local zxscr = function(cmd, args)
+	local MAX_SCALE = 8 -- Let's hardcode a guardrail...
+	local parser = argparser.new({
+		scale = { kind = "num", default = 1, note = "Scale factor (1-" .. MAX_SCALE .. ")" },
+		filepath = { kind = "file", idx = 1, note = "Path to .scr file" },
+	}, zxscr_help)
+
+	local parsed, err, help = parser:parse(args)
+	if err then
+		if help then
+			helpmsg(err)
+			return 0
+		end
+		errmsg(err)
+		return 127
+	end
+
+	if not parsed.filepath then
+		errmsg("No file specified")
+		return 127
+	end
+
+	if parsed.scale < 1 or parsed.scale > MAX_SCALE then
+		errmsg("Scale must be between 1 and " .. MAX_SCALE)
+		return 127
+	end
+
+	local ok, err = zxscr_mod.display(parsed.filepath, { scale = parsed.scale })
+	if not ok then
+		errmsg(err)
+		return 127
+	end
+
+	term.write("\n")
+	return 0
+end
+
 local builtins = {
 	["ls"] = list_dir,
 	["cd"] = change_dir,
@@ -1667,6 +1716,7 @@ local builtins = {
 	["ps"] = kinda_ps,
 	["wgcli"] = wgcli,
 	["job"] = job,
+	["zxscr"] = zxscr,
 }
 
 local dont_fork = {

@@ -58,6 +58,7 @@ local new = function()
 			rehash = true,
 			run_script = true,
 			job = true,
+			zxscr = true,
 		},
 		aliases = {},
 	}

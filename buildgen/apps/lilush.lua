@@ -131,6 +131,7 @@ return {
 		"argparser",
 		"acme",
 		"testimony",
+		"zxscr",
 	},
 	c_libs = {
 		"cjson",

@@ -60,6 +60,7 @@ local luamods = {
 		"shell.completion.source.fs",
 	},
 	vault = { "vault" },
+	zxscr = { "zxscr" },
 }
 
 local c_libs = {

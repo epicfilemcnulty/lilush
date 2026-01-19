@@ -47,7 +47,7 @@ The codebase is organized into self-contained modules in `src/`:
 **Core Libraries (Lua + C):**
 
 - `std/` - Standard library: filesystem (`std.fs`), process (`std.ps`), UTF-8 (`std.utf`), text (`std.txt`), tables (`std.tbl`), conversions, utilities
-- `term/` - Terminal I/O with Kitty keyboard protocol support, widgets, TSS (Terminal Style Sheets)
+- `term/` - Terminal I/O with Kitty keyboard & graphic protocols support, widgets, TSS (Terminal Style Sheets)
 - `crypto/` - Cryptography via WolfSSL
 - `luasocket/` - Networking (TCP/UDP/Unix sockets) with SSL via WolfSSL (fork of LuaSocket + LuaSec)
 
