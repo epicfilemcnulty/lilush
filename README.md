@@ -58,6 +58,7 @@ suprisingly called _Lilush Shell_, which
   There are a couple of side projects, built upon lilush, that might be of interest:
 
 * [RELIW](src/reliw/README.md) is an HTTP server & framework.
+* [zxkitty](src/zx/README.md) is a ZX80 emulator for terminal (kitty graphics for video output)
 * [Circada]() is an IRC server & client bundle
 
 
