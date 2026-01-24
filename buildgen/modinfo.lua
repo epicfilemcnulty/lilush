@@ -61,6 +61,7 @@ local luamods = {
 	},
 	vault = { "vault" },
 	zxscr = { "zxscr" },
+	zx = { "zx", "zx.keyboard", "zx.screen" },
 }
 
 local c_libs = {
@@ -90,6 +91,10 @@ local c_libs = {
 	},
 	wireguard = {
 		{ "wireguard", "luaopen_wireguard" },
+	},
+	zx = {
+		{ "zx.core", "luaopen_zx_core" },
+		{ "zx.audio", "luaopen_zx_audio" },
 	},
 }
 

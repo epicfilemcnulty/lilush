@@ -12,35 +12,53 @@
 local std = require("std")
 local sbuf = require("string.buffer")
 
--- Somehow WolfSSL Base64_Encode, which we have exposed in crypto module,
--- fails on this data...Gotta debug this later, for now we use this
--- substitute function
+-- Optimized base64 encoding using string.buffer and pre-computed lookup
+local bit = require("bit")
+local base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+-- Pre-compute single character strings for direct indexing (1-based)
+local b64 = {}
+for i = 1, 64 do
+	b64[i - 1] = base64_chars:sub(i, i)
+end
+
 local function base64_encode(data)
-	local base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-	local result = {}
+	local len = #data
+	-- Pre-allocate output buffer (base64 produces 4 bytes per 3 input bytes)
+	local out = sbuf.new(math.ceil(len / 3) * 4 + 4)
 
-	for i = 1, #data, 3 do
+	local i = 1
+	while i <= len - 2 do
 		local a, b, c = data:byte(i, i + 2)
-		b = b or 0
-		c = c or 0
-
-		local bitmap = a * 65536 + b * 256 + c
-
-		table.insert(result, base64_chars:sub(math.floor(bitmap / 262144) + 1, math.floor(bitmap / 262144) + 1))
-		table.insert(
-			result,
-			base64_chars:sub(math.floor((bitmap % 262144) / 4096) + 1, math.floor((bitmap % 262144) / 4096) + 1)
+		-- Use bit operations instead of multiplication/division
+		out:put(
+			b64[bit.rshift(a, 2)],
+			b64[bit.bor(bit.lshift(bit.band(a, 3), 4), bit.rshift(b, 4))],
+			b64[bit.bor(bit.lshift(bit.band(b, 15), 2), bit.rshift(c, 6))],
+			b64[bit.band(c, 63)]
 		)
-		table.insert(
-			result,
-			i + 1 <= #data
-					and base64_chars:sub(math.floor((bitmap % 4096) / 64) + 1, math.floor((bitmap % 4096) / 64) + 1)
-				or "="
-		)
-		table.insert(result, i + 2 <= #data and base64_chars:sub((bitmap % 64) + 1, (bitmap % 64) + 1) or "=")
+		i = i + 3
 	end
 
-	return table.concat(result)
+	-- Handle remaining 1 or 2 bytes
+	local rem = len - i + 1
+	if rem == 2 then
+		local a, b = data:byte(i, i + 1)
+		out:put(
+			b64[bit.rshift(a, 2)],
+			b64[bit.bor(bit.lshift(bit.band(a, 3), 4), bit.rshift(b, 4))],
+			b64[bit.lshift(bit.band(b, 15), 2)],
+			"="
+		)
+	elseif rem == 1 then
+		local a = data:byte(i)
+		out:put(
+			b64[bit.rshift(a, 2)],
+			b64[bit.lshift(bit.band(a, 3), 4)],
+			"=="
+		)
+	end
+
+	return out:get()
 end
 
 local options_to_str = function(options)
@@ -56,38 +74,37 @@ end
 local send_data = function(data, options)
 	local opt_str = options_to_str(options)
 	local encoded_data = base64_encode(data)
+	local len = #encoded_data
 	-- Protocol requires data to be split into chunks of 4096 bytes
 	local chunk_size = 4096
-	local chunks = {}
-	for i = 1, #encoded_data, chunk_size do
-		table.insert(chunks, encoded_data:sub(i, i + chunk_size - 1))
-	end
-	-- Send first chunk with metadata
-	if #chunks > 1 then
-		-- Multi-chunk transmission
-		io.write(string.format("\027_G%s,m=1;%s\027\\", opt_str, chunks[1]))
-		io.flush()
 
-		-- Send middle chunks
-		local opts = ""
-		-- If we are sending frames, make sure that we specify `a=f`
-		-- in each chunk
-		if options.a and options.a == "f" then
-			opts = "a=f,"
-		end
-		for i = 2, #chunks - 1 do
-			io.write(string.format("\027_G%sm=1;%s\027\\", opts, chunks[i]))
-			io.flush()
-		end
-
-		-- Send final chunk
-		io.write(string.format("\027_G%sm=0;%s\027\\", opts, chunks[#chunks]))
+	if len <= chunk_size then
+		-- Single chunk - simple case
+		io.write(string.format("\027_G%s;%s\027\\", opt_str, encoded_data))
 		io.flush()
-	else
-		-- Single chunk transmission
-		io.write(string.format("\027_G%s;%s\027\\", opt_str, chunks[1]))
-		io.flush()
+		return
 	end
+
+	-- Multi-chunk: build entire output in a buffer, then single write
+	local out = sbuf.new(len + 1024)  -- Extra space for escape sequences
+	local frame_opts = (options.a and options.a == "f") and "a=f," or ""
+
+	-- First chunk with full options
+	out:put("\027_G", opt_str, ",m=1;", encoded_data:sub(1, chunk_size), "\027\\")
+
+	-- Middle chunks
+	local pos = chunk_size + 1
+	while pos + chunk_size <= len do
+		out:put("\027_G", frame_opts, "m=1;", encoded_data:sub(pos, pos + chunk_size - 1), "\027\\")
+		pos = pos + chunk_size
+	end
+
+	-- Final chunk
+	out:put("\027_G", frame_opts, "m=0;", encoded_data:sub(pos), "\027\\")
+
+	-- Single write for entire transmission
+	io.write(out:get())
+	io.flush()
 end
 
 local send_data_shm = function(data, options)

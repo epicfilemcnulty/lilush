@@ -5,33 +5,28 @@ ARG WOLFSSL_TAG=v5.8.0-stable
 ARG LUAJIT_TAG=v2.1
 ARG ARCH=x86_64
 
-RUN apk add --no-cache git alpine-sdk ca-certificates bash clang autoconf automake libtool util-linux linux-headers dumb-init
+RUN apk add --no-cache git alpine-sdk ca-certificates bash clang autoconf automake libtool util-linux linux-headers dumb-init libcap-setcap
 RUN mkdir /src && cd /src && git clone --depth 1 -b ${WOLFSSL_TAG} https://github.com/wolfSSL/wolfssl.git && cd wolfssl && ./autogen.sh && ./configure --build=${ARCH} --host=${ARCH} --enable-curve25519 --enable-ed25519 --disable-oldtls --enable-tls13 --enable-static --enable-sni --enable-altcertchains --enable-certreq --enable-certgen --enable-certext --enable-keygen CFLAGS="-DWOLFSSL_DER_TO_PEM -DWOLFSSL_PUBLIC_MP -DWOLFSSL_ALT_NAMES" && make && make install
-
 RUN cd /src && git clone https://github.com/LuaJIT/LuaJIT && cd LuaJIT && git checkout ${LUAJIT_TAG} && make XCFLAGS="-DLUAJIT_DISABLE_FFI -DLUAJIT_ENABLE_LUA52COMPAT" && make install
-
 
 COPY src /src/lilush/src
 COPY buildgen /src/lilush/buildgen
-RUN cd /src/lilush/buildgen && ./generate.lua apps/lilush.lua
-
+RUN cd /src/lilush/buildgen && ./generate.lua apps/zxkitty.lua
 COPY assets/fs/ /scratch
-RUN chmod 700 /scratch/root && chown root:root /scratch/root && chmod 1777 /scratch/tmp /scratch/var/tmp && chown 1000:1000 /scratch/home/user && chmod 750 /scratch/home/user && cp /etc/shells /scratch/etc/ && chown -R 33:33 /scratch/www
 
 FROM scratch
 LABEL maintainer="vlad@deviant.guru"
 
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /scratch/ /
-COPY --from=builder /build/lilush /usr/bin/lilush
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=builder /build/zxkitty /usr/local/bin/zxkitty
 COPY --from=builder /usr/bin/dumb-init /usr/bin/dumb-init
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 USER user
-ENV LILUSH_PROMT user,dir
 ENV PATH=/usr/bin:/usr/sbin:/usr/local/bin
 ENV HOME=/home/user USER=user
 WORKDIR /home/user
 
-CMD ["/usr/bin/lilush"]
+CMD ["/usr/local/bin/zxkitty"]

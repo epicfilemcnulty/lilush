@@ -278,6 +278,58 @@ local disable_bracketed_paste = function()
 	io.flush()
 end
 
+--[[
+	Query terminal for pixel dimensions using xterm-style escape sequences.
+	CSI 14 t -> returns CSI 4 ; height ; width t (window size in pixels)
+	CSI 16 t -> returns CSI 6 ; height ; width t (cell size in pixels)
+	Returns: window_width, window_height, cell_width, cell_height (all in pixels)
+	Returns nil if query fails or times out.
+]]
+local get_pixel_dimensions = function(timeout_ms)
+	timeout_ms = timeout_ms or 100
+	-- Query both window size (14t) and cell size (16t)
+	write("\027[14t\027[16t")
+	io.flush()
+
+	local buf = buffer.new()
+	local win_w, win_h, cell_w, cell_h
+	local responses_received = 0
+	local start_time = os.clock() * 1000
+
+	while responses_received < 2 do
+		-- Check timeout
+		if (os.clock() * 1000 - start_time) > timeout_ms then
+			break
+		end
+
+		local c = io.read(1)
+		if c then
+			buf:put(c)
+			local data = buf:tostring()
+			-- Look for complete responses: ESC [ 4 ; h ; w t or ESC [ 6 ; h ; w t
+			local response_type, height, width = data:match("\027%[([46]);(%d+);(%d+)t")
+			if response_type then
+				if response_type == "4" then
+					win_h = tonumber(height)
+					win_w = tonumber(width)
+					responses_received = responses_received + 1
+				elseif response_type == "6" then
+					cell_h = tonumber(height)
+					cell_w = tonumber(width)
+					responses_received = responses_received + 1
+				end
+				-- Clear buffer after successful parse
+				buf:reset()
+			end
+		end
+	end
+
+	if win_w and cell_w then
+		return win_w, win_h, cell_w, cell_h
+	end
+	return nil
+end
+
 local set_sane_mode = function()
 	core.set_sane_mode()
 end
@@ -547,19 +599,21 @@ end
 
 local mods_to_string = function(mods)
 	local keys = {
-		[1] = "SHIFT",
-		[2] = "ALT",
-		[4] = "CTRL",
-		[8] = "SUPER",
-		[16] = "HYPER",
-		[32] = "META",
-		[64] = "CAPS_LOCK",
-		[128] = "NUM_LOCK",
+		{ 1, "SHIFT" },
+		{ 2, "ALT" },
+		{ 4, "CTRL" },
+		{ 8, "SUPER" },
+		{ 16, "HYPER" },
+		{ 32, "META" },
+		{ 64, "CAPS_LOCK" },
+		{ 128, "NUM_LOCK" },
 	}
 	local combination = {}
-	for key, value in pairs(keys) do
-		if bit.band(mods, key) ~= 0 then
-			table.insert(combination, value)
+	for i = 1, #keys do
+		local mask = keys[i][1]
+		local name = keys[i][2]
+		if bit.band(mods, mask) ~= 0 then
+			table.insert(combination, name)
 		end
 	end
 	return table.concat(combination, "+")
@@ -636,6 +690,7 @@ local _M = {
 	resized = core.resized,
 	raw_mode = core.raw_mode,
 	window_size = core.get_window_size,
+	get_pixel_dimensions = get_pixel_dimensions,
 	switch_screen = switch_screen,
 	alt_screen = alt_screen,
 	has_kkbp = has_kkbp,
