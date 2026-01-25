@@ -12,6 +12,11 @@
 local std = require("std")
 local sbuf = require("string.buffer")
 
+-- Synchronized output mode escape sequences (prevents tearing)
+-- https://gist.github.com/christianparpart/d8a62cc1ab659194337d73e399004036
+local SYNC_START = "\027[?2026h" -- Begin synchronized update (hold rendering)
+local SYNC_END = "\027[?2026l" -- End synchronized update (flush and render)
+
 -- Optimized base64 encoding using string.buffer and pre-computed lookup
 local bit = require("bit")
 local base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -71,7 +76,12 @@ local options_to_str = function(options)
 	return opt_str
 end
 
-local send_data = function(data, options)
+local build_cmd = function(options)
+	local opt_str = options_to_str(options)
+	return "\027_G" .. opt_str .. "\027\\"
+end
+
+local build_data = function(data, options)
 	local opt_str = options_to_str(options)
 	local encoded_data = base64_encode(data)
 	local len = #encoded_data
@@ -79,15 +89,18 @@ local send_data = function(data, options)
 	local chunk_size = 4096
 
 	if len <= chunk_size then
-		-- Single chunk - simple case
-		io.write(string.format("\027_G%s;%s\027\\", opt_str, encoded_data))
-		io.flush()
-		return
+		return string.format("\027_G%s;%s\027\\", opt_str, encoded_data)
 	end
 
-	-- Multi-chunk: build entire output in a buffer, then single write
-	local out = sbuf.new(len + 1024)  -- Extra space for escape sequences
+	-- Multi-chunk: build entire output in a buffer
+	local out = sbuf.new(len + 1024) -- Extra space for escape sequences
 	local frame_opts = (options.a and options.a == "f") and "a=f," or ""
+	local q = options and options.q
+	local q_opts = q ~= nil and ("q=" .. tostring(q) .. ",") or ""
+	-- Empirically kitty is pickier about continuation chunks for animation frame
+	-- updates; repeating r=<frame> seems to improve reliability.
+	local frame_r = (options and options.a == "f" and options.r ~= nil) and ("r=" .. tostring(options.r) .. ",") or ""
+	local cont_opts = q_opts .. frame_opts .. frame_r
 
 	-- First chunk with full options
 	out:put("\027_G", opt_str, ",m=1;", encoded_data:sub(1, chunk_size), "\027\\")
@@ -95,26 +108,36 @@ local send_data = function(data, options)
 	-- Middle chunks
 	local pos = chunk_size + 1
 	while pos + chunk_size <= len do
-		out:put("\027_G", frame_opts, "m=1;", encoded_data:sub(pos, pos + chunk_size - 1), "\027\\")
+		out:put("\027_G", cont_opts, "m=1;", encoded_data:sub(pos, pos + chunk_size - 1), "\027\\")
 		pos = pos + chunk_size
 	end
 
 	-- Final chunk
-	out:put("\027_G", frame_opts, "m=0;", encoded_data:sub(pos), "\027\\")
+	out:put("\027_G", cont_opts, "m=0;", encoded_data:sub(pos), "\027\\")
 
-	-- Single write for entire transmission
-	io.write(out:get())
+	return out:get()
+end
+
+local build_shm = function(shm_name, options)
+	local opt_str = options_to_str(options)
+	return string.format("\027_G%s;%s\027\\", opt_str, base64_encode(shm_name))
+end
+
+local send_data = function(data, options, use_sync)
+	local sync_start = use_sync and SYNC_START or ""
+	local sync_end = use_sync and SYNC_END or ""
+	io.write(sync_start, build_data(data, options), sync_end)
 	io.flush()
 end
 
-local send_data_shm = function(data, options)
+local send_data_shm = function(data, options, use_sync)
 	options = options or {}
-	local shm_name = std.nanoid()
+	-- POSIX shm_open requires name to start with '/'
+	local shm_name = "/lilush-" .. std.nanoid()
 
 	-- Create shared memory object
 	local ok, err = std.create_shm(shm_name, data)
 	if err then
-		print(err)
 		return nil, err
 	end
 
@@ -123,13 +146,15 @@ local send_data_shm = function(data, options)
 	options.S = #data -- data size
 
 	local opt_str = options_to_str(options)
-	io.write(string.format("\027_G%s;" .. base64_encode(shm_name) .. "\027\\", opt_str))
+	local sync_start = use_sync and SYNC_START or ""
+	local sync_end = use_sync and SYNC_END or ""
+	io.write(sync_start, build_shm(shm_name, options), sync_end)
 	io.flush()
+	return true
 end
 
 local send_cmd = function(options)
-	local opt_str = options_to_str(options)
-	io.write("\027_G" .. opt_str .. "\027\\")
+	io.write(build_cmd(options))
 	io.flush()
 end
 
@@ -282,6 +307,10 @@ end
 
 return {
 	send_data = send_data,
+	send_data_shm = send_data_shm,
+	build_data = build_data,
+	build_shm = build_shm,
+	build_cmd = build_cmd,
 	send_cmd = send_cmd,
 	delete_image = delete_image,
 	new_canvas = new_canvas,

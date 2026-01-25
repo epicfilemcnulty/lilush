@@ -22,14 +22,109 @@
 
 local M = {}
 
+local std = require("std")
 local bit = require("bit")
 local sbuf = require("string.buffer")
 local gfx = require("term.gfx")
+
+local SYNC_START = "\027[?2026h"
+local SYNC_END = "\027[?2026l"
+
+local function build_shm_or_data(shm_name, data, tx_opts)
+	-- shm_open/mmap has noticeable fixed overhead; for small payloads it's
+	-- typically faster to send inline.
+	if #data < 32768 then
+		return gfx.build_data(data, tx_opts)
+	end
+
+	local _, err = std.create_shm(shm_name, data)
+	if not err then
+		local shm_opts = {}
+		for k, v in pairs(tx_opts) do
+			shm_opts[k] = v
+		end
+		shm_opts.t = "s"
+		shm_opts.S = #data
+		return gfx.build_shm(shm_name, shm_opts)
+	end
+	return gfx.build_data(data, tx_opts)
+end
+
+-- Animation-backed double buffering:
+-- - Create a single placement once.
+-- - Upload new frames into frame 2/3 (edit in place) using a=f,r=<frame>.
+-- - Switch current frame with a=a,c=<frame>.
+-- This avoids per-frame placements and avoids re-transmitting base image ids.
+local anim_show_frame
+
+anim_show_frame = function(out, image_id, frame_no)
+	out:put(gfx.build_cmd({ a = "a", i = image_id, c = frame_no, q = 2 }))
+end
+
+local function anim_init(out, image_id, shm_name_a, shm_name_b, data, opts, row, col, offset_x, offset_y)
+	-- Start clean
+	out:put(gfx.build_cmd({ a = "d", d = "I", i = image_id, q = 2 }))
+
+	-- Position the cursor for the placement
+	if row and col then
+		out:put("\027[", tostring(row), ";", tostring(col), "H")
+	end
+
+	-- Root frame (base image)
+	out:put(build_shm_or_data(shm_name_a, data, { a = "t", i = image_id, f = opts.f, s = opts.s, v = opts.v, q = 2 }))
+
+	-- Create placement once (stable p=1)
+	local display_opts = { a = "p", i = image_id, p = 1, C = 1, q = 2 }
+	if offset_x and offset_y then
+		display_opts.X = offset_x
+		display_opts.Y = offset_y
+	end
+	out:put(gfx.build_cmd(display_opts))
+
+	-- Create two additional frames (2 and 3) for double-buffering.
+	-- We never edit/display the root frame directly.
+	out:put(build_shm_or_data(shm_name_a, data, { a = "f", i = image_id, f = opts.f, s = opts.s, v = opts.v, q = 2, X = 1 }))
+	out:put(build_shm_or_data(shm_name_b, data, { a = "f", i = image_id, f = opts.f, s = opts.s, v = opts.v, q = 2, X = 1 }))
+
+	-- Show frame 2 initially
+	anim_show_frame(out, image_id, 2)
+end
+
+local function anim_edit_frame_rect(out, image_id, shm_name, data, opts, frame_no, x, y, s, v)
+	out:put(build_shm_or_data(shm_name, data, {
+		a = "f",
+		i = image_id,
+		r = frame_no,
+		f = opts.f,
+		x = x,
+		y = y,
+		s = s,
+		v = v,
+		q = 2,
+		X = 1,
+	}))
+end
+
+-- anim_show_frame defined above
 
 -- Screen dimensions
 local SCREEN_WIDTH = 256
 local SCREEN_HEIGHT = 192
 local BITMAP_SIZE = 6144
+
+-- Use RGB (f=24) instead of RGBA (f=32) to reduce bandwidth
+local PIXEL_BYTES = 3
+
+-- Full PAL display dimensions including border
+-- Defined here (before Screen:new()) so buffer pre-allocation can use them.
+local FULL_WIDTH = 352 -- 48 + 256 + 48
+local FULL_HEIGHT = 296 -- 56 + 192 + 48
+
+-- Border sizes (in pixels)
+local BORDER_LEFT = 48
+local BORDER_RIGHT = 48
+local BORDER_TOP = 56
+local BORDER_BOTTOM = 48
 
 -- ZX Spectrum 16-color palette (8 normal + 8 bright)
 local ZX_PALETTE = {
@@ -170,13 +265,64 @@ end
 local Screen = {}
 Screen.__index = Screen
 
+-- Image ids used by the emulator
+local IMAGE_ID_MAIN = 7800
+local IMAGE_ID_BORDER = 7801
+
 -- Create a new screen renderer instance
 function M.new()
+	local shm_prefix = "/lilush-zx-" .. std.nanoid()
 	local self = setmetatable({
 		-- Incremental render state
 		prev_screen = nil,
+		-- Pre-allocated buffers for reuse (reduces GC pressure)
+		rgba_buffer = sbuf.new(SCREEN_WIDTH * SCREEN_HEIGHT * PIXEL_BYTES),
+		rgba_buffer_border = sbuf.new(FULL_WIDTH * FULL_HEIGHT * PIXEL_BYTES),
+		row_buffer = sbuf.new(FULL_WIDTH * PIXEL_BYTES),
+		-- Previous frame data for skip optimization
+		prev_scr_data = nil,
+		-- Shared memory object names (avoid per-frame shm leaks)
+		shm_main_a = shm_prefix .. "-main-a",
+		shm_main_b = shm_prefix .. "-main-b",
+		shm_border_a = shm_prefix .. "-border-a",
+		shm_border_b = shm_prefix .. "-border-b",
+		-- Animation state (kitty graphics protocol animation frames)
+		anim_main_initialized = false,
+		anim_border_initialized = false,
+		anim_main_frame = 2,
+		anim_border_frame = 2,
+		-- Track if we've initialized images (for cleanup)
+		initialized = false,
 	}, Screen)
 	return self
+end
+
+-- Cleanup images on exit (call this when emulator closes)
+function Screen:cleanup()
+	if self.initialized then
+		-- Delete all our images to clean up terminal state
+		gfx.send_cmd({ a = "d", d = "I", i = IMAGE_ID_MAIN })
+		gfx.send_cmd({ a = "d", d = "I", i = IMAGE_ID_BORDER })
+
+		-- Cleanup shared memory objects we created.
+		-- POSIX shm objects appear as files in /dev/shm/<name-without-leading-slash>
+		local function rm_shm(name)
+			if not name then
+				return
+			end
+			pcall(std.fs.remove, "/dev/shm/" .. name:sub(2), false)
+		end
+		rm_shm(self.shm_main_a)
+		rm_shm(self.shm_main_b)
+		rm_shm(self.shm_border_a)
+		rm_shm(self.shm_border_b)
+
+		self.initialized = false
+		self.anim_main_initialized = false
+		self.anim_border_initialized = false
+		self.anim_main_frame = 2
+		self.anim_border_frame = 2
+	end
 end
 
 -- Optimized render that only updates changed character cells
@@ -262,119 +408,166 @@ end
 -- Reset incremental state (call when loading new program)
 function Screen:reset_incremental()
 	self.prev_screen = nil
+	self.prev_scr_data = nil
 end
 
 -- ============================================================================
 -- FAST DIRECT RENDERING (bypasses canvas for maximum performance)
 -- ============================================================================
 
--- Pre-compute RGBA strings for each color (avoids string.char calls in hot loop)
-local COLOR_RGBA = {}
+-- Pre-compute RGB strings for each color (avoids string.char calls in hot loop)
+local COLOR_RGB = {}
 for i = 0, 15 do
 	local c = ZX_PALETTE[i]
-	COLOR_RGBA[i] = string.char(c[1], c[2], c[3], 255)
+	COLOR_RGB[i] = string.char(c[1], c[2], c[3])
 end
 
 -- Pre-compute expanded pixel rows for all 256 possible bitmap bytes
--- For each bitmap byte and attribute, we get 8 RGBA pixels
--- This is a 2-level lookup: PIXEL_ROWS[bitmap_byte][attr_byte] = 32-byte string (8 pixels × 4 bytes)
+-- For each bitmap byte and attribute, we get 8 RGB pixels
+-- This is a 2-level lookup: PIXEL_ROWS[bitmap_byte][attr_byte] = 24-byte string (8 pixels × 3 bytes)
 local PIXEL_ROWS = {}
 for bitmap = 0, 255 do
 	PIXEL_ROWS[bitmap] = {}
 	for attr = 0, 255 do
-		local colors = ATTR_COLORS[attr]
-		local ink_rgba = COLOR_RGBA[attr % 8 + (bit.band(attr, 64) ~= 0 and 8 or 0)]
-		local paper_rgba = COLOR_RGBA[bit.band(bit.rshift(attr, 3), 7) + (bit.band(attr, 64) ~= 0 and 8 or 0)]
+		local ink_rgb = COLOR_RGB[attr % 8 + (bit.band(attr, 64) ~= 0 and 8 or 0)]
+		local paper_rgb = COLOR_RGB[bit.band(bit.rshift(attr, 3), 7) + (bit.band(attr, 64) ~= 0 and 8 or 0)]
 
-		local row = sbuf.new(32)
+		local row = sbuf.new(24)
 		for px = 7, 0, -1 do
 			if bit.band(bitmap, bit.lshift(1, px)) ~= 0 then
-				row:put(ink_rgba)
+				row:put(ink_rgb)
 			else
-				row:put(paper_rgba)
+				row:put(paper_rgb)
 			end
 		end
 		PIXEL_ROWS[bitmap][attr] = row:get()
 	end
 end
 
+-- Cache for horizontally scaled 8-pixel chunks.
+-- SCALED_PIXEL_ROWS[scale][bitmap_byte][attr_byte] => (8*scale) pixels as RGB.
+local SCALED_PIXEL_ROWS = {}
+
+local function get_pixel_row(bitmap_byte, attr_byte, scale)
+	if scale == 1 then
+		return PIXEL_ROWS[bitmap_byte][attr_byte]
+	end
+	local by_scale = SCALED_PIXEL_ROWS[scale]
+	if not by_scale then
+		by_scale = {}
+		SCALED_PIXEL_ROWS[scale] = by_scale
+	end
+	local by_bitmap = by_scale[bitmap_byte]
+	if not by_bitmap then
+		by_bitmap = {}
+		by_scale[bitmap_byte] = by_bitmap
+	end
+	local cached = by_bitmap[attr_byte]
+	if cached then
+		return cached
+	end
+
+	-- Expand the 8-pixel RGB row horizontally
+	local base = PIXEL_ROWS[bitmap_byte][attr_byte]
+	local out = sbuf.new(8 * scale * PIXEL_BYTES)
+	for px = 0, 7 do
+		local p = base:sub(px * PIXEL_BYTES + 1, px * PIXEL_BYTES + PIXEL_BYTES)
+		for _ = 1, scale do
+			out:put(p)
+		end
+	end
+	cached = out:get()
+	by_bitmap[attr_byte] = cached
+	return cached
+end
+
+local function build_full_frame(scr_data, scale, frame_buf, row_buf)
+	frame_buf:reset()
+	for y = 0, SCREEN_HEIGHT - 1 do
+		row_buf:reset()
+		local bitmap_base = Y_OFFSET[y]
+		local attr_row = math.floor(y / 8)
+		for cell_x = 0, 31 do
+			local bitmap_byte = scr_data:byte(bitmap_base + cell_x + 1)
+			local attr_byte = scr_data:byte(BITMAP_SIZE + attr_row * 32 + cell_x + 1)
+			row_buf:put(get_pixel_row(bitmap_byte, attr_byte, scale))
+		end
+		local row_data = row_buf:get()
+		for _ = 1, scale do
+			frame_buf:put(row_data)
+		end
+	end
+	return frame_buf:get()
+end
+
 -- Fast render directly to RGBA buffer and send via Kitty protocol
 -- This bypasses the canvas abstraction entirely
 -- Note: This renders only the 256x192 main display without border
--- Optional offset_x, offset_y specify sub-cell pixel offsets within the current cell
-function Screen:render_fast(scr_data, scale, offset_x, offset_y)
+-- row, col: terminal row/column for image placement (1-indexed)
+-- offset_x, offset_y: sub-cell pixel offsets within the cell
+function Screen:render_fast(scr_data, scale, row, col, offset_x, offset_y)
 	scale = scale or 1
 
 	if #scr_data ~= 6912 then
 		return nil, "Invalid SCR data size"
 	end
 
-	local width = SCREEN_WIDTH * scale
-	local height = SCREEN_HEIGHT * scale
-
-	-- Build graphics protocol options
-	-- C=1 prevents cursor movement after displaying the image
-	local opts = { a = "T", f = 32, s = width, v = height, C = 1 }
-	if offset_x and offset_y then
-		opts.X = offset_x
-		opts.Y = offset_y
-	end
-
-	if scale == 1 then
-		-- Scale 1: direct output using pre-computed rows
-		local out = sbuf.new(SCREEN_WIDTH * SCREEN_HEIGHT * 4)
-
-		for y = 0, SCREEN_HEIGHT - 1 do
-			local bitmap_base = Y_OFFSET[y]
-			local attr_row = math.floor(y / 8)
-
-			for cell_x = 0, 31 do
-				local bitmap_byte = scr_data:byte(bitmap_base + cell_x + 1)
-				local attr_byte = scr_data:byte(BITMAP_SIZE + attr_row * 32 + cell_x + 1)
-				out:put(PIXEL_ROWS[bitmap_byte][attr_byte])
-			end
-		end
-
-		gfx.send_data(out:get(), opts)
+	local prev = self.prev_scr_data
+	if scr_data == prev then
 		return true
 	end
 
-	-- Scale > 1: build scaled buffer efficiently
-	-- Pre-allocate full buffer
-	local out = sbuf.new(width * height * 4)
+	local width = SCREEN_WIDTH * scale
+	local height = SCREEN_HEIGHT * scale
+	local image_id = IMAGE_ID_MAIN
+	local opts = { f = 24, s = width, v = height }
+	self.initialized = true
 
-	for y = 0, SCREEN_HEIGHT - 1 do
-		local bitmap_base = Y_OFFSET[y]
-		local attr_row = math.floor(y / 8)
+	local need_init = (not self.anim_main_initialized)
+		or (self.anim_main_scale ~= scale)
+		or (self.anim_main_row ~= row)
+		or (self.anim_main_col ~= col)
+		or (self.anim_main_offx ~= offset_x)
+		or (self.anim_main_offy ~= offset_y)
 
-		-- Build native row first
-		local row_parts = {}
-		for cell_x = 0, 31 do
-			local bitmap_byte = scr_data:byte(bitmap_base + cell_x + 1)
-			local attr_byte = scr_data:byte(BITMAP_SIZE + attr_row * 32 + cell_x + 1)
-			row_parts[cell_x + 1] = PIXEL_ROWS[bitmap_byte][attr_byte]
-		end
+	local cmd = sbuf.new(4096)
+	cmd:put(SYNC_START)
 
-		-- Scale horizontally: repeat each pixel 'scale' times
-		local scaled_row = sbuf.new(width * 4)
-		for _, part in ipairs(row_parts) do
-			-- Each part is 32 bytes (8 pixels × 4 bytes)
-			for px = 0, 7 do
-				local pixel = part:sub(px * 4 + 1, px * 4 + 4)
-				for _ = 1, scale do
-					scaled_row:put(pixel)
-				end
-			end
-		end
-		local row_data = scaled_row:get()
-
-		-- Output row 'scale' times for vertical scaling
-		for _ = 1, scale do
-			out:put(row_data)
-		end
+	if not self.full_row_buffer or self.full_row_buffer_scale ~= scale then
+		self.full_row_buffer = sbuf.new(SCREEN_WIDTH * scale * PIXEL_BYTES)
+		self.full_row_buffer_scale = scale
 	end
 
-	gfx.send_data(out:get(), opts)
+	if need_init then
+		local pixel_data = build_full_frame(scr_data, scale, self.rgba_buffer, self.full_row_buffer)
+		anim_init(cmd, image_id, self.shm_main_a, self.shm_main_b, pixel_data, opts, row, col, offset_x, offset_y)
+		self.anim_main_initialized = true
+		self.anim_main_frame = 2
+		self.anim_main_scale = scale
+		self.anim_main_row = row
+		self.anim_main_col = col
+		self.anim_main_offx = offset_x
+		self.anim_main_offy = offset_y
+		cmd:put(SYNC_END)
+		io.write(cmd:get())
+		io.flush()
+		self.prev_scr_data = scr_data
+		return true
+	end
+
+	-- Double-buffering: render into a non-displayed frame, then flip.
+	local front = self.anim_main_frame
+	local back = (front == 2) and 3 or 2
+	local shm_name = (back == 2) and self.shm_main_a or self.shm_main_b
+	local pixel_data = build_full_frame(scr_data, scale, self.rgba_buffer, self.full_row_buffer)
+	anim_edit_frame_rect(cmd, image_id, shm_name, pixel_data, opts, back, 0, 0, opts.s, opts.v)
+	anim_show_frame(cmd, image_id, back)
+	self.anim_main_frame = back
+
+	cmd:put(SYNC_END)
+	io.write(cmd:get())
+	io.flush()
+	self.prev_scr_data = scr_data
 	return true
 end
 
@@ -383,14 +576,7 @@ end
 -- ============================================================================
 
 -- Full PAL display dimensions including border
-local FULL_WIDTH = 352 -- 48 + 256 + 48
-local FULL_HEIGHT = 296 -- 56 + 192 + 48
-
--- Border sizes (in pixels)
-local BORDER_LEFT = 48
-local BORDER_RIGHT = 48
-local BORDER_TOP = 56
-local BORDER_BOTTOM = 48
+-- (Defined earlier in this file)
 
 -- Scanlines per frame (PAL)
 local SCANLINES_PER_FRAME = 312
@@ -402,18 +588,19 @@ local SCANLINES_PER_FRAME = 312
 -- Visible bottom border = scanlines 256-303 (48 lines)
 local VISIBLE_START_LINE = 8
 
--- Pre-compute RGBA strings for border colors (same as COLOR_RGBA but using indices 0-7)
-local BORDER_RGBA = {}
+-- Pre-compute RGB strings for border colors (same as COLOR_RGB but using indices 0-7)
+local BORDER_RGB = {}
 for i = 0, 7 do
 	local c = ZX_PALETTE[i]
-	BORDER_RGBA[i] = string.char(c[1], c[2], c[3], 255)
+	BORDER_RGB[i] = string.char(c[1], c[2], c[3])
 end
 
 -- Render screen with border using per-scanline border colors
 -- border_lines: 312-byte string with border color (0-7) per scanline (can be nil)
 -- show_stripes: if true, show actual border colors; if false, show black border
--- Optional offset_x, offset_y specify sub-cell pixel offsets within the current cell
-function Screen:render_with_border(scr_data, border_lines, scale, show_stripes, offset_x, offset_y)
+-- row, col: terminal row/column for image placement (1-indexed)
+-- offset_x, offset_y: sub-cell pixel offsets within the cell
+function Screen:render_with_border(scr_data, border_lines, scale, show_stripes, row, col, offset_x, offset_y)
 	scale = scale or 1
 
 	if #scr_data ~= 6912 then
@@ -425,18 +612,23 @@ function Screen:render_with_border(scr_data, border_lines, scale, show_stripes, 
 
 	local width = FULL_WIDTH * scale
 	local height = FULL_HEIGHT * scale
-	local out = sbuf.new(width * height * 4)
 
-	-- Build graphics protocol options
-	-- C=1 prevents cursor movement after displaying the image
-	local opts = { a = "T", f = 32, s = width, v = height, C = 1 }
-	if offset_x and offset_y then
-		opts.X = offset_x
-		opts.Y = offset_y
-	end
+	-- Reuse pre-allocated buffer
+	self.rgba_buffer_border:reset()
+	local out = self.rgba_buffer_border
+
+	local image_id = IMAGE_ID_BORDER
+	local opts = { f = 24, s = width, v = height }
+	self.initialized = true
 
 	-- Black color for non-stripe border
-	local black_rgba = BORDER_RGBA[0]
+	local black_rgb = BORDER_RGB[0]
+
+	-- Ensure scaled row buffer is allocated for border scale
+	if scale > 1 and self.scaled_row_buffer_border_scale ~= scale then
+		self.scaled_row_buffer_border = sbuf.new(width * PIXEL_BYTES)
+		self.scaled_row_buffer_border_scale = scale
+	end
 
 	-- Process each display row
 	-- Map display rows to PAL scanlines (visible area starts at scanline 8)
@@ -444,21 +636,22 @@ function Screen:render_with_border(scr_data, border_lines, scale, show_stripes, 
 		local scanline = VISIBLE_START_LINE + display_y
 
 		-- Get border color: from scanline data if showing stripes, otherwise black
-		local border_rgba
+		local border_rgb
 		if use_border_data then
 			local border_color = border_lines:byte(scanline + 1) or 0
-			border_rgba = BORDER_RGBA[border_color]
+			border_rgb = BORDER_RGB[border_color]
 		else
-			border_rgba = black_rgba
+			border_rgb = black_rgb
 		end
 
-		-- Build one native-resolution row
-		local row = sbuf.new(FULL_WIDTH * 4)
+		-- Build one native-resolution row (reuse buffer)
+		self.row_buffer:reset()
+		local row = self.row_buffer
 
 		if display_y < BORDER_TOP or display_y >= BORDER_TOP + SCREEN_HEIGHT then
 			-- Pure border row (top or bottom)
 			for _ = 0, FULL_WIDTH - 1 do
-				row:put(border_rgba)
+				row:put(border_rgb)
 			end
 		else
 			-- Main display row with left/right borders
@@ -468,7 +661,7 @@ function Screen:render_with_border(scr_data, border_lines, scale, show_stripes, 
 
 			-- Left border
 			for _ = 0, BORDER_LEFT - 1 do
-				row:put(border_rgba)
+				row:put(border_rgb)
 			end
 
 			-- Main display (256 pixels)
@@ -480,7 +673,7 @@ function Screen:render_with_border(scr_data, border_lines, scale, show_stripes, 
 
 			-- Right border
 			for _ = 0, BORDER_RIGHT - 1 do
-				row:put(border_rgba)
+				row:put(border_rgb)
 			end
 		end
 
@@ -489,10 +682,11 @@ function Screen:render_with_border(scr_data, border_lines, scale, show_stripes, 
 		if scale == 1 then
 			out:put(row_data)
 		else
-			-- Scale horizontally and vertically
-			local scaled_row = sbuf.new(width * 4)
+			-- Scale horizontally and vertically (reuse buffer)
+			self.scaled_row_buffer_border:reset()
+			local scaled_row = self.scaled_row_buffer_border
 			for px = 0, FULL_WIDTH - 1 do
-				local pixel = row_data:sub(px * 4 + 1, px * 4 + 4)
+				local pixel = row_data:sub(px * PIXEL_BYTES + 1, px * PIXEL_BYTES + PIXEL_BYTES)
 				for _ = 1, scale do
 					scaled_row:put(pixel)
 				end
@@ -506,7 +700,36 @@ function Screen:render_with_border(scr_data, border_lines, scale, show_stripes, 
 		end
 	end
 
-	gfx.send_data(out:get(), opts)
+	local pixel_data = out:get()
+	local cmd = sbuf.new(#pixel_data + 1024)
+	cmd:put(SYNC_START)
+	local need_init = (not self.anim_border_initialized)
+		or (self.anim_border_scale ~= scale)
+		or (self.anim_border_row ~= row)
+		or (self.anim_border_col ~= col)
+		or (self.anim_border_offx ~= offset_x)
+		or (self.anim_border_offy ~= offset_y)
+
+	if need_init then
+		anim_init(cmd, image_id, self.shm_border_a, self.shm_border_b, pixel_data, opts, row, col, offset_x, offset_y)
+		self.anim_border_initialized = true
+		self.anim_border_frame = 2
+		self.anim_border_scale = scale
+		self.anim_border_row = row
+		self.anim_border_col = col
+		self.anim_border_offx = offset_x
+		self.anim_border_offy = offset_y
+	else
+		local front = self.anim_border_frame
+		local back = (front == 2) and 3 or 2
+		local shm_name = (back == 2) and self.shm_border_a or self.shm_border_b
+		anim_edit_frame_rect(cmd, image_id, shm_name, pixel_data, opts, back, 0, 0, opts.s, opts.v)
+		anim_show_frame(cmd, image_id, back)
+		self.anim_border_frame = back
+	end
+	cmd:put(SYNC_END)
+	io.write(cmd:get())
+	io.flush()
 	return true
 end
 

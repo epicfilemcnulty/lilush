@@ -306,11 +306,11 @@ local run = function(self, filepath)
 				local show_border_stripes = tape_playing and border_lines and not cfg.tape_turbo
 
 				if show_border_stripes then
-					term.go(frame_row, frame_col)
-					scr:render_with_border(scr_data, border_lines, cfg.scale, true, frame_offset_x, frame_offset_y)
+					-- Pass row/col directly to render function (keeps positioning inside sync block)
+					scr:render_with_border(scr_data, border_lines, cfg.scale, true, frame_row, frame_col, frame_offset_x, frame_offset_y)
 				else
-					term.go(main_row, main_col)
-					scr:render_fast(scr_data, cfg.scale, main_offset_x, main_offset_y)
+					-- Pass row/col directly to render function (keeps positioning inside sync block)
+					scr:render_fast(scr_data, cfg.scale, main_row, main_col, main_offset_x, main_offset_y)
 				end
 			end
 
@@ -367,6 +367,9 @@ end
 
 -- Close the emulator and cleanup resources
 local close = function(self)
+	if self.screen then
+		self.screen:cleanup()
+	end
 	if self.emu then
 		self.emu:close()
 		self.emu = nil
