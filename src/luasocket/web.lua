@@ -6,6 +6,7 @@ local http = require("socket.http")
 local ltn12 = require("ltn12")
 local socket = require("socket")
 local json = require("cjson.safe")
+local ssl = require("ssl")
 
 local debug_mode = os.getenv("LILUSH_DEBUG")
 
@@ -135,175 +136,349 @@ local request = function(uri, options, timeout)
 end
 
 local sse_client = function(uri, options, callbacks)
+	options = options or {}
+	callbacks = callbacks or {}
+
 	local client = {}
-	local buffer = ""
+	local rx = "" -- raw bytes from socket
+	local sse_buf = "" -- decoded body bytes for SSE parsing
 	local connected = false
+	local closed = false
 	local sock = nil
+	local response_open = false
+	local response_status = nil
+	local response_headers = {}
+	local chunked = false
+	local chunk_state = { mode = "size", size = nil }
 
-	-- Parse SSE event from buffer
+	local function header_end_pos(buf)
+		local i = buf:find("\r\n\r\n", 1, true)
+		local j = buf:find("\n\n", 1, true)
+		if i and j then
+			if i < j then
+				return i, 4
+			end
+			return j, 2
+		end
+		if i then
+			return i, 4
+		end
+		if j then
+			return j, 2
+		end
+		return nil
+	end
+
+	local function parse_response_headers(h)
+		local lines = {}
+		for line in h:gmatch("[^\r\n]+") do
+			table.insert(lines, line)
+		end
+		local status_line = lines[1] or ""
+		local status = tonumber(status_line:match("^HTTP/%d+%.%d+%s+(%d+)%s"))
+		local headers = {}
+		for i = 2, #lines do
+			local k, v = lines[i]:match("^([^:]+):%s*(.*)$")
+			if k then
+				headers[k:lower()] = v
+			end
+		end
+		return status, headers
+	end
+
+	local function find_event_end(buf)
+		local i = buf:find("\r\n\r\n", 1, true)
+		local j = buf:find("\n\n", 1, true)
+		if i and j then
+			if i < j then
+				return i, 4
+			end
+			return j, 2
+		end
+		if i then
+			return i, 4
+		end
+		if j then
+			return j, 2
+		end
+		return nil
+	end
+
 	local function parse_event(data)
-		local event = {
-			event = "message",
-			data = "",
-		}
-
+		local event = { event = "message", data = "" }
+		local data_lines = {}
 		for line in data:gmatch("[^\r\n]+") do
-			if line:match("^event: ") then
-				event.event = line:sub(8)
-			elseif line:match("^data: ") then
-				event.data = line:sub(7)
-			elseif line:match("^id: ") then
-				event.id = line:sub(5)
-			elseif line:match("^retry: ") then
-				event.retry = tonumber(line:sub(8))
+			if line:sub(1, 1) == ":" then
+				-- comment / keepalive
+			elseif line:match("^event:") then
+				event.event = (line:match("^event:%s*(.*)$") or "message")
+			elseif line:match("^data:") then
+				table.insert(data_lines, line:match("^data:%s*(.*)$") or "")
+			elseif line:match("^id:") then
+				event.id = line:match("^id:%s*(.*)$")
+			elseif line:match("^retry:") then
+				event.retry = tonumber(line:match("^retry:%s*(.*)$"))
 			end
 		end
-
-		-- Parse JSON data if present
-		if event.data and event.data ~= "" then
-			local parsed_data = json.decode(event.data)
-			if parsed_data then
-				event.data = parsed_data
+		local raw = table.concat(data_lines, "\n")
+		if raw == "[DONE]" then
+			event.event = "done"
+			event.data = raw
+			return event
+		end
+		event.data = raw
+		if raw ~= "" and (raw:sub(1, 1) == "{" or raw:sub(1, 1) == "[") then
+			local parsed = json.decode(raw)
+			if parsed ~= nil then
+				event.data = parsed
 			end
 		end
-
 		return event
 	end
-	-- Process the buffer for complete events
-	local function process_buffer()
+
+	local function dispatch_event(event)
+		if callbacks[event.event] then
+			callbacks[event.event](event.data)
+		elseif callbacks.message then
+			callbacks.message(event)
+		end
+		if event.event == "done" then
+			client:close()
+		end
+	end
+
+	local function process_sse_buffer()
 		while true do
-			local event_end = buffer:find("\n\n")
-			if not event_end then
+			local pos, delim_len = find_event_end(sse_buf)
+			if not pos then
 				break
 			end
-
-			local event_data = buffer:sub(1, event_end - 1)
-			buffer = buffer:sub(event_end + 2)
-
-			local event = parse_event(event_data)
-
-			-- Call the appropriate callback
-			if callbacks[event.event] then
-				callbacks[event.event](event.data)
-			elseif callbacks.message then
-				callbacks.message(event)
-			end
-
-			-- If this is the "done" event, close the connection
-			if event.event == "done" then
-				client:close()
-				if callbacks.close then
-					callbacks.close()
-				end
-				break
+			local event_data = sse_buf:sub(1, pos - 1)
+			sse_buf = sse_buf:sub(pos + delim_len)
+			if event_data ~= "" then
+				dispatch_event(parse_event(event_data))
 			end
 		end
 	end
 
-	-- Connect to the SSE stream
+	local function consume_line(buf)
+		local rn = buf:find("\r\n", 1, true)
+		local n = buf:find("\n", 1, true)
+		if not rn and not n then
+			return nil, buf
+		end
+		local eol, len
+		if rn and n then
+			if rn < n then
+				eol, len = rn, 2
+			else
+				eol, len = n, 1
+			end
+		elseif rn then
+			eol, len = rn, 2
+		else
+			eol, len = n, 1
+		end
+		local line = buf:sub(1, eol - 1)
+		return line, buf:sub(eol + len)
+	end
+
+	local function decode_chunked()
+		while true do
+			if chunk_state.mode == "size" then
+				local line
+				line, rx = consume_line(rx)
+				if not line then
+					return
+				end
+				local size_hex = line:match("^%s*([0-9A-Fa-f]+)")
+				if not size_hex then
+					if callbacks.error then
+						callbacks.error("invalid chunk size line")
+					end
+					client:close()
+					return
+				end
+				local size = tonumber(size_hex, 16)
+				if size == 0 then
+					client:close()
+					return
+				end
+				chunk_state.size = size
+				chunk_state.mode = "data"
+			elseif chunk_state.mode == "data" then
+				if #rx < chunk_state.size then
+					return
+				end
+				sse_buf = sse_buf .. rx:sub(1, chunk_state.size)
+				rx = rx:sub(chunk_state.size + 1)
+				-- consume trailing CRLF/LF
+				if rx:sub(1, 2) == "\r\n" then
+					rx = rx:sub(3)
+				elseif rx:sub(1, 1) == "\n" then
+					rx = rx:sub(2)
+				end
+				chunk_state.size = nil
+				chunk_state.mode = "size"
+			end
+		end
+	end
+
 	function client:connect()
 		if connected then
 			return false, "Already connected"
 		end
 
-		-- Prepare request headers
-		local headers = {
-			["Content-Type"] = "application/json",
-			["Accept"] = "text/event-stream",
-			["Cache-Control"] = "no-cache",
-			["Connection"] = "keep-alive",
-		}
-
-		-- Add any custom headers from options
-		if options.headers then
-			for k, v in pairs(options.headers) do
-				headers[k] = v
-			end
+		local parsed_url = url.parse(uri)
+		if not parsed_url or not parsed_url.host then
+			return false, "bad url: " .. tostring(uri)
+		end
+		local scheme = parsed_url.scheme or "http"
+		local host = parsed_url.host
+		local port = tonumber(parsed_url.port) or (scheme == "https" and 443 or 80)
+		local path = parsed_url.path or "/"
+		if parsed_url.query and #parsed_url.query > 0 then
+			path = path .. "?" .. parsed_url.query
 		end
 
 		local body = options.body or ""
+		local headers = {
+			["Accept"] = "text/event-stream",
+			["Cache-Control"] = "no-cache",
+			["Connection"] = "keep-alive",
+			["Content-Type"] = "application/json",
+			["User-Agent"] = "lilush-sse-client",
+		}
+		if options.headers then
+			for k, v in pairs(options.headers) do
+				if v ~= nil then
+					headers[k] = v
+				end
+			end
+		end
 
 		sock = socket.tcp()
-
-		local parsed_url = url.parse(uri)
-		local ok, err = sock:connect(parsed_url.host, parsed_url.port)
-		if not ok and err ~= "timeout" then
-			return false, "Connection failed: " .. err
-		end
-		sock:settimeout(0) -- Non-blocking sock
-
-		local method = options.method or "GET"
-		-- Construct HTTP request
-		local request = method .. " " .. parsed_url.path .. " HTTP/1.1\r\n"
-		request = request .. "Host: " .. parsed_url.host .. ":" .. parsed_url.port .. "\r\n"
-		for k, v in pairs(headers) do
-			request = request .. k .. ": " .. v .. "\r\n"
-		end
-		request = request .. "Content-Length: " .. #body .. "\r\n"
-		request = request .. "\r\n"
-		request = request .. body
-
-		-- Send the request
-		local ok, err = sock:send(request)
+		sock:settimeout(options.connect_timeout or 10)
+		local ok, err = sock:connect(host, port)
 		if not ok then
 			sock:close()
-			return false, "Failed to send request: " .. err
+			sock = nil
+			return false, "Connection failed: " .. tostring(err)
+		end
+
+		if scheme == "https" then
+			sock = ssl.wrap(sock, {
+				mode = "client",
+				protocol = options.tls_protocol or "tlsv1_2",
+				verify = options.tls_verify or "none",
+				options = options.tls_options or "all",
+				server = host,
+				cafile = options.tls_cafile,
+				capath = options.tls_capath,
+			})
+			sock:settimeout(options.handshake_timeout or 10)
+			local ok_hs, err_hs = sock:dohandshake()
+			if not ok_hs then
+				sock:close()
+				sock = nil
+				return false, "TLS handshake failed: " .. tostring(err_hs)
+			end
+		end
+
+		sock:settimeout(0)
+		local method = options.method or "GET"
+		local req = method .. " " .. path .. " HTTP/1.1\r\n"
+		local host_hdr = host
+		if not ((scheme == "http" and port == 80) or (scheme == "https" and port == 443)) then
+			host_hdr = host_hdr .. ":" .. tostring(port)
+		end
+		req = req .. "Host: " .. host_hdr .. "\r\n"
+		for k, v in pairs(headers) do
+			req = req .. k .. ": " .. tostring(v) .. "\r\n"
+		end
+		req = req .. "Content-Length: " .. tostring(#body) .. "\r\n\r\n" .. body
+
+		local ok_send, err_send = sock:send(req)
+		if not ok_send then
+			sock:close()
+			sock = nil
+			return false, "Failed to send request: " .. tostring(err_send)
 		end
 
 		connected = true
-
-		-- Trigger connect callback
 		if callbacks.connect then
 			callbacks.connect()
 		end
-
 		return true
 	end
-	-- Update function to process incoming data
+
 	function client:update()
-		if not connected or not sock then
+		if not connected or not sock or closed then
 			return false
 		end
-
-		-- Try to receive data
 		local chunk, status, partial = sock:receive("*a")
 		local data = chunk or partial
-
 		if data and #data > 0 then
-			buffer = buffer .. data
-			process_buffer()
+			rx = rx .. data
 		end
 
-		-- Check if connection is closed
-		if status == "closed" then
-			connected = false
-			sock:close()
-			sock = nil
-
-			if callbacks.close then
-				callbacks.close()
+		if not response_open then
+			local pos, delim_len = header_end_pos(rx)
+			if pos then
+				local header_blob = rx:sub(1, pos - 1)
+				rx = rx:sub(pos + delim_len)
+				response_status, response_headers = parse_response_headers(header_blob)
+				response_open = true
+				local te = (response_headers["transfer-encoding"] or "")
+				chunked = te:lower():find("chunked", 1, true) ~= nil
+				if callbacks.open then
+					callbacks.open(response_status, response_headers)
+				end
+				if not response_status or response_status < 200 or response_status >= 300 then
+					local msg = "bad response status: " .. tostring(response_status)
+					if callbacks.error then
+						callbacks.error(msg)
+					end
+					client:close()
+					return false
+				end
 			end
+		end
 
+		if response_open and #rx > 0 then
+			if chunked then
+				decode_chunked()
+			else
+				sse_buf = sse_buf .. rx
+				rx = ""
+			end
+			process_sse_buffer()
+		end
+
+		if status == "closed" then
+			client:close()
 			return false
 		end
-
 		return true
 	end
-	-- Close the connection
+
 	function client:close()
-		if connected and sock then
+		if closed then
+			return
+		end
+		closed = true
+		connected = false
+		if sock then
 			sock:close()
 			sock = nil
-			connected = false
-			if callbacks.close then
-				callbacks.close()
-			end
+		end
+		if callbacks.close then
+			callbacks.close()
 		end
 	end
 
-	-- Check if still connected
 	function client:is_connected()
-		return connected
+		return connected and not closed
 	end
 
 	return client

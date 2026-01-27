@@ -6,8 +6,6 @@ bundles a curated collection of Lua modules and C libraries. It serves dual purp
 1. A batteries-included LuaJIT runtime with networking, crypto, terminal I/O, and system utilities
 2. A feature-rich Linux shell (Lilush Shell) that showcases these capabilities
 
-The project is in **beta status** - expect breaking API changes before 1.0.0 release.
-
 ## Build System
 
 Lilush uses a custom build generator written in Lua (`buildgen/generate.lua`) that compiles everything into a static binary.
@@ -226,10 +224,3 @@ Build RELIW binary: `./buildgen/generate.lua apps/reliw.lua`
 - **LuaJIT 2.1** - Lua runtime (with Lua 5.2 compat enabled)
 - **WolfSSL** - SSL/TLS and crypto (statically linked)
 - **Linux-specific** - Uses Linux syscalls, terminal features, not portable
-
-## File Extensions
-
-- `.lua` - Lua source (gets compiled to bytecode in build)
-- `.c/.h` - C source (compiled to .o, archived to .a)
-- `.json` - Configuration files (shell modes, RELIW config)
-- `.djot` - Djot markup (processed by djot module)
