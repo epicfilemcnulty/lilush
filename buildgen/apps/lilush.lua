@@ -78,6 +78,26 @@ int main(int argc, char **argv) {
         }
         return 0;
     }
+    if (strcmp(argv[1], "-e") == 0) {
+        if (argc < 3) {
+            fprintf(stderr, "Error: -e flag requires a Lua code argument\n");
+            fprintf(stderr, "Usage: %s -e '<lua-code>'\n", argv[0]);
+            return 1;
+        }
+        // Set lilush package path first
+        error = luaL_dostring(L, PRELOAD_INIT);
+        if (error) {
+            fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
+            return 1;
+        }
+        // Execute the Lua code from argv[2]
+        error = luaL_dostring(L, argv[2]);
+        if (error) {
+            fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
+            return 1;
+        }
+        return 0;
+    }
     if (strcmp(argv[1], "-v") == 0) {
         fprintf(stdout, "version {{VERSION}}\n");
         return 0;
@@ -127,6 +147,7 @@ return {
 		"redis",
 		"shell",
 		"vault",
+		"llm",
 		"dns",
 		"argparser",
 		"acme",

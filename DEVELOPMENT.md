@@ -60,6 +60,7 @@ The codebase is organized into self-contained modules in `src/`:
 - `vault/` - Secrets management
 - `text/` - Text processing utilities (includes djot renderer for terminal, uses TSS for styling)
 - `argparser/` - Argument parsing
+- `llm/` - Clients for working with OpenAI and llamacpp server APIs
 - `testimony/` - Miminal testing framework for Lilush
 
 **C-only Libraries:**
@@ -113,9 +114,17 @@ The main binary (`lilush`) has multiple entry modes:
 
 1. **Interactive shell**: `lilush` (no args)
 2. **Script execution**: `lilush /path/to/script.lua [args]`
-3. **Command mode**: `lilush -c <commands>`
-4. **Built-in mode**: Symlinked as builtin name executes that builtin
-5. **Version**: `lilush -v`
+   - Example: `lilush myscript.lua arg1 arg2`
+3. **Lua code execution**: `lilush -e '<lua-code>'`
+   - Executes Lua code directly (like `python -e` or `ruby -e`)
+   - Example: `lilush -e "print('Hello from Lua')"`
+   - Example: `lilush -e "local std = require('std'); print(std.fs.cwd())"`
+4. **Shell command mode**: `lilush -c <shell-commands>`
+   - Executes lilush shell commands (mimics bash `-c` behavior)
+   - Example: `lilush -c "echo hello"`
+   - **Note**: This runs shell commands, NOT Lua code. Use `-e` for Lua code.
+5. **Built-in mode**: Symlinked as builtin name executes that builtin
+6. **Version**: `lilush -v`
 
 See `buildgen/apps/lilush.lua` custom_main for implementation.
 
@@ -187,23 +196,6 @@ Tests focus on core utilities (`std.*` modules) and critical logic in `term` mod
 lilush tests/std/test_tbl.lua
 ```
 
-## RELIW Framework
-
-RELIW is a Redis-centric HTTP server/framework built on Lilush:
-
-**Configuration**: JSON file at `$RELIW_CONFIG_FILE` or `/etc/reliw/config.json`
-
-**Architecture**:
-
-- Multi-process: manager spawns server + optional metrics server
-- Request handling: `reliw.handle` routes requests
-- Storage: Redis-backed via `reliw.store`
-- Templates: `reliw.templates`
-- Auth: `reliw.auth`
-- API: RESTful helpers in `reliw.api`
-
-Build RELIW binary: `./buildgen/generate.lua apps/reliw.lua`
-
 ## Common Gotchas
 
 1. **LuaJIT is not Lua 5.3+** - Uses Lua 5.1 + some 5.2 compat.
@@ -218,6 +210,11 @@ Build RELIW binary: `./buildgen/generate.lua apps/reliw.lua`
    ```
 
 5. **Module namespacing** - C modules use `std.core`, `term.core`, `crypto.core` naming to separate from Lua APIs.
+
+6. **`-c` vs `-e` flags** - Lilush serves as both a shell and Lua interpreter:
+   - Use `-c` for **shell commands**: `lilush -c "echo hello && ls"`
+   - Use `-e` for **Lua code**: `lilush -e "print('hello')"`
+   - The `-c` flag mimics bash behavior (shell command execution), not Python/Ruby style code execution
 
 ## Key Dependencies
 

@@ -1,1 +1,0 @@
-shell/utils/pager.lua

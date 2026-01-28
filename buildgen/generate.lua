@@ -44,15 +44,51 @@ int main(int argc, char **argv) {
 }
 ]]
 
-local mod_to_header = function(filepath)
-	local short_name = filepath:match("/([^/]+)$") or filepath
-	local mod_name = "mod_lua_" .. short_name:match("^(.+)%.lua") .. ".h"
-	std.ps.exec_simple("luajit -b " .. filepath .. " " .. mod_name)
+local mod_to_header = function(filepath, rel_path)
+	-- Convert relative path to module name format: shell/theme.lua -> shell.theme
+	local mod_base = rel_path:gsub("%.lua$", ""):gsub("/", ".")
+	local mod_name = "mod_lua_" .. mod_base .. ".h"
+	-- For C identifiers, dots become underscores: shell.theme -> shell_theme
+	local c_ident = mod_base:gsub("%.", "_")
+	
+	std.ps.exec_simple("luajit -b -n " .. c_ident .. " " .. filepath .. " " .. mod_name)
 	local content = std.fs.read_file(mod_name)
-	content = content:gsub("#define luaJIT_BC", "const size_t mod_lua")
+	content = content:gsub("#define luaJIT_BC_" .. c_ident, "const size_t mod_lua_" .. c_ident)
 	content = content:gsub("_SIZE (%d+)", "_SIZE=%1;")
-	content = content:gsub("static const unsigned char luaJIT_BC", "static const char mod_lua")
+	content = content:gsub("static const unsigned char luaJIT_BC_" .. c_ident, "static const char mod_lua_" .. c_ident)
 	std.fs.write_file(mod_name, content)
+end
+
+local list_lua_files_recursive
+list_lua_files_recursive = function(dir, base_dir)
+	local results = {}
+	local items = std.fs.list_dir(dir)
+	if not items then
+		return results
+	end
+
+	for _, item in ipairs(items) do
+		if item ~= "." and item ~= ".." then
+			local full_path = dir .. "/" .. item
+			local st = std.fs.stat(full_path)
+			if st then
+				if st.mode == "d" then
+					-- Recurse into subdirectory
+					local sub_results = list_lua_files_recursive(full_path, base_dir)
+					for rel_path, _ in pairs(sub_results) do
+						results[rel_path] = true
+					end
+				elseif st.mode == "f" and item:match("%.lua$") then
+					-- Calculate relative path from base_dir
+					local rel_path = full_path:gsub("^" .. base_dir:gsub("%-", "%%-") .. "/", "")
+					results[rel_path] = true
+				elseif st.mode == "l" then
+					-- Skip symlinks (they'll be removed)
+				end
+			end
+		end
+	end
+	return results
 end
 
 local app_config_file = arg[1] or ""
@@ -113,9 +149,13 @@ for _, luamod in ipairs(app_config.luamods) do
 	std.fs.chdir(pwd .. "/build")
 	std.fs.mkdir(luamod)
 	std.fs.chdir(luamod)
-	local lua_files = std.fs.list_files(pwd .. "/src/" .. luamod, "%.lua$", "[lf]")
-	for lua_file, _ in pairs(lua_files) do
-		mod_to_header(pwd .. "/src/" .. luamod .. "/" .. lua_file)
+	
+	-- Recursively find all .lua files
+	local lua_files = list_lua_files_recursive(pwd .. "/src/" .. luamod, pwd .. "/src/" .. luamod)
+	
+	for lua_file_rel_path, _ in pairs(lua_files) do
+		-- lua_file_rel_path is like "shell.lua" or "shell/theme.lua"
+		mod_to_header(pwd .. "/src/" .. luamod .. "/" .. lua_file_rel_path, lua_file_rel_path)
 	end
 	for __, entry in ipairs(modinfo.luamods[luamod]) do
 		local mod_file_name

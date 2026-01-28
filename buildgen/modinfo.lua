@@ -29,6 +29,16 @@ local luamods = {
 	testimony = { "testimony" },
 	dns = { "dns.resolver", "dns.parser", "dns.dig" },
 	djot = { "djot", "djot.ast", "djot.attributes", "djot.block", "djot.filter", "djot.html", "djot.inline" },
+	llm = {
+		"llm",
+		"llm.llamacpp",
+		"llm.oaic",
+		"llm.templates",
+		"llm.tools",
+		"llm.tools.read_file",
+		"llm.tools.web_search",
+		"llm.tools.fetch_webpage",
+	},
 	redis = { "redis" },
 	reliw = {
 		"reliw",
