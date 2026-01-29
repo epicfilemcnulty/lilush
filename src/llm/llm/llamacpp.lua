@@ -68,8 +68,10 @@ local complete = function(self, model, query, sampler, sc, uuid)
 				tokens = predicted_n,
 				ctx = prompt_n + cache_n + predicted_n,
 				rate = timings.predicted_per_second or 0,
-				raw = response,
 			}
+			if self.debug_mode then
+				answer.raw = response
+			end
 			local tool_calls = parse_tool_calls(answer.text)
 			if #tool_calls > 0 then
 				answer.tool_calls = tool_calls
@@ -123,7 +125,11 @@ local stream = function(self, model, query, sampler, sc, uuid, user_callbacks)
 			if data.content then
 				full_text:put(data.content)
 				if user_callbacks.chunk then
-					user_callbacks.chunk({ text = data.content, raw = data })
+					local chunk_data = { text = data.content }
+					if self.debug_mode then
+						chunk_data.raw = data
+					end
+					user_callbacks.chunk(chunk_data)
 				end
 			end
 			if data.stop then
@@ -166,8 +172,10 @@ local stream = function(self, model, query, sampler, sc, uuid, user_callbacks)
 		tokens = predicted_n,
 		ctx = prompt_n + cache_n + predicted_n,
 		rate = timings.predicted_per_second or 0,
-		raw = last_event,
 	}
+	if self.debug_mode then
+		response.raw = last_event
+	end
 	if #tool_calls > 0 then
 		response.tool_calls = tool_calls
 	end
@@ -218,6 +226,7 @@ local new = function(api_url, api_key)
 		timeout = timeout,
 		complete = complete,
 		stream = stream,
+		debug_mode = os.getenv("LLM_DEBUG_MODE"),
 		chat_complete = chat_complete,
 		chat_stream = chat_stream,
 	}

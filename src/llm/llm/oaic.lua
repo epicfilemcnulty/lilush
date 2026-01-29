@@ -131,7 +131,7 @@ local extract_oai_text = function(choice)
 	return ""
 end
 
-local request = function(url, json_data, headers, timeout, backend)
+local request = function(url, json_data, headers, timeout, backend, debug_mode)
 	local start = os.time()
 	local resp, err = web.request(url, { method = "POST", body = json_data, headers = headers }, timeout)
 	if resp then
@@ -151,7 +151,9 @@ local request = function(url, json_data, headers, timeout, backend)
 				end
 				answer.model = resp_json.model
 				answer.rate = duration > 0 and (answer.tokens / duration) or 0
-				answer.raw = resp_json
+				if debug_mode then
+					answer.raw = resp_json
+				end
 				if resp_json.choices then
 					local c1 = resp_json.choices[1]
 					local tc = extract_oai_tool_calls(c1)
@@ -203,7 +205,14 @@ local complete = function(self, model, messages, sampler, opts)
 			data.tool_choice = opts.tool_choice
 		end
 	end
-	return request(self.api_url .. "/chat/completions", json.encode(data), self.headers, self.timeout, self.backend)
+	return request(
+		self.api_url .. "/chat/completions",
+		json.encode(data),
+		self.headers,
+		self.timeout,
+		self.backend,
+		self.debug_mode
+	)
 end
 
 local stream = function(self, model, messages, sampler, user_callbacks, opts)
@@ -292,7 +301,11 @@ local stream = function(self, model, messages, sampler, user_callbacks, opts)
 				if s and #s > 0 then
 					full_text:put(s)
 					if user_callbacks.chunk then
-						user_callbacks.chunk({ text = s, raw = chunk })
+						local chunk_data = { text = s }
+						if self.debug_mode then
+							chunk_data.raw = chunk
+						end
+						user_callbacks.chunk(chunk_data)
 					end
 				end
 			end
@@ -434,6 +447,7 @@ local new = function(api_url, api_key)
 		timeout = timeout,
 		api_key = api_key,
 		api_url = api_url,
+		debug_mode = os.getenv("LLM_DEBUG_MODE"),
 		complete = complete,
 		stream = stream,
 		chat_complete = chat_complete,
