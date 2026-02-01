@@ -129,7 +129,7 @@ local server_process_request = function(self, client, client_ip, count)
 		return nil, "no Host header"
 	end
 	local host = headers.host
-	if content_length > 0 then
+	if content_length > 0 and not headers["transfer-encoding"] then
 		if content_length > self.__config.max_body_size then
 			premature_error(client, 413, "A body too fat\n")
 			return nil, "max_body_size limit violation: " .. tostring(content_length)

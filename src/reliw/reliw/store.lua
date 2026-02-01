@@ -59,7 +59,11 @@ local fetch_userdata = function(self, host, file)
 		return nil, "userdata not found"
 	end
 	if std.mime.type(file) == "application/lua" then
-		userdata = load(userdata)()
+		local fn, err = load(userdata)
+		if not fn then
+			return nil, "failed to load Lua userdata: " .. tostring(err)
+		end
+		userdata = fn()
 	end
 	return userdata
 end
@@ -108,7 +112,11 @@ local fetch_content = function(self, host, query, metadata)
 		if resp then
 			local content = resp[1]
 			if resp[4] == "application/lua" then
-				content = load(resp[1])()
+				local fn, err = load(resp[1])
+				if not fn then
+					return nil, "failed to load cached Lua content: " .. tostring(err)
+				end
+				content = fn()
 			end
 			return content, resp[2], resp[3], resp[4], resp[5]
 		end
@@ -143,7 +151,11 @@ local fetch_content = function(self, host, query, metadata)
 		self.red:cmd("EXPIRE", self.prefix .. ":FILES:" .. host .. ":" .. filename, 3600)
 	end
 	if mime_type == "application/lua" then
-		content = load(content)()
+		local fn, err = load(content)
+		if not fn then
+			return nil, "failed to load Lua content: " .. tostring(err)
+		end
+		content = fn()
 	end
 	return content, hash, size, mime_type, title
 end

@@ -24,6 +24,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		local ip = headers[ip_header]
 		api.add_waffer(store, ip)
 		ctx.logger:log({ msg = "blocked by WAF", waf_rule = rule, query = query, vhost = host, ip = ip }, 30)
+		store:close()
 		return "Fuck Off", 301, {
 			["location"] = "http://127.0.0.1/Fuck_Off",
 			["content-type"] = "text/rude",
@@ -49,6 +50,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		local content, status, headers = proxy.handle(client, method, query, headers, body, target)
 		if not content then
 			ctx.logger:log("proxy error: " .. tostring(status), "error")
+			store:close()
 			return "proxy failed: " .. tostring(status), 502
 		end
 
@@ -66,6 +68,7 @@ local handle = function(method, query, args, headers, body, ctx)
 			content_length = #content,
 		}, "debug")
 
+		store:close()
 		return content, status, headers
 	end
 	local response_headers = { ["content-type"] = "text/html" }
@@ -75,12 +78,14 @@ local handle = function(method, query, args, headers, body, ctx)
 	local index = api.entry_index(store, host, query)
 	if not index then
 		local hit_count = metrics.update(store, "unknown", method, host .. query, 404)
+		store:close()
 		return tmpls.error_page(404, hit_count, user_tmpl), 404, response_headers
 	end
 	local metadata = api.entry_metadata(store, host, index)
 	if not metadata then
 		ctx.logger:log("no metadata found for query " .. query, 0)
 		local hit_count = metrics.update(store, host, method, query, 500)
+		store:close()
 		return tmpls.error_page(500, hit_count, user_tmpl), 500, response_headers
 	end
 
@@ -88,7 +93,9 @@ local handle = function(method, query, args, headers, body, ctx)
 	-- Require valid auth first
 	if metadata.auth then
 		if metadata.auth.logout then
-			return auth.logout(store, headers)
+			local content, status, headers = auth.logout(store, headers)
+			store:close()
+			return content, status, headers
 		end
 		if metadata.auth.login then
 			local vars = {
@@ -105,14 +112,17 @@ local handle = function(method, query, args, headers, body, ctx)
 			end
 			local hit_count = metrics.update(store, host, method, query, status)
 			if status >= 400 then
+				store:close()
 				return tmpls.error_page(status, hit_count, user_tmpl, err_img[tostring(status)]),
 					status,
 					response_headers
 			end
+			store:close()
 			return resp, status, response_headers
 		end
 		local authorized = auth.authorized(store, headers, metadata.auth)
 		if not authorized then
+			store:close()
 			return "Just a second, please",
 				302,
 				{
@@ -125,10 +135,11 @@ local handle = function(method, query, args, headers, body, ctx)
 	if not metadata.methods[method] then
 		local hit_count = metrics.update(store, host, method, query, 405)
 		local allow = ""
-		for method, _ in pairs(metadata.methods) do
-			allow = allow .. method .. ", "
+		for m, _ in pairs(metadata.methods) do
+			allow = allow .. m .. ", "
 		end
 		response_headers["allow"] = allow:sub(1, -3) -- remove last comma and space
+		store:close()
 		return tmpls.error_page(405, hit_count, user_tmpl, err_img["405"]), 405, response_headers
 	end
 	-- Check rate limits
@@ -141,6 +152,7 @@ local handle = function(method, query, args, headers, body, ctx)
 				api.check_rate_limit(store, host, method, query, remote_ip, metadata.rate_limit[method].period)
 			if count and count > metadata.rate_limit[method].limit then
 				local hit_count = metrics.update(store, host, method, query, 429)
+				store:close()
 				return tmpls.error_page(429, hit_count, user_tmpl, err_img["429"]), 429, response_headers
 			end
 		end
@@ -149,6 +161,7 @@ local handle = function(method, query, args, headers, body, ctx)
 	local content, hash, size, mime, title = api.get_content(store, host, query, metadata)
 	if not content then
 		local hit_count = metrics.update(store, host, method, query, 404)
+		store:close()
 		return tmpls.error_page(404, hit_count, user_tmpl, err_img["404"]), 404, response_headers
 	end
 	local ttl = metadata.cache_control or "max-age=86400"
@@ -165,6 +178,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		response_headers["etag"] = hash
 		response_headers["cache-control"] = ttl
 		metrics.update(store, host, method, query, status)
+		store:close()
 		return "", status, response_headers
 	end
 
@@ -180,6 +194,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		content, status, r_headers = content(method, query, args, headers, body)
 		if not status then
 			local hit_count = metrics.update(store, host, method, query, 500)
+			store:close()
 			return tmpls.error_page(500, hit_count, user_tmpl, err_img["500"]), 500, response_headers
 		end
 		if r_headers then

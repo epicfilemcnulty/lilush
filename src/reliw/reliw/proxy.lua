@@ -31,7 +31,7 @@ local function read_chunk(upstream)
 	return chunk
 end
 
-local function stream_response(client, upstream)
+local function stream_response(upstream)
 	local line = upstream:receive()
 	if not line then
 		return nil, "failed to read response line"
@@ -140,7 +140,7 @@ function proxy.handle(client, method, path, headers, body, target)
 	end
 
 	-- Get response status and headers
-	local status, response_headers = stream_response(client, upstream)
+	local status, response_headers = stream_response(upstream)
 	if not status then
 		upstream:close()
 		return nil, response_headers -- error message
