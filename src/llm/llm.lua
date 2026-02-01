@@ -4,6 +4,7 @@
 
 local oaic = require("llm.oaic")
 local llamacpp = require("llm.llamacpp")
+local anthropic = require("llm.anthropic")
 
 local new = function(backend, api_url)
 	backend = backend or "llamacpp"
@@ -11,6 +12,8 @@ local new = function(backend, api_url)
 		return oaic.new(api_url)
 	elseif backend == "llamacpp" then
 		return llamacpp.new(api_url)
+	elseif backend == "anthropic" then
+		return anthropic.new(api_url)
 	else
 		return nil, "unknown backend: " .. tostring(backend)
 	end

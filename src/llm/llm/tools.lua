@@ -107,6 +107,80 @@ local append_oaic_tool_results = function(messages, resp, on_tool_call)
 	return messages
 end
 
+-- Helper: Append Anthropic-style tool results to messages
+local append_anthropic_tool_results = function(messages, resp, on_tool_call)
+	local tool_calls = resp.tool_calls or {}
+
+	-- Build assistant message with tool_use content blocks
+	local assistant_content = {}
+	if resp.text and #resp.text > 0 then
+		table.insert(assistant_content, { type = "text", text = resp.text })
+	end
+	for _, call in ipairs(tool_calls) do
+		local input = call.arguments
+		if type(input) == "string" then
+			input = json.decode(input) or {}
+		end
+		table.insert(assistant_content, {
+			type = "tool_use",
+			id = call.id,
+			name = call.name,
+			input = input,
+		})
+	end
+	table.insert(messages, { role = "assistant", content = assistant_content })
+
+	-- Build user message with tool_result content blocks
+	local tool_results = {}
+	for i, call in ipairs(tool_calls) do
+		local decision = nil
+		if on_tool_call then
+			decision = on_tool_call(call, i, resp)
+		end
+		decision = decision or { action = "allow" }
+		local action = decision.action or "allow"
+
+		local result_content
+		local is_error = false
+
+		if action == "deny" then
+			result_content = json.encode({ error = decision.error or "tool call denied" })
+			is_error = true
+		elseif action == "respond" and decision.response then
+			result_content = json.encode(decision.response)
+		else
+			local exec_call = call
+			if action == "modify" and decision.call then
+				exec_call = decision.call
+			end
+			local args = exec_call.arguments
+			if type(args) == "string" then
+				args = json.decode(args) or {}
+			end
+			local ok, result = execute(exec_call.name, args)
+			if not ok then
+				result_content = json.encode({ error = tostring(result) })
+				is_error = true
+			else
+				result_content = json.encode(result)
+			end
+		end
+
+		local tool_result = {
+			type = "tool_result",
+			tool_use_id = call.id,
+			content = result_content,
+		}
+		if is_error then
+			tool_result.is_error = true
+		end
+		table.insert(tool_results, tool_result)
+	end
+	table.insert(messages, { role = "user", content = tool_results })
+
+	return messages
+end
+
 -- Helper: Append XML-style tool results to messages
 local append_xml_tool_results = function(messages, resp, on_tool_call)
 	local tool_calls = resp.tool_calls or {}
@@ -164,7 +238,10 @@ local loop = function(client, model, messages, sampler, opts)
 	local execute_tools = opts.execute_tools or false
 	local on_tool_call = opts.on_tool_call
 	local stream = opts.stream or false
-	local style = opts.style or (client.backend == "oaic" and "oaic" or "xml")
+	local style = opts.style
+		or (client.backend == "anthropic" and "anthropic")
+		or (client.backend == "oaic" and "oaic")
+		or "xml"
 
 	local cur_messages = std.tbl.copy(messages)
 	for step = 1, max_steps do
@@ -189,6 +266,8 @@ local loop = function(client, model, messages, sampler, opts)
 		-- Append tool execution results
 		if style == "oaic" then
 			cur_messages = append_oaic_tool_results(cur_messages, resp, on_tool_call)
+		elseif style == "anthropic" then
+			cur_messages = append_anthropic_tool_results(cur_messages, resp, on_tool_call)
 		else
 			cur_messages = append_xml_tool_results(cur_messages, resp, on_tool_call)
 		end

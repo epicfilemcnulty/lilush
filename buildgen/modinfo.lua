@@ -32,6 +32,7 @@ local luamods = {
 	llm = {
 		"llm",
 		"llm.llamacpp",
+		"llm.anthropic",
 		"llm.oaic",
 		"llm.templates",
 		"llm.tools",
