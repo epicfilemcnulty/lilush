@@ -369,10 +369,7 @@ local sse_client = function(uri, options, callbacks)
 		if scheme == "https" then
 			sock = ssl.wrap(sock, {
 				mode = "client",
-				protocol = options.tls_protocol or "tlsv1_2",
-				verify = options.tls_verify or "none",
-				options = options.tls_options or "all",
-				server = host,
+				server_name = host,
 				cafile = options.tls_cafile,
 				capath = options.tls_capath,
 			})
