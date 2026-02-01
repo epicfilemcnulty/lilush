@@ -73,7 +73,6 @@ local delete_order_info = function(self, domain)
 end
 
 local save_order_provision = function(self, primary_domain, domain, provision)
-	local auth_idx = auth_idx or 1
 	local primary_domain = replace_wildcards(primary_domain)
 	return std.fs.write_file(
 		self.__storage_dir .. "/orders/" .. self.__email .. "/" .. primary_domain .. ".provision." .. domain .. ".json",
@@ -93,7 +92,6 @@ local load_order_provision = function(self, primary_domain, domain)
 end
 
 local delete_order_provision = function(self, primary_domain, domain)
-	local auth_idx = auth_idx or 1
 	local primary_domain = replace_wildcards(primary_domain)
 	return std.fs.remove(
 		self.__storage_dir .. "/orders/" .. self.__email .. "/" .. primary_domain .. ".provision." .. domain .. ".json"

@@ -29,6 +29,7 @@ local get_certs_expire_time = function(self)
 			{ process = "acme", msg = "no cert_dir found", cert_dir = self.__config.data_dir .. "/certs" },
 			"error"
 		)
+		return 0
 	end
 	local min_expire_time = 0
 
@@ -311,7 +312,7 @@ local manage = function(self)
 					if challenge_status == "new" then
 						local provider = self:provider_by_domain(primary_domain)
 						if self:solve_challenge(primary_domain) then
-							if provider:match("dns") then
+							if provider and provider:match("dns") then
 								self.logger:log({
 									process = "acme",
 									msg = "waiting for DNS to propagate",

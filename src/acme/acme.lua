@@ -107,7 +107,7 @@ local register_account = function(self)
 			return json.decode(resp.body)
 		end
 	end
-	return nil, resp, err
+	return nil, err or (resp and "HTTP " .. resp.status) or "request failed"
 end
 
 local new_order = function(self, domains)
@@ -131,7 +131,7 @@ local new_order = function(self, domains)
 			return order
 		end
 	end
-	return nil, resp, err
+	return nil, err or (resp and "HTTP " .. resp.status) or "request failed"
 end
 
 local order_info = function(self, primary_domain, order_url)
@@ -153,7 +153,7 @@ local order_info = function(self, primary_domain, order_url)
 			return order
 		end
 	end
-	return nil, resp, err
+	return nil, err or (resp and "HTTP " .. resp.status) or "request failed"
 end
 
 local get_authorization = function(self, primary_domain, domain)
@@ -181,7 +181,7 @@ local get_authorization = function(self, primary_domain, domain)
 			return authorization_info
 		end
 	end
-	return nil, resp, err
+	return nil, err or (resp and "HTTP " .. resp.status) or "request failed"
 end
 
 local get_auth_by_url = function(self, url)
@@ -197,7 +197,7 @@ local get_auth_by_url = function(self, url)
 			return authorization_info
 		end
 	end
-	return nil, resp, err
+	return nil, err or (resp and "HTTP " .. resp.status) or "request failed"
 end
 
 local solve_challenge = function(self, primary_domain, domain, provider_name, cfg)
@@ -250,7 +250,7 @@ local mark_challenge_as_ready = function(self, primary_domain, domain)
 			return true
 		end
 	end
-	return nil, resp, err
+	return nil, err or (resp and "HTTP " .. resp.status) or "request failed"
 end
 
 local cleanup_provision = function(self, primary_domain, domain, provider_name, cfg)
@@ -297,7 +297,7 @@ local finalize = function(self, primary_domain)
 	local alt_names = {}
 
 	for _, identifier in ipairs(order.identifiers) do
-		if identifier ~= primary_domain then
+		if identifier.value ~= primary_domain then
 			table.insert(alt_names, identifier.value)
 		end
 	end
@@ -318,7 +318,7 @@ local finalize = function(self, primary_domain)
 			return json.decode(resp.body)
 		end
 	end
-	return nil, resp, err
+	return nil, err or (resp and "HTTP " .. resp.status) or "request failed"
 end
 
 local fetch_certificate = function(self, primary_domain)
@@ -363,13 +363,13 @@ local acme_new = function(email, directory_url, storage_provider_cfg)
 	end
 	local resp, err = web.request(directory_url)
 	if not resp or resp.status ~= 200 then
-		return nil, resp, err
+		return nil, err or (resp and "HTTP " .. resp.status) or "request failed"
 	end
 	local directory, err = json.decode(resp.body)
 	if not directory then
 		return nil, err
 	end
-	local storage_provider_cfg = storage_provider_cfg or {
+	storage_provider_cfg = storage_provider_cfg or {
 		plugin = "file",
 	}
 	if not std.module_available("acme.store." .. storage_provider_cfg.plugin) then

@@ -3,18 +3,29 @@ local web = require("web")
 local json = require("cjson.safe")
 
 local provision = function(self, domain, token, key_thumbprint)
+	-- Extract base domain (last two segments) and subdomain prefix
 	local base_domain = domain:match("([^.]+%.[^.]+)$")
-	local sub_domain = "." .. domain:match("^([^.]+)%.")
+	local sub_domain = ""
+
+	-- Count dots to determine structure
 	local dots = 0
 	for _ in domain:gmatch("%.") do
 		dots = dots + 1
 	end
+
 	if dots == 1 then
+		-- Simple domain like example.com
 		base_domain = domain
 		sub_domain = ""
-	end
-	if sub_domain:match("%*") then
-		sub_domain = ""
+	elseif dots > 1 then
+		-- Extract everything before the base domain
+		-- For foo.bar.example.com, extract "foo.bar"
+		local prefix = domain:match("^(.+)%." .. base_domain:gsub("%.", "%%.") .. "$")
+		if prefix and not prefix:match("%*") then
+			sub_domain = "." .. prefix
+		else
+			sub_domain = ""
+		end
 	end
 	local api_endpoint = "https://api.vultr.com/v2/domains/" .. base_domain .. "/records"
 	local txt_value = crypto.b64url_encode(crypto.sha256(token .. "." .. key_thumbprint))

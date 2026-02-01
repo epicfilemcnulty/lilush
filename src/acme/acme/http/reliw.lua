@@ -23,7 +23,7 @@ local cleanup = function(self, provision_state)
 end
 
 local new = function(cfg)
-	local store = storage.new(cfg)
+	local store, err = storage.new(cfg)
 	if err then
 		return nil, err
 	end
