@@ -442,4 +442,194 @@ testify:that("apply converts non-string content to string", function()
 	testimony.assert_equal("true", result)
 end)
 
+-- =============================================================================
+-- TEXT SIZING PROTOCOL SUPPORT
+-- =============================================================================
+
+testify:that("apply with ts=nil produces no text sizing escape", function()
+	local rss = { test = { ts = nil } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "hello")
+
+	-- Should not contain OSC 66 escape sequence
+	testimony.assert_false(result:match("\027%]66;"))
+end)
+
+testify:that("apply with ts preset string generates escape sequence", function()
+	local rss = { test = { ts = "double" } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "hello")
+
+	-- Should contain OSC 66 with s=2
+	testimony.assert_true(result:match("\027%]66;"))
+	testimony.assert_true(result:match("s=2"))
+end)
+
+testify:that("apply with ts table generates correct escape sequence", function()
+	local rss = { test = { ts = { s = 3, v = 2 } } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "text")
+
+	-- Should contain s=3 and v=2
+	testimony.assert_true(result:match("s=3"))
+	testimony.assert_true(result:match("v=2"))
+end)
+
+testify:that("ts with fractional scaling generates correct metadata", function()
+	local rss = { test = { ts = { n = 1, d = 2, s = 2 } } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "text")
+
+	-- Should contain all three parameters
+	testimony.assert_true(result:match("s=2"))
+	testimony.assert_true(result:match("n=1"))
+	testimony.assert_true(result:match("d=2"))
+end)
+
+testify:that("ts with invalid fractional scaling (d <= n) ignores n and d", function()
+	local rss = { test = { ts = { s = 2, n = 2, d = 2 } } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "text")
+
+	-- Should contain s=2 but not n or d
+	testimony.assert_true(result:match("s=2"))
+	testimony.assert_false(result:match("n="))
+	testimony.assert_false(result:match("d="))
+end)
+
+testify:that("ts preset 'superscript' resolves correctly", function()
+	local rss = { test = { ts = "superscript" } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "2")
+
+	-- Superscript: n=1, d=2, v=0
+	testimony.assert_true(result:match("n=1"))
+	testimony.assert_true(result:match("d=2"))
+	testimony.assert_true(result:match("v=0"))
+end)
+
+testify:that("ts preset 'subscript' resolves correctly", function()
+	local rss = { test = { ts = "subscript" } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "2")
+
+	-- Subscript: n=1, d=2, v=1
+	testimony.assert_true(result:match("n=1"))
+	testimony.assert_true(result:match("d=2"))
+	testimony.assert_true(result:match("v=1"))
+end)
+
+testify:that("ts does NOT cascade from parent to child", function()
+	local rss = {
+		parent = {
+			ts = "double",
+			child = { fg = "red" }
+		}
+	}
+	local tss = style.new(rss)
+	local result = tss:apply("parent.child", "text")
+
+	-- Child should NOT inherit ts from parent
+	testimony.assert_false(result:match("\027%]66;"))
+end)
+
+testify:that("child ts completely overrides parent ts", function()
+	local rss = {
+		parent = {
+			ts = "double",
+			child = { ts = "triple" }
+		}
+	}
+	local tss = style.new(rss)
+	local result = tss:apply("parent.child", "text")
+
+	-- Should have s=3 (triple), not s=2 (double)
+	testimony.assert_true(result:match("s=3"))
+	testimony.assert_false(result:match("s=2"))
+end)
+
+testify:that("ts with string alignment values converts to numbers", function()
+	local rss = { test = { ts = { s = 2, v = "center", h = "right" } } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "text")
+
+	-- center=2, right=1
+	testimony.assert_true(result:match("v=2"))
+	testimony.assert_true(result:match("h=1"))
+end)
+
+testify:that("ts with invalid scale value is ignored", function()
+	local rss = { test = { ts = { s = 10 } } } -- 10 is out of range (1-7)
+	local tss = style.new(rss)
+	local result = tss:apply("test", "text")
+
+	-- Should not generate escape sequence
+	testimony.assert_false(result:match("\027%]66;"))
+end)
+
+testify:that("ts with empty text does not generate escape sequence", function()
+	local rss = { test = { ts = "double" } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "")
+
+	-- Should not contain text sizing escape for empty content
+	testimony.assert_false(result:match("\027%]66;"))
+end)
+
+testify:that("ts decorators (before/after) are inside escape sequence", function()
+	local rss = { test = { ts = "double", before = "[", after = "]", clip = -1 } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "text")
+
+	-- Decorators should be INSIDE the OSC 66 escape (both styled AND scaled)
+	-- Format should be: OSC66(styled_[text]) where styled content includes [ and ]
+	local osc_pos = result:find("\027%]66;")
+	local st_pos = result:find("\027\\")
+	local bracket_open_pos = result:find("%[")
+	local bracket_close_pos = result:find("%]")
+
+	-- All positions should be found
+	testimony.assert_true(osc_pos ~= nil)
+	testimony.assert_true(st_pos ~= nil)
+	testimony.assert_true(bracket_open_pos ~= nil)
+	testimony.assert_true(bracket_close_pos ~= nil)
+
+	-- Decorators should be between OSC start and ST terminator
+	testimony.assert_true(bracket_open_pos > osc_pos)
+	testimony.assert_true(bracket_close_pos < st_pos)
+end)
+
+testify:that("ts with unknown preset string is ignored", function()
+	local rss = { test = { ts = "nonexistent_preset" } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "text")
+
+	-- Should not generate escape sequence
+	testimony.assert_false(result:match("\027%]66;"))
+end)
+
+testify:that("ts width parameter generates w= in metadata", function()
+	local rss = { test = { ts = { s = 2, w = 3 } } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "text")
+
+	testimony.assert_true(result:match("w=3"))
+end)
+
+testify:that("get_property retrieves ts configuration", function()
+	local rss = { test = { ts = "double" } }
+	local tss = style.new(rss)
+
+	testimony.assert_equal("double", tss:get_property("test", "ts"))
+end)
+
+testify:that("set_property can set ts configuration", function()
+	local tss = style.new({})
+	tss:set_property("test", "ts", { s = 2, v = 1 })
+
+	local ts = tss:get_property("test", "ts")
+	testimony.assert_equal(2, ts.s)
+	testimony.assert_equal(1, ts.v)
+end)
+
 testify:conclude()

@@ -56,11 +56,7 @@ local function base64_encode(data)
 		)
 	elseif rem == 1 then
 		local a = data:byte(i)
-		out:put(
-			b64[bit.rshift(a, 2)],
-			b64[bit.lshift(bit.band(a, 3), 4)],
-			"=="
-		)
+		out:put(b64[bit.rshift(a, 2)], b64[bit.lshift(bit.band(a, 3), 4)], "==")
 	end
 
 	return out:get()

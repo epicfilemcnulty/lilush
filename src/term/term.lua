@@ -1,5 +1,7 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: OWL-1.0 or later
+-- Licensed under the Open Weights License v1.0. See LICENSE for details.
+
 local core = require("term.core")
 local buffer = require("string.buffer")
 local std = require("std")
@@ -205,6 +207,75 @@ local kitty_notify = function(title, body)
 	end
 end
 
+--[[
+  Kitty Text Sizing Protocol support
+  See: https://sw.kovidgoyal.net/kitty/text-sizing-protocol/
+
+  The text sizing protocol allows rendering text in multiple terminal cells
+  by scaling the font size. This is useful for creating visual hierarchy,
+  superscripts, subscripts, and other text effects.
+]]
+
+-- Preset configurations for common text sizing scenarios
+local ts_presets = {
+	double = { s = 2 },
+	triple = { s = 3 },
+	quadruple = { s = 4 },
+	superscript = { n = 1, d = 2, v = 0 }, -- Half-size, top-aligned
+	subscript = { n = 1, d = 2, v = 1 }, -- Half-size, bottom-aligned
+	half = { n = 1, d = 2 }, -- Half-size, default alignment
+	compact = { n = 1, d = 2, w = 1 }, -- Half-size, 2 chars per cell
+}
+
+-- Generate text sizing escape sequence
+-- opts table can contain: s (scale 1-7), w (width 0-7), n (numerator 0-15),
+-- d (denominator 0-15), v (vertical align 0-2), h (horizontal align 0-2)
+local text_size = function(text, opts)
+	if not text or text == "" or not opts then
+		return text or ""
+	end
+
+	-- Validate and build metadata string
+	local metadata = {}
+
+	-- Scale factor (1-7)
+	if opts.s and opts.s >= 1 and opts.s <= 7 then
+		table.insert(metadata, "s=" .. math.floor(opts.s))
+	end
+
+	-- Explicit width (0-7)
+	if opts.w and opts.w >= 0 and opts.w <= 7 then
+		table.insert(metadata, "w=" .. math.floor(opts.w))
+	end
+
+	-- Fractional scaling (both must be 0-15, d must be > n when non-zero)
+	if opts.n and opts.d and opts.n >= 0 and opts.n <= 15 and opts.d >= 0 and opts.d <= 15 then
+		if opts.d > opts.n then
+			table.insert(metadata, "n=" .. math.floor(opts.n))
+			table.insert(metadata, "d=" .. math.floor(opts.d))
+		end
+	end
+
+	-- Vertical alignment (0-2)
+	if opts.v and opts.v >= 0 and opts.v <= 2 then
+		table.insert(metadata, "v=" .. math.floor(opts.v))
+	end
+
+	-- Horizontal alignment (0-2)
+	if opts.h and opts.h >= 0 and opts.h <= 2 then
+		table.insert(metadata, "h=" .. math.floor(opts.h))
+	end
+
+	-- If no valid metadata was generated, return text as-is
+	if #metadata == 0 then
+		return text
+	end
+
+	-- Build the escape sequence: OSC 66 ; metadata ; text ST
+	local meta_str = table.concat(metadata, ":")
+	return "\027]66;" .. meta_str .. ";" .. text .. "\027\\"
+end
+
 --[[ 
   We use and support [kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/)
   first and foremost. Legacy protocol will be supported eventually, though.
@@ -244,15 +315,69 @@ local has_kkbp = function()
 	end
 	return false
 end
+
+--[[
+ `has_ts` checks for text sizing protocol support using CPR method.
+
+ IMPORTANT: This function must be called while the terminal is in raw mode.
+ It reads terminal responses via io.read() which requires raw mode to work
+ correctly. If called in normal (cooked) mode, the function will hang waiting
+ for input that never arrives in the expected format.
+
+ Detection mechanism from the spec:
+ 1. Send CR + CPR + OSC66(w=2) + CPR + OSC66(s=2) + CPR
+ 2. Wait for three CPR responses
+ 3. Compare cursor positions:
+    - All same: no support
+    - 2nd moved 2 cells: width support
+    - 3rd moved another 2 cells: full support (scale)
+
+ Returns: false | "width" | true
+]]
+local has_ts = function()
+	-- Save current cursor position
+	write("\r") -- Carriage return to start of line
+	local l1, c1 = cursor_position()
+	if not l1 or not c1 then
+		return false
+	end
+
+	-- Test width support: send w=2 with a space
+	write("\027]66;w=2; \027\\")
+	local l2, c2 = cursor_position()
+
+	-- Test scale support: send s=2 with a space
+	write("\027]66;s=2; \027\\")
+	local l3, c3 = cursor_position()
+
+	-- Clean up: move cursor back to start
+	write("\r")
+
+	if not l2 or not c2 or not l3 or not c3 then
+		return false
+	end
+
+	-- Analyze cursor movements
+	local width_support = (c2 - c1) == 2
+	local scale_support = (c3 - c2) == 2
+
+	if scale_support then
+		return true -- Full text sizing support
+	elseif width_support then
+		return "width" -- Only width parameter supported
+	else
+		return false -- No support
+	end
+end
 --[[
     kkbp has progressive enhancements, which are encoded as a bitfield enum:
- 
+
      0b1     (1)  Disambiguate escape codes
      0b10    (2)  Report event types
      0b100   (4)  Report alternate keys
      0b1000  (8)  Report all keys as escape codes
      0b10000 (16) Report associated text
- 
+
     `enable_kkbp` is hardcoded to set progressive enhancements enum to 15,
     and the code in the `term.input` module is based on the assumption that we
     are working in this mode.
@@ -531,7 +656,9 @@ local get = function()
 						end
 					else
 						paste_buf:put(esc_seq)
-						if p then paste_buf:put(p) end
+						if p then
+							paste_buf:put(p)
+						end
 					end
 				else
 					paste_buf:put(p)
@@ -702,6 +829,10 @@ local _M = {
 	simple_get = simple_get,
 	mods_to_string = mods_to_string,
 	string_to_mods = string_to_mods,
+	-- Text sizing protocol
+	text_size = text_size,
+	has_ts = has_ts,
+	ts_presets = ts_presets,
 }
 
 return _M

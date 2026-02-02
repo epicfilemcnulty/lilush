@@ -270,20 +270,20 @@ local form = function(content, opts)
 	if not opts.meta then
 		opts.meta = {}
 	end
-    local title = opts.title or ""
-    local title_len = std.utf.len(title)
-    local max_label = std.tbl.longest(content)
-    local max_input = 0
-    for _, label in ipairs(content) do
-        local field_input = 10
-        if opts.meta[label] then
-            field_input = opts.meta[label].w or 10
-        end
-        max_input = math.max(max_input, field_input)
-    end
-    local total_len = math.max(title_len, max_label + max_input)
-    opts.w = total_len + 5
-    opts.h = #content
+	local title = opts.title or ""
+	local title_len = std.utf.len(title)
+	local max_label = std.tbl.longest(content)
+	local max_input = 0
+	for _, label in ipairs(content) do
+		local field_input = 10
+		if opts.meta[label] then
+			field_input = opts.meta[label].w or 10
+		end
+		max_input = math.max(max_input, field_input)
+	end
+	local total_len = math.max(title_len, max_label + max_input)
+	opts.w = total_len + 5
+	opts.h = #content
 
 	local w = new_widget(opts)
 	w.content = content
