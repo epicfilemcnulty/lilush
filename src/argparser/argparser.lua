@@ -270,7 +270,6 @@ local parse = function(self, args)
 end
 
 -- Auxiliary function to covert `tbl` into a format suitable for std.pipe_table().
--- We use djot formatting.
 local prepare_data = function(tbl)
 	local headers = { "name", { "default", "center" }, { "flag/pos", "center" }, "note" }
 	local data = {}

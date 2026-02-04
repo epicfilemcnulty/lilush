@@ -51,7 +51,7 @@ int lua_base64_encode(lua_State *L) {
     if (out == NULL) {
         RETURN_CUSTOM_ERR(L, "memory allocation failed");
     }
-    int ret = Base64_Encode((byte *)in, inLen, out, &outLen);
+    int ret = Base64_Encode_NoNl((byte *)in, inLen, out, &outLen);
     if (ret != 0) {
         free(out);
         RETURN_CUSTOM_ERR(L, "failed to encode base64");

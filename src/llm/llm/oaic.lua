@@ -164,7 +164,13 @@ local request = function(url, json_data, headers, timeout, backend, debug_mode)
 				elseif resp_json.content then
 					answer.text = resp_json.content[1].text
 				end
-				answer.text = tostring(answer.text or ""):gsub("^\n+", "") -- remove any leading newlines
+				-- Clean up response text: remove leading newlines and common EOS token artifacts
+			answer.text = tostring(answer.text or "")
+				:gsub("^\n+", "")
+				:gsub("<|im_end|>%s*$", "")
+				:gsub("<|eot_id|>%s*$", "")
+				:gsub("</s>%s*$", "")
+				:gsub("%s+$", "")
 				answer.backend = backend
 				return answer
 			end
@@ -434,7 +440,12 @@ local chat_stream = function(self, model, messages, sampler, opts)
 end
 
 local new = function(api_url, api_key)
-	local api_url = api_url or os.getenv("LLM_OAIC_API_URL") or "http://127.0.0.1:8080/v1"
+	-- Check OAIC-specific env var first, then generic LLM_API_URL (with /v1 suffix)
+	local base_url = os.getenv("LLM_API_URL")
+	local api_url = api_url
+		or os.getenv("LLM_OAIC_API_URL")
+		or (base_url and (base_url:match("/v1$") and base_url or base_url .. "/v1"))
+		or "http://127.0.0.1:8080/v1"
 	local api_key = api_key or os.getenv("LLM_API_KEY") or "n/a"
 	local timeout = tonumber(os.getenv("LLM_API_TIMEOUT")) or 600
 	local headers = {

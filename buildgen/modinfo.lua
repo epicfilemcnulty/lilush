@@ -25,10 +25,8 @@ local luamods = {
 		"term.input.prompt",
 		"term.input.completion",
 	},
-	text = { "text" },
 	testimony = { "testimony" },
 	dns = { "dns.resolver", "dns.parser", "dns.dig" },
-	djot = { "djot", "djot.ast", "djot.attributes", "djot.block", "djot.filter", "djot.html", "djot.inline" },
 	llm = {
 		"llm",
 		"llm.llamacpp",
@@ -37,8 +35,12 @@ local luamods = {
 		"llm.templates",
 		"llm.tools",
 		"llm.tools.read_file",
+		"llm.tools.write_file",
+		"llm.tools.edit_file",
+		"llm.tools.bash",
 		"llm.tools.web_search",
 		"llm.tools.fetch_webpage",
+		"llm.pricing",
 	},
 	redis = { "redis" },
 	reliw = {
@@ -73,6 +75,29 @@ local luamods = {
 	vault = { "vault" },
 	zxscr = { "zxscr" },
 	zx = { "zx", "zx.keyboard", "zx.screen" },
+	agent = {
+		"agent.config",
+		"agent.conversation",
+		"agent.system_prompt",
+		"agent.tools",
+		"agent.theme",
+		"agent.stream",
+		"agent.mode.agent",
+		"agent.mode.agent.prompt",
+	},
+	markdown = {
+		"markdown",
+		"markdown.parser",
+		"markdown.state",
+		"markdown.events",
+		"markdown.inline",
+		"markdown.buffer",
+		"markdown.renderer",
+		"markdown.renderer.theme",
+		"markdown.renderer.static",
+		"markdown.renderer.streaming",
+		"markdown.renderer.html",
+	},
 }
 
 local c_libs = {

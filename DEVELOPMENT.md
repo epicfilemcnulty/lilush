@@ -12,7 +12,7 @@ Lilush uses a custom build generator written in Lua (`buildgen/generate.lua`) th
 
 ### Building
 
-**With Docker (recommended):**
+**Use Docker builds:**
 
 ```bash
 ln -s dockerfiles/lilush Dockerfile
@@ -55,10 +55,9 @@ The codebase is organized into self-contained modules in `src/`:
 - `reliw/` - HTTP server/framework (Redis-centric)
 - `acme/` - ACMEv2 client for Let's Encrypt
 - `dns/` - DNS resolver and dig utility
-- `djot/` - Djot markup processor/renderer
 - `redis/` - Redis protocol client
 - `vault/` - Secrets management
-- `text/` - Text processing utilities (includes djot renderer for terminal, uses TSS for styling)
+- `markdown/` - Markdown parser and renderer
 - `argparser/` - Argument parsing
 - `llm/` - Clients for working with OpenAI and llamacpp server APIs
 - `testimony/` - Miminal testing framework for Lilush
@@ -129,6 +128,120 @@ The main binary (`lilush`) has multiple entry modes:
 See `buildgen/apps/lilush.lua` custom_main for implementation.
 
 ## Development Patterns
+
+### Class and OOP Conventions
+
+**IMPORTANT**: Lilush follows a specific pattern for defining classes and object-oriented code. 
+This convention must be used consistently throughout the codebase.
+
+**Naming:**
+- Use **lowercase snake_case** for everything: classes, methods, variables, functions
+- Use **ALL_CAPS** for constants only
+- Prefix private/internal fields with underscore: `_private_field`
+
+**Method Definition:**
+Always use explicit function assignment, never the colon syntax for definitions:
+
+```lua
+-- CORRECT: Explicit function assignment
+local get_name = function(self)
+    return self._name
+end
+
+local set_name = function(self, name)
+    self._name = name
+end
+
+-- WRONG: Do NOT use this style
+function MyClass:getName()  -- PascalCase and colon syntax
+    return self._name
+end
+```
+
+**Constructor Pattern:**
+Use a simple `new` function that returns a table with methods assigned directly (no metatables):
+
+```lua
+local new = function(initial_value)
+    local instance = {
+        -- Private state (prefixed with _)
+        _value = initial_value,
+        _cache = {},
+
+        -- Methods assigned directly
+        get_value = get_value,
+        set_value = set_value,
+        process = process,
+    }
+
+    return instance
+end
+
+-- Module export
+return {
+    new = new,
+}
+```
+
+**Complete Example:**
+
+```lua
+-- my_class.lua
+
+local std = require("std")
+
+-- Constants (ALL_CAPS)
+local DEFAULT_TIMEOUT = 5000
+
+-- Private helper (doesn't need self, standalone function)
+local validate_input = function(value)
+    return value ~= nil and value ~= ""
+end
+
+-- Methods (explicit assignment, takes self)
+local get_name = function(self)
+    return self._name
+end
+
+local set_name = function(self, name)
+    if not validate_input(name) then
+        return nil, "invalid name"
+    end
+    self._name = name
+    return true
+end
+
+local process = function(self, data)
+    -- Implementation using self._name, self._timeout, etc.
+end
+
+-- Constructor
+local new = function(name, options)
+    options = options or {}
+
+    local instance = {
+        _name = name,
+        _timeout = options.timeout or DEFAULT_TIMEOUT,
+
+        get_name = get_name,
+        set_name = set_name,
+        process = process,
+    }
+
+    return instance
+end
+
+return {
+    new = new,
+}
+```
+
+**Key Points:**
+- No `ClassName = {}` with `__index` metatables
+- No `function ClassName:method()` syntax
+- Methods are defined as local functions, then assigned in the constructor
+- Helper functions that don't need `self` remain standalone local functions
+- Module exports only what's needed (typically just `new`)
 
 ### Module Registration
 

@@ -1,5 +1,5 @@
 local std = require("std")
-local djot = require("djot")
+local markdown = require("markdown")
 
 local template = {
 	head = [[
@@ -108,10 +108,8 @@ local error_page = function(code, hit_count, user_tmpl, img)
 	return std.txt.template(tmpl.head .. tmpl.body .. tmpl.error_section .. tmpl.footer, vars)
 end
 
-local djot_to_html = function(djot_content)
-	local doc = djot.parse(djot_content)
-	local html = djot.render_html(doc)
-	return html
+local markdown_to_html = function(content)
+	return markdown.render_html(content)
 end
 
 local render_page = function(content, vars, user_tmpl)
@@ -130,6 +128,6 @@ local render_page = function(content, vars, user_tmpl)
 	return std.txt.template(page_header, vars) .. content .. std.txt.template(tmpl.footer, vars)
 end
 
-local _M = { error_page = error_page, djot_to_html = djot_to_html, render_page = render_page }
+local _M = { error_page = error_page, markdown_to_html = markdown_to_html, render_page = render_page }
 
 return _M

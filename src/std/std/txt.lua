@@ -328,6 +328,35 @@ local align = function(text, max, side)
 	return string.rep(" ", pre) .. text .. string.rep(" ", suf)
 end
 
+-- All braille symbols for decorative masking
+local ALL_BRAILLE =
+	"⠁⠂⠃⠄⠅⠆⠇⠈⠉⠊⠋⠌⠍⠎⠏⠐⠑⠒⠓⠔⠕⠖⠗⠘⠙⠚⠛⠜⠝⠞⠟⠠⠡⠢⠣⠤⠥⠦⠧⠨⠩⠪⠫⠬⠭⠮⠯⠰⠱⠲⠳⠴⠵⠶⠷⠸⠹⠺⠻⠼⠽⠾⠿⡀⡁⡂⡃⡄⡅⡆⡇⡈⡉⡊⡋⡌⡍⡎⡏⡐⡑⡒⡓⡔⡕⡖⡗⡘⡙⡚⡛⡜⡝⡞⡟⡠⡡⡢⡣⡤⡥⡦⡧⡨⡩⡪⡫⡬⡭⡮⡯⡰⡱⡲⡳⡴⡵⡶⡷⡸⡹⡺⡻⡼⡽⡾⡿⢀⢁⢂⢃⢄⢅⢆⢇⢈⢉⢊⢋⢌⢍⢎⢏⢐⢑⢒⢓⢔⢕⢖⢗⢘⢙⢚⢛⢜⢝⢞⢟⢠⢡⢢⢣⢤⢥⢦⢧⢨⢩⢪⢫⢬⢭⢮⢯⢰⢱⢲⢳⢴⢵⢶⢷⢸⢹⢺⢻⢼⢽⢾⢿⣀⣁⣂⣃⣄⣅⣆⣇⣈⣉⣊⣋⣌⣍⣎⣏⣐⣑⣒⣓⣔⣕⣖⣗⣘⣙⣚⣛⣜⣝⣞⣟⣠⣡⣢⣣⣤⣥⣦⣧⣨⣩⣪⣫⣬⣭⣮⣯⣰⣱⣲⣳⣴⣵⣶⣷⣸⣹⣺⣻⣼⣽⣾⣿"
+
+-- Decorative function that randomly replaces characters with braille symbols
+-- hardness: 0-100, higher means more braille replacement (default 73)
+-- r, g: optional base RGB values for color variation
+local mask_with_braille = function(text, hardness, r, g)
+	local term = require("term")
+	hardness = tonumber(hardness) or 73
+	local out = buffer.new()
+	local r = r or math.random(50, 255)
+	local g = g or math.random(47, 255)
+
+	for c in text:gmatch(utf.patterns.glob) do
+		local pos = math.random(1, 255)
+		local char = utf.sub(ALL_BRAILLE, pos, pos)
+		if math.random(1, 100) > hardness then
+			char = c
+			if pos > 99 then
+				char = term.style("bold") .. c .. term.style("reset")
+			end
+		end
+		out:put(term.color({ r, g, pos }), char)
+	end
+	out:put(term.color("reset"))
+	return out:get()
+end
+
 local txt = {
 	lines = lines,
 	lines_of = lines_of,
@@ -341,5 +370,6 @@ local txt = {
 	split_by = split_by,
 	ascii_printable = ascii_printable,
 	valid_utf = valid_utf,
+	mask_with_braille = mask_with_braille,
 }
 return txt

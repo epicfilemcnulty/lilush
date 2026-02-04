@@ -199,6 +199,32 @@ local get = function(self, el, base_props)
 	return props, obj
 end
 
+-- Metatable for apply() result that allows string coercion and method delegation.
+-- This enables gradual migration: callers that concatenate, print, or call string
+-- methods on the result directly will still work, while new code can access .text,
+-- .height, and .width explicitly.
+-- TODO: Remove these compatibility shims once all callers are migrated to use result.text
+local apply_result_mt = {
+	__tostring = function(self)
+		return self.text
+	end,
+	__concat = function(a, b)
+		local a_str = type(a) == "table" and a.text or tostring(a)
+		local b_str = type(b) == "table" and b.text or tostring(b)
+		return a_str .. b_str
+	end,
+	-- Delegate string methods (match, find, gsub, sub, etc.) to the text field
+	__index = function(self, key)
+		local str_method = string[key]
+		if str_method then
+			return function(_, ...)
+				return str_method(self.text, ...)
+			end
+		end
+		return nil
+	end,
+}
+
 local apply = function(self, elements, content, position)
 	local position = position or 0
 	local all = {}
@@ -264,9 +290,13 @@ local apply = function(self, elements, content, position)
 			text = std.txt.limit(text, available, available)
 		end
 	else
-		local available = math.floor((self.__window.w - position) / scale)
-		if ulen > available and props.clip >= 0 then
-			text = std.txt.limit(text, available, available)
+		-- Only clip based on window width if window width is known (> 0)
+		-- When running outside a TTY, window_size() returns 0,0
+		if self.__window.w > 0 then
+			local available = math.floor((self.__window.w - position) / scale)
+			if ulen > available and props.clip >= 0 then
+				text = std.txt.limit(text, available, available)
+			end
 		end
 	end
 
@@ -282,7 +312,20 @@ local apply = function(self, elements, content, position)
 		text = text .. obj.after
 	end
 
-	-- Build the styled text (ANSI codes + text, including decorators)
+	-- Calculate final display dimensions before applying escape sequences
+	-- Width is the display width in terminal columns (scaled)
+	-- Height is the number of terminal rows occupied (scale factor)
+	local final_width = std.utf.display_len(text) * scale
+	local final_height = scale
+
+	-- Apply text sizing to plain text BEFORE adding ANSI codes
+	-- This ensures the OSC 66 sequence wraps only visible text, not ANSI codes
+	-- Otherwise the terminal would display ANSI codes literally at scaled size
+	if ts and text ~= "" then
+		text = term.text_size(text, ts)
+	end
+
+	-- Build the styled text (ANSI codes wrapping the possibly-scaled text)
 	local styled_text
 	if props.fg == props.bg and props.bg == "reset" and std.tbl.empty(props.s) then
 		styled_text = term.style("reset") .. text
@@ -293,13 +336,11 @@ local apply = function(self, elements, content, position)
 		styled_text = term.style(unpack(props.s)) .. term.color(props.fg, props.bg) .. text .. term.style("reset")
 	end
 
-	-- Apply text sizing escape sequence if ts is configured
-	-- Decorators are included in the text sizing (both styled AND scaled)
-	if ts and text ~= "" then
-		styled_text = term.text_size(styled_text, ts)
-	end
-
-	return styled_text
+	return setmetatable({
+		text = styled_text,
+		height = final_height,
+		width = final_width,
+	}, apply_result_mt)
 end
 
 local set_property = function(self, path, property, value)
@@ -325,6 +366,378 @@ local get_property = function(self, path, property)
 	return obj[property]
 end
 
+--[[
+  Apply styling and text-sizing to content with inline style ranges.
+  
+  This function handles the case where content has inline formatting (bold, italic,
+  links, etc.) that needs to be combined with text-sizing (scaled text). The key
+  challenge is that text-sizing chunks text by display width, and we need to apply
+  inline styles correctly within each chunk.
+  
+  Parameters:
+    self: TSS object
+    base_elements: base style elements (e.g., {"heading", "heading.h1"})
+    content: styled content buffer {
+      plain = "Hello world",   -- plain text without ANSI codes
+      ranges = {               -- inline style ranges
+        { start = 7, stop = 11, elements = {"strong"} },
+        ...
+      }
+    }
+    position: cursor position for width calculations (optional)
+  
+  Returns:
+    result table with .text, .height, .width (same as apply())
+]]
+local apply_sized = function(self, base_elements, content, position)
+	local position = position or 0
+	local plain = content.plain or ""
+	local ranges = content.ranges or {}
+
+	-- Get base style properties
+	local all = {}
+	if type(base_elements) == "string" then
+		all = { base_elements }
+	elseif type(base_elements) == "table" then
+		all = base_elements
+	end
+
+	local props, obj
+	for _, el in ipairs(all) do
+		props, obj = self:get(el, props)
+	end
+
+	-- Resolve text sizing configuration from base style
+	local ts = resolve_ts(props.ts)
+	local scale = ts and ts.s or 1
+
+	-- Add decorators to plain text (adjusting ranges accordingly)
+	local before_len = 0
+	if obj.before then
+		before_len = std.utf.len(obj.before)
+		plain = obj.before .. plain
+		-- Shift all ranges by before_len
+		for _, r in ipairs(ranges) do
+			r.start = r.start + before_len
+			r.stop = r.stop + before_len
+		end
+	end
+	if obj.after then
+		plain = plain .. obj.after
+	end
+
+	-- Calculate final dimensions
+	local plain_display_len = std.utf.display_len(plain)
+	local final_width = plain_display_len * scale
+	local final_height = scale
+
+	-- Helper function to build ANSI style codes for given elements
+	local function build_style_codes(elements)
+		if not elements or #elements == 0 then
+			return "", ""
+		end
+		-- Get combined props for these elements
+		local inline_props = { fg = "reset", bg = "reset", s = {} }
+		for _, el in ipairs(elements) do
+			inline_props, _ = self:get(el, inline_props)
+		end
+		-- Build opening codes
+		local open_codes = ""
+		if not std.tbl.empty(inline_props.s) then
+			open_codes = open_codes .. term.style(unpack(inline_props.s))
+		end
+		if inline_props.fg ~= "reset" or inline_props.bg ~= "reset" then
+			open_codes = open_codes .. term.color(inline_props.fg, inline_props.bg)
+		end
+		-- Close is always reset (we'll re-apply base style after)
+		return open_codes, term.style("reset")
+	end
+
+	-- Build base style codes
+	local base_open = ""
+	local base_close = term.style("reset")
+	if props.fg ~= "reset" or props.bg ~= "reset" or not std.tbl.empty(props.s) then
+		if std.tbl.empty(props.s) then
+			props.s = { "reset" }
+		end
+		base_open = term.style(unpack(props.s)) .. term.color(props.fg, props.bg)
+	else
+		base_open = term.style("reset")
+	end
+
+	-- Sort ranges by start position
+	table.sort(ranges, function(a, b)
+		return a.start < b.start
+	end)
+
+	-- Helper to get elements active at a specific position
+	local function get_elements_at(pos)
+		local elements = {}
+		for _, r in ipairs(ranges) do
+			if pos >= r.start and pos <= r.stop then
+				for _, el in ipairs(r.elements) do
+					table.insert(elements, el)
+				end
+			end
+		end
+		return elements
+	end
+
+	-- Find all style transition positions (where styles change)
+	local function get_style_boundaries()
+		local boundaries = { 1 } -- Always start at position 1
+		local plain_len = std.utf.len(plain)
+
+		if plain_len == 0 then
+			return boundaries
+		end
+
+		local current_elements = get_elements_at(1)
+		local current_key = table.concat(current_elements, ",")
+
+		for pos = 2, plain_len do
+			local new_elements = get_elements_at(pos)
+			local new_key = table.concat(new_elements, ",")
+			if new_key ~= current_key then
+				table.insert(boundaries, pos)
+				current_elements = new_elements
+				current_key = new_key
+			end
+		end
+
+		return boundaries
+	end
+
+	-- Helper to wrap plain text in OSC 66 sequence
+	local function wrap_osc66(text, meta)
+		if meta then
+			return "\027]66;" .. meta .. ";" .. text .. "\027\\"
+		else
+			return text
+		end
+	end
+
+	-- Build metadata string for a segment with specific width
+	local function build_meta_str(segment_width)
+		if not ts then
+			return nil
+		end
+
+		local metadata = {}
+		if ts.s and ts.s >= 1 and ts.s <= 7 then
+			table.insert(metadata, "s=" .. math.floor(ts.s))
+		end
+		if ts.n and ts.d and ts.n >= 0 and ts.n <= 15 and ts.d >= 0 and ts.d <= 15 and ts.d > ts.n then
+			table.insert(metadata, "n=" .. math.floor(ts.n))
+			table.insert(metadata, "d=" .. math.floor(ts.d))
+		end
+		if ts.v and ts.v >= 0 and ts.v <= 2 then
+			table.insert(metadata, "v=" .. math.floor(ts.v))
+		end
+		if ts.h and ts.h >= 0 and ts.h <= 2 then
+			table.insert(metadata, "h=" .. math.floor(ts.h))
+		end
+		if segment_width and segment_width >= 0 and segment_width <= 7 then
+			table.insert(metadata, "w=" .. segment_width)
+		end
+
+		if #metadata == 0 then
+			return nil
+		end
+		return table.concat(metadata, ":")
+	end
+
+	-- Calculate cell width for a segment based on its display width and scaling params
+	local function calc_segment_cell_width(display_width)
+		if not ts or not ts.n or not ts.d or ts.d <= ts.n or not ts.w then
+			return nil -- No fractional scaling with w, no need to calculate
+		end
+		-- With fractional scaling: n/d is the scale factor
+		-- w cells can hold (w * d / n) display columns
+		-- So for display_width columns, we need ceil(display_width * n / d) cells
+		local cells = math.ceil(display_width * ts.n / ts.d)
+		if cells > 7 then
+			cells = 7 -- Max allowed by protocol
+		end
+		return cells
+	end
+
+	-- Check if fractional chunking is needed
+	local needs_chunking = ts and ts.n and ts.d and ts.w and ts.w > 0 and ts.n > 0 and ts.d > ts.n
+
+	local plain_len = std.utf.len(plain)
+	local final_text
+
+	if needs_chunking then
+		-- Fractional scaling with w parameter - need to chunk text
+		-- Strategy: split by both width boundaries AND style boundaries
+		-- Each resulting segment gets its own OSC 66 with appropriate w value
+
+		local style_boundaries = get_style_boundaries()
+		local target_width = math.floor(ts.w * ts.d / ts.n) -- display columns per chunk
+
+		-- Build unified segments that respect both chunk width and style boundaries
+		local segments = {}
+		local seg_start = 1
+		local seg_width = 0
+		local style_idx = 1
+
+		-- Move style_idx to point to the next boundary after seg_start
+		while style_idx <= #style_boundaries and style_boundaries[style_idx] <= seg_start do
+			style_idx = style_idx + 1
+		end
+
+		local i = 1
+		while i <= plain_len do
+			local char = std.utf.sub(plain, i, i)
+			local char_width = std.utf.display_len(char)
+
+			-- Check if we hit a style boundary
+			local hit_style_boundary = (style_idx <= #style_boundaries and i == style_boundaries[style_idx])
+
+			-- Check if adding this char would exceed target width
+			local would_exceed = (seg_width + char_width > target_width) and seg_width > 0
+
+			if hit_style_boundary or would_exceed then
+				-- Close current segment (if it has content)
+				if i > seg_start then
+					local seg_text = std.utf.sub(plain, seg_start, i - 1)
+					local seg_display_width = std.utf.display_len(seg_text)
+					local seg_cell_width = calc_segment_cell_width(seg_display_width)
+					table.insert(segments, {
+						start = seg_start,
+						stop = i - 1,
+						text = seg_text,
+						cell_width = seg_cell_width,
+						elements = get_elements_at(seg_start),
+					})
+				end
+				seg_start = i
+				seg_width = 0
+
+				-- Advance style index if we hit a style boundary
+				if hit_style_boundary then
+					style_idx = style_idx + 1
+				end
+			end
+
+			seg_width = seg_width + char_width
+
+			-- If we've reached target width exactly, close segment
+			if seg_width >= target_width then
+				local seg_text = std.utf.sub(plain, seg_start, i)
+				local seg_display_width = std.utf.display_len(seg_text)
+				local seg_cell_width = calc_segment_cell_width(seg_display_width)
+				table.insert(segments, {
+					start = seg_start,
+					stop = i,
+					text = seg_text,
+					cell_width = seg_cell_width,
+					elements = get_elements_at(seg_start),
+				})
+				seg_start = i + 1
+				seg_width = 0
+
+				-- Advance style index past this position
+				while style_idx <= #style_boundaries and style_boundaries[style_idx] <= seg_start do
+					style_idx = style_idx + 1
+				end
+			end
+
+			i = i + 1
+		end
+
+		-- Handle remaining text
+		if seg_start <= plain_len then
+			local seg_text = std.utf.sub(plain, seg_start, plain_len)
+			local seg_display_width = std.utf.display_len(seg_text)
+			local seg_cell_width = calc_segment_cell_width(seg_display_width)
+			table.insert(segments, {
+				start = seg_start,
+				stop = plain_len,
+				text = seg_text,
+				cell_width = seg_cell_width,
+				elements = get_elements_at(seg_start),
+			})
+		end
+
+		-- Render all segments
+		local result = {}
+		for _, seg in ipairs(segments) do
+			local style_open
+			if seg.elements and #seg.elements > 0 then
+				local inline_open, _ = build_style_codes(seg.elements)
+				style_open = base_open .. inline_open
+			else
+				style_open = base_open
+			end
+
+			local meta = build_meta_str(seg.cell_width)
+			table.insert(result, style_open .. wrap_osc66(seg.text, meta) .. base_close)
+		end
+		final_text = table.concat(result)
+	elseif ts then
+		-- Text sizing without fractional chunking (e.g., just s=2 or s=3)
+		-- Split by style boundaries only, use same meta for all
+
+		local style_boundaries = get_style_boundaries()
+		local meta = build_meta_str(ts.w) -- Use original w if specified
+
+		local result = {}
+		for idx = 1, #style_boundaries do
+			local seg_start = style_boundaries[idx]
+			local seg_stop = (style_boundaries[idx + 1] or (plain_len + 1)) - 1
+
+			if seg_stop >= seg_start then
+				local seg_text = std.utf.sub(plain, seg_start, seg_stop)
+				local elements = get_elements_at(seg_start)
+
+				local style_open
+				if elements and #elements > 0 then
+					local inline_open, _ = build_style_codes(elements)
+					style_open = base_open .. inline_open
+				else
+					style_open = base_open
+				end
+
+				table.insert(result, style_open .. wrap_osc66(seg_text, meta) .. base_close)
+			end
+		end
+		final_text = table.concat(result)
+	else
+		-- No text sizing - just apply styles with ANSI codes only
+		local style_boundaries = get_style_boundaries()
+
+		local result = {}
+		for idx = 1, #style_boundaries do
+			local seg_start = style_boundaries[idx]
+			local seg_stop = (style_boundaries[idx + 1] or (plain_len + 1)) - 1
+
+			if seg_stop >= seg_start then
+				local seg_text = std.utf.sub(plain, seg_start, seg_stop)
+				local elements = get_elements_at(seg_start)
+
+				local style_open
+				if elements and #elements > 0 then
+					local inline_open, _ = build_style_codes(elements)
+					style_open = base_open .. inline_open
+				else
+					style_open = base_open
+				end
+
+				table.insert(result, style_open .. seg_text .. base_close)
+			end
+		end
+		final_text = table.concat(result)
+	end
+
+	return setmetatable({
+		text = final_text,
+		height = final_height,
+		width = final_width,
+	}, apply_result_mt)
+end
+
 local new = function(rss)
 	local win_l, win_c = term.window_size()
 	return {
@@ -333,6 +746,7 @@ local new = function(rss)
 		calc_el_width = calc_el_width,
 		get = get,
 		apply = apply,
+		apply_sized = apply_sized,
 		set_property = set_property,
 		get_property = get_property,
 	}

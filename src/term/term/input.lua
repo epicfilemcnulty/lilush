@@ -324,7 +324,7 @@ local draw_completion = function(self)
 		local len = std.utf.len(completion)
 		if completion ~= "" and len <= self:max_width() - self.cursor then
 			self:clear_completion()
-			term.write(self.__cfg.tss:apply("completion", completion))
+			term.write(self.__cfg.tss:apply("completion", completion).text)
 			self.last_completion = len
 			term.move("left", len)
 		end

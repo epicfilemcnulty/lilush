@@ -203,10 +203,10 @@ local handle = function(method, query, args, headers, body, ctx)
 			content = tmpls.render_page(content, tmpl_vars, user_tmpl)
 		end
 	elseif mime == "text/djot" or mime == "text/markdown" then
-		if headers.accept and headers.accept:match("text/djot") then
+		if headers.accept and headers.accept:match("text/markdown") then
 			response_headers["content-type"] = mime
 		else
-			content = tmpls.render_page(tmpls.djot_to_html(content), tmpl_vars, user_tmpl)
+			content = tmpls.render_page(tmpls.markdown_to_html(content), tmpl_vars, user_tmpl)
 		end
 	else
 		response_headers["content-type"] = mime

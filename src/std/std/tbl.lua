@@ -186,66 +186,149 @@ local sort_by_str_len = function(tbl)
 	return tbl
 end
 
+--[[
+Parse a pipe table header definition.
+
+Supports multiple formats:
+  - "Name"           -> name="Name", align="left" (default)
+  - "Name:right"     -> name="Name", align="right"
+  - "Name:r"         -> name="Name", align="right"
+  - "Name:center"    -> name="Name", align="center"
+  - "Name:c"         -> name="Name", align="center"
+  - "Name:left"      -> name="Name", align="left"
+  - "Name:l"         -> name="Name", align="left"
+  - {"Name", "right"} -> name="Name", align="right" (legacy format)
+
+Returns: name (string), align ("left"|"center"|"right")
+]]
 local parse_pipe_table_header = function(header)
 	header = header or ""
 	local name = header
 	local align = "left"
+
 	if type(header) == "table" then
-		name = header[1]
-		align = header[2]
+		-- Legacy format: {"Name", "align"}
+		name = header[1] or ""
+		align = header[2] or "left"
+	elseif type(header) == "string" then
+		-- New format: "Name:align" or just "Name"
+		local base, suffix = header:match("^(.+):([lcr]?[a-z]*)$")
+		if base and suffix then
+			name = base
+			-- Normalize alignment suffix
+			if suffix == "r" or suffix == "right" then
+				align = "right"
+			elseif suffix == "c" or suffix == "center" then
+				align = "center"
+			elseif suffix == "l" or suffix == "left" then
+				align = "left"
+			end
+		end
 	end
+
 	return name, align
 end
 
+--[[
+Calculate maximum display widths for each column in a table.
+
+Uses utf.display_len for proper handling of wide characters (CJK, emoji, etc.).
+
+Parameters:
+  headers - array of header definitions (see parse_pipe_table_header)
+  tbl     - array of rows, each row is an array of cell values
+
+Returns: table mapping column index to max display width
+]]
 local calc_table_maxes = function(headers, tbl)
 	local maxes = {}
 	headers = headers or {}
 	tbl = tbl or {}
+
+	-- Initialize with header widths
 	for i, header in ipairs(headers) do
-		local h_name, h_align = parse_pipe_table_header(header)
-		maxes[h_name] = utf.len(h_name)
+		local h_name = parse_pipe_table_header(header)
+		maxes[i] = utf.display_len(h_name)
 	end
-	for i, row in ipairs(tbl) do
+
+	-- Update with cell widths
+	for _, row in ipairs(tbl) do
 		for j, col in ipairs(row) do
 			if headers[j] then
-				local len = utf.len(tostring(col))
-				local h_name = parse_pipe_table_header(headers[j])
-				if len > maxes[h_name] then
-					maxes[h_name] = len
+				local display_width = utf.display_len(tostring(col))
+				if display_width > (maxes[j] or 0) then
+					maxes[j] = display_width
 				end
 			end
 		end
 	end
+
 	return maxes
 end
 
+--[[
+Generate a markdown pipe table from headers and data.
+
+Parameters:
+  headers - array of header definitions, each can be:
+            - "Name"           (left aligned)
+            - "Name:right"     (right aligned)
+            - "Name:center"    (center aligned)
+            - {"Name", "right"} (legacy format)
+  tbl     - array of rows, each row is an array of cell values
+
+Returns: array of strings (one per line) forming the markdown table
+
+Example:
+  local lines = pipe_table(
+    { "Name", "Age:right", "City:center" },
+    {
+      { "Alice", 30, "New York" },
+      { "Bob", 25, "Los Angeles" },
+    }
+  )
+]]
 local pipe_table = function(headers, tbl)
 	local lines = {}
 	local maxes = calc_table_maxes(headers, tbl)
+
+	-- Build header line and separator line
 	local h_line = "|"
 	local s_line = "|"
+
 	for i, header in ipairs(headers) do
 		local h_name, h_align = parse_pipe_table_header(header)
-		-- We want headers themselves to be centrally aligned
-		h_line = h_line .. " " .. txt.align(h_name, maxes[h_name], "center") .. " |"
+		local col_width = maxes[i] or utf.display_len(h_name)
+
+		-- Headers are center-aligned within their column
+		h_line = h_line .. " " .. txt.align(h_name, col_width, "center") .. " |"
+
+		-- Build separator with alignment markers
 		if h_align == "center" then
-			s_line = s_line .. ":" .. string.rep("-", maxes[h_name]) .. ":|"
+			s_line = s_line .. ":" .. string.rep("-", col_width) .. ":|"
 		elseif h_align == "right" then
-			s_line = s_line .. string.rep("-", maxes[h_name] + 1) .. ":|"
-		else
-			s_line = s_line .. ":" .. string.rep("-", maxes[h_name] + 1) .. "|"
+			s_line = s_line .. string.rep("-", col_width + 1) .. ":|"
+		else -- left (default)
+			s_line = s_line .. ":" .. string.rep("-", col_width + 1) .. "|"
 		end
 	end
+
 	lines[1] = h_line
 	lines[2] = s_line
+
+	-- Build data rows
 	for i, row in ipairs(tbl) do
 		local line = "|"
 		for j, col in ipairs(row) do
-			local h_name, h_align = parse_pipe_table_header(headers[j])
-			line = line .. " " .. txt.align(col, maxes[h_name], h_align) .. " |"
+			if headers[j] then
+				local _, h_align = parse_pipe_table_header(headers[j])
+				local col_width = maxes[j]
+				line = line .. " " .. txt.align(tostring(col), col_width, h_align) .. " |"
+			end
 		end
 		lines[i + 2] = line
 	end
+
 	return lines
 end
 

@@ -13,7 +13,7 @@ return {
 		"luasocket",
 		"std",
 		"crypto",
-		"djot",
+		"markdown",
 		"redis",
 		"reliw",
 	},

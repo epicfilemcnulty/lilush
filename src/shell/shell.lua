@@ -3,7 +3,7 @@
 -- Licensed under the Open Weights License v1.0. See LICENSE for details.
 local std = require("std")
 local json = require("cjson.safe")
-local text = require("text")
+local markdown = require("markdown")
 local term = require("term")
 local input = require("term.input")
 local history = require("term.input.history")
@@ -17,8 +17,8 @@ local pipeline = require("shell.utils.pipeline")
 local theme = require("shell.theme")
 
 local show_error_msg = function(status, err)
-	local msg = tostring(err) .. " *(" .. tostring(status) .. ")*"
-	local out = text.render_djot(msg, theme.renderer.builtin_error)
+	local msg = tostring(err) .. " **(" .. tostring(status) .. ")**"
+	local out = markdown.render(msg, { tss = theme.renderer.builtin_error })
 	io.stderr:write(out)
 end
 

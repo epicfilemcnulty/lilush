@@ -38,7 +38,7 @@ end
 
 local b64url_encode = function(str)
 	local b64_str = core.base64_encode(str)
-	return b64_str:gsub("[+/= \r\n]", { ["+"] = "-", ["/"] = "_", [" "] = "", ["\r"] = "", ["\n"] = "", ["="] = "" })
+	return b64_str:gsub("[+/=]", { ["+"] = "-", ["/"] = "_", ["="] = "" })
 end
 
 local b64url_decode = function(str)

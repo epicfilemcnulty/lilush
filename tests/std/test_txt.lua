@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: © 2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: OWL-1.0 or later
+-- Licensed under the Open Weights License v1.0. See LICENSE for details.
+
 local testimony = require("testimony")
 local std = require("std")
 

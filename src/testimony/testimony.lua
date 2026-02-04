@@ -104,6 +104,12 @@ local assert_nil = function(value, msg)
 	end
 end
 
+local assert_not_nil = function(value, msg)
+	if value == nil then
+		error(msg or "expected non-nil value but got nil", 2)
+	end
+end
+
 local assert_error = function(fn, expected_pattern, msg)
 	local success, err = pcall(fn)
 	if success then
@@ -138,16 +144,16 @@ local test = function(self, description, fn)
 end
 
 local conclude = function(self)
-	print(tss:apply("title", tostring(self.description)))
+	print(tss:apply("title", tostring(self.description)).text)
 	if self.tests.failed == 0 then
-		print(tss:apply("passed") .. " " .. self.tests.passed .. " tests passed.")
+		print(tss:apply("passed").text .. " " .. self.tests.passed .. " tests passed.")
 		os.exit(0)
 	end
-	print(tss:apply("passed") .. " " .. self.tests.passed .. " tests passed.")
-	print(tss:apply("failed") .. " " .. self.tests.failed .. " tests failed.")
+	print(tss:apply("passed").text .. " " .. self.tests.passed .. " tests passed.")
+	print(tss:apply("failed").text .. " " .. self.tests.failed .. " tests failed.")
 	for _, failure in ipairs(self.tests.failures) do
-		print(tss:apply("failure", failure.name))
-		print(tss:apply("error", failure.error))
+		print(tss:apply("failure", failure.name).text)
+		print(tss:apply("error", failure.error).text)
 	end
 	os.exit(1)
 end
@@ -173,6 +179,7 @@ return {
 	assert_true = assert_true,
 	assert_false = assert_false,
 	assert_nil = assert_nil,
+	assert_not_nil = assert_not_nil,
 	assert_error = assert_error,
 	assert_match = assert_match,
 }

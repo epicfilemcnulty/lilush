@@ -12,7 +12,7 @@ curated collection of Lua modules and C libraries for
 * Modern cryptography
 * Terminal I/O with UTF-8 support, styling with *TSS* (Terminal Style Sheets)
 * A set of terminal widgets for use in CLI apps
-* [djot](https://djot.net/) processing/rendering
+* Markdown processing/rendering
 * Redis protocol support
 * Embedded [WireGuard](https://www.wireguard.com/embedding/) and [ACMEv2](https://datatracker.ietf.org/doc/rfc8555/) clients
 * JSON, Base64, HMAC, ...
@@ -28,7 +28,7 @@ _lilush_ can be used as a busybox replacement.
 
 And to top it off, _lilush_ can compile your Lua code into a static binary too![^1]
 
-## *Li*nux *Lu*a *Sh*ell
+## Linux Lua Shell
 
 Secondly, to showcase most features of its bundled modules, 
 _lilush_ includes a modular Linux Shell (as in Bash, Csh or Fish), 
@@ -46,7 +46,7 @@ suprisingly called _Lilush Shell_, which
 * is easily extendable with plugins
 * can do fortune telling and probably one day will save the humanity =)
 
-::: NotaBene  
+::: warning  
 
   _Lilush Shell_ relies on [Kitty's keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol),
   thus will only work in terminal emulators that support this protocol, e.g. `kitty`, `foot`, `alacritty`, `konsole`...  

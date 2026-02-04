@@ -142,8 +142,6 @@ return {
 		"std",
 		"crypto",
 		"term",
-		"text",
-		"djot",
 		"redis",
 		"shell",
 		"vault",
@@ -153,6 +151,8 @@ return {
 		"acme",
 		"testimony",
 		"zxscr",
+		"agent",
+		"markdown",
 	},
 	c_libs = {
 		"cjson",

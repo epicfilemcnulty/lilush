@@ -50,7 +50,7 @@ local mod_to_header = function(filepath, rel_path)
 	local mod_name = "mod_lua_" .. mod_base .. ".h"
 	-- For C identifiers, dots become underscores: shell.theme -> shell_theme
 	local c_ident = mod_base:gsub("%.", "_")
-	
+
 	std.ps.exec_simple("luajit -b -n " .. c_ident .. " " .. filepath .. " " .. mod_name)
 	local content = std.fs.read_file(mod_name)
 	content = content:gsub("#define luaJIT_BC_" .. c_ident, "const size_t mod_lua_" .. c_ident)
@@ -149,10 +149,10 @@ for _, luamod in ipairs(app_config.luamods) do
 	std.fs.chdir(pwd .. "/build")
 	std.fs.mkdir(luamod)
 	std.fs.chdir(luamod)
-	
+
 	-- Recursively find all .lua files
 	local lua_files = list_lua_files_recursive(pwd .. "/src/" .. luamod, pwd .. "/src/" .. luamod)
-	
+
 	for lua_file_rel_path, _ in pairs(lua_files) do
 		-- lua_file_rel_path is like "shell.lua" or "shell/theme.lua"
 		mod_to_header(pwd .. "/src/" .. luamod .. "/" .. lua_file_rel_path, lua_file_rel_path)

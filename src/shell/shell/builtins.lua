@@ -9,7 +9,7 @@ local utils = require("shell.utils")
 local dig = require("dns.dig")
 local theme = require("shell.theme")
 local storage = require("shell.store")
-local text = require("text")
+local markdown = require("markdown")
 local argparser = require("argparser")
 local buffer = require("string.buffer")
 local style = require("term.tss")
@@ -29,13 +29,13 @@ end
     Throw errors to STDERR
 ]]
 local errmsg = function(msg)
-	local out = text.render_djot(tostring(msg), theme.renderer.builtin_error)
+	local out = markdown.render(tostring(msg), { tss = theme.renderer.builtin_error })
 	io.stderr:write(out)
 	io.stderr:flush()
 end
 
 local helpmsg = function(msg)
-	local out = "\n" .. text.render_djot(msg, theme.renderer.kat) .. "\n"
+	local out = "\n" .. markdown.render(msg) .. "\n"
 	io.stderr:write(out)
 	io.stderr:flush()
 end
@@ -379,17 +379,18 @@ end
     KAT
 ]]
 local kat_help = [[
-: kat
+# kat
 
-  Show file contents. In Kitty terminal *kat*
-  can also show images.
+Show file contents. In Kitty terminal **kat**
+can also show images.
 
+Press `y` to copy code blocks to clipboard (OSC52).
 ]]
 local kat = function(cmd, args, jobs)
 	local parser = argparser.new({
 		raw = { kind = "bool", note = "Force raw rendering mode (no pager, no word wraps)" },
 		page = { kind = "bool", note = "Force using pager even on one screen documents" },
-		djot = { short = "j", kind = "bool", note = "Force djot rendering mode" },
+		markdown = { short = "m", kind = "bool", note = "Force markdown rendering mode" },
 		indent = { kind = "num", default = 0, note = "Indentation" },
 		wrap = { kind = "num", default = 100, note = "Wrap width" },
 		links = { kind = "bool", note = "Show link's url" },
@@ -421,14 +422,14 @@ local kat = function(cmd, args, jobs)
 	end
 	local render_mode = "raw"
 	if mime_info.type:match("djot") or mime_info.type:match("markdown") then
-		render_mode = "djot"
+		render_mode = "markdown"
 	end
-	if args.djot then
-		render_mode = "djot"
+	if args.markdown then
+		render_mode = "markdown"
 	end
 	if args.raw then
 		local txt = std.fs.read_file(args.pathname) or ""
-		term.write("\n" .. text.render_text(txt, {}, { global_indent = 0, wrap = -1 }) .. "\n")
+		term.write("\n" .. txt .. "\n")
 		return 0
 	end
 	term.set_raw_mode()
@@ -1264,7 +1265,7 @@ local wgcli = function(cmd, args)
 					)
 					.. "\n"
 			)
-			term.write(tss:apply("builtins.wg.endpoint.nets", "NETS: " .. table.concat(peer.nets, ", ")) .. "\n\n")
+			term.write(tss:apply("builtins.wg.endpoint.nets", "NETS: " .. table.concat(peer.nets, ", ")).text .. "\n\n")
 		end
 		term.write("\n")
 	end
@@ -1462,8 +1463,8 @@ local kinda_ps = function(cmd, args)
 		term.write("\n")
 		return 0
 	end
-	local ps_tbl_djot = std.tbl.pipe_table(ps_tbl_fields, ps_tbl)
-	term.write("\n" .. text.render_djot(table.concat(ps_tbl_djot, "\n"), theme.renderer.kat) .. "\n")
+	local ps_tbl_md = std.tbl.pipe_table(ps_tbl_fields, ps_tbl)
+	term.write("\n" .. markdown.render(table.concat(ps_tbl_md, "\n")) .. "\n")
 	return 0
 end
 
@@ -1608,7 +1609,7 @@ local zx = function(cmd, args)
 			term.set_sane_mode()
 			local code = snippet_code:gsub("{{([%w%d_]+)}}", snippet_args)
 			local txt = "# Running snippet\n\n```" .. snippet_name .. "\n" .. code .. "\n```\n"
-			term.write("\n" .. text.render_djot(txt, theme.renderer.kat) .. "\n")
+			term.write("\n" .. markdown.render(txt) .. "\n")
 
 			if snippet_meta.confirm then
 				local confirmed = widgets.simple_confirm("Are you sure? y/n\n", theme.widgets.shell)

@@ -53,21 +53,22 @@ local html_escape = function(str)
 	return str
 end
 
-local html_to_djot = function(html)
-	local djot = html:gsub("<div[^>]->(.-)</div>", "\n%1\n\n")
-	djot = djot:gsub("<table>(.-)</table>", "\n[]\n")
-	djot = djot:gsub("<p>(.-)</p>", "%1\n\n")
-	djot = djot:gsub("<strong>(.-)</strong>", "*%1*")
-	djot = djot:gsub("</?ul>", "\n")
-	djot = djot:gsub("</?ol>", "\n")
-	djot = djot:gsub("<hr/>", "\n  -------------- \n\n")
-	djot = djot:gsub("<br/>", "\\")
-	djot = djot:gsub("<h%d>(.-)</h%d>", "\n### %1\n\n")
-	djot = djot:gsub("<li>(.-)</li>", "*  %1\n")
-	djot = djot:gsub("<pre><code>(.-)</code></pre>", "\n```\n%1\n```\n\n")
-	djot = djot:gsub('<a href="([^"]+)">(.-)</a>', "[%2](%1)")
-	djot = djot:gsub("<code>(.-)</code>", "`%1`")
-	return djot
+-- Convert simple HTML to markdown format
+local html_to_markdown = function(html)
+	local md = html:gsub("<div[^>]->(.-)</div>", "\n%1\n\n")
+	md = md:gsub("<table>(.-)</table>", "\n[]\n")
+	md = md:gsub("<p>(.-)</p>", "%1\n\n")
+	md = md:gsub("<strong>(.-)</strong>", "**%1**")
+	md = md:gsub("</?ul>", "\n")
+	md = md:gsub("</?ol>", "\n")
+	md = md:gsub("<hr/>", "\n---\n\n")
+	md = md:gsub("<br/>", "  \n")
+	md = md:gsub("<h%d>(.-)</h%d>", "\n### %1\n\n")
+	md = md:gsub("<li>(.-)</li>", "- %1\n")
+	md = md:gsub("<pre><code>(.-)</code></pre>", "\n```\n%1\n```\n\n")
+	md = md:gsub('<a href="([^"]+)">(.-)</a>', "[%2](%1)")
+	md = md:gsub("<code>(.-)</code>", "`%1`")
+	return md
 end
 
 local make_form_data = function(items)
@@ -518,7 +519,7 @@ return {
 	url_escape = url_escape,
 	html_escape = html_escape,
 	html_unescape = html_unescape,
-	html_to_djot = html_to_djot,
+	html_to_markdown = html_to_markdown,
 	make_form_data = make_form_data,
 	request = request,
 	sse_client = sse_client,

@@ -1,5 +1,7 @@
 -- SPDX-FileCopyrightText: © 2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: OWL-1.0 or later
+-- Licensed under the Open Weights License v1.0. See LICENSE for details.
+
 local testimony = require("testimony")
 local style = require("term.tss")
 local std = require("std")
@@ -45,8 +47,8 @@ testify:that("style reset properly clears accumulated styles", function()
 	local rss = {
 		base = {
 			s = "bold,italic",
-			test = { s = "reset,underlined" }
-		}
+			test = { s = "reset,underlined" },
+		},
 	}
 	local tss = style.new(rss)
 	local props, _ = tss:get("base.test")
@@ -59,7 +61,7 @@ end)
 
 testify:that("style reset in middle of list works", function()
 	local rss = {
-		test = { s = "bold,reset,italic" }
+		test = { s = "bold,reset,italic" },
 	}
 	local tss = style.new(rss)
 	local props, _ = tss:get("test")
@@ -71,7 +73,7 @@ end)
 
 testify:that("multiple resets work correctly", function()
 	local rss = {
-		test = { s = "bold,reset,italic,reset,underlined" }
+		test = { s = "bold,reset,italic,reset,underlined" },
 	}
 	local tss = style.new(rss)
 	local props, _ = tss:get("test")
@@ -130,8 +132,8 @@ testify:that("get cascades properties down dot-path", function()
 		base = { fg = "red", bg = "blue" },
 		base = {
 			fg = "red",
-			child = { fg = "green" }
-		}
+			child = { fg = "green" },
+		},
 	}
 	local tss = style.new(rss)
 	local props, _ = tss:get("base.child")
@@ -146,8 +148,8 @@ testify:that("get accumulates styles when cascading", function()
 		base = { s = "bold" },
 		base = {
 			s = "bold",
-			child = { s = "italic" }
-		}
+			child = { s = "italic" },
+		},
 	}
 	local tss = style.new(rss)
 	local props, _ = tss:get("base.child")
@@ -378,8 +380,12 @@ testify:that("apply clips to available window width even when props.w is larger"
 	local rss = { test = { w = 100 } } -- Request width larger than typical window
 	local tss = style.new(rss)
 
-	-- Simulate a position that leaves little room
-	local result = strip_ansi(tss:apply("test", "short text", tss.__window.w - 5))
+	-- Manually set window size for testing (term.window_size() returns 0,0 in non-TTY)
+	tss.__window.w = 80
+	tss.__window.h = 24
+
+	-- Simulate a position that leaves little room (position 75, so only 5 columns left)
+	local result = strip_ansi(tss:apply("test", "short text", 75))
 
 	-- Should be clipped to fit in remaining 5 columns
 	testimony.assert_true(std.utf.len(result) <= 5)
@@ -399,9 +405,9 @@ testify:that("apply handles complex nested styles", function()
 				content = "─",
 				after = "╮",
 				fill = true,
-				w = 20
-			}
-		}
+				w = 20,
+			},
+		},
 	}
 	local tss = style.new(rss)
 	tss.__window.w = 80
@@ -419,12 +425,12 @@ end)
 testify:that("apply with multiple element paths", function()
 	local rss = {
 		base = { fg = "blue" },
-		highlight = { s = "bold" }
+		highlight = { s = "bold" },
 	}
 	local tss = style.new(rss)
 
 	-- Can pass array of element paths
-	local result = tss:apply({"base", "highlight"}, "text")
+	local result = tss:apply({ "base", "highlight" }, "text")
 
 	-- Should have ANSI codes (we can't easily test exact codes, but it shouldn't be plain text)
 	testimony.assert_true(result ~= "text")
@@ -523,8 +529,8 @@ testify:that("ts does NOT cascade from parent to child", function()
 	local rss = {
 		parent = {
 			ts = "double",
-			child = { fg = "red" }
-		}
+			child = { fg = "red" },
+		},
 	}
 	local tss = style.new(rss)
 	local result = tss:apply("parent.child", "text")
@@ -537,8 +543,8 @@ testify:that("child ts completely overrides parent ts", function()
 	local rss = {
 		parent = {
 			ts = "double",
-			child = { ts = "triple" }
-		}
+			child = { ts = "triple" },
+		},
 	}
 	local tss = style.new(rss)
 	local result = tss:apply("parent.child", "text")
@@ -582,21 +588,25 @@ testify:that("ts decorators (before/after) are inside escape sequence", function
 	local result = tss:apply("test", "text")
 
 	-- Decorators should be INSIDE the OSC 66 escape (both styled AND scaled)
-	-- Format should be: OSC66(styled_[text]) where styled content includes [ and ]
-	local osc_pos = result:find("\027%]66;")
-	local st_pos = result:find("\027\\")
-	local bracket_open_pos = result:find("%[")
-	local bracket_close_pos = result:find("%]")
+	-- Format: ... OSC 66 ; params ; [text] ST ...
+	-- Extract the text content from inside the OSC 66 sequence
+	local text_content = result:match("\027%]66;[^;]*;([^\027]*)\027\\")
 
-	-- All positions should be found
-	testimony.assert_true(osc_pos ~= nil)
-	testimony.assert_true(st_pos ~= nil)
-	testimony.assert_true(bracket_open_pos ~= nil)
-	testimony.assert_true(bracket_close_pos ~= nil)
+	-- The OSC 66 sequence should exist
+	testimony.assert_not_nil(text_content)
 
-	-- Decorators should be between OSC start and ST terminator
-	testimony.assert_true(bracket_open_pos > osc_pos)
-	testimony.assert_true(bracket_close_pos < st_pos)
+	-- The text content should contain both decorators and the original text
+	-- Note: with plain=true, we search for literal strings (no % escape needed)
+	testimony.assert_true(text_content:find("[", 1, true) ~= nil)
+	testimony.assert_true(text_content:find("]", 1, true) ~= nil)
+	testimony.assert_true(text_content:find("text", 1, true) ~= nil)
+
+	-- Verify the order: [ comes before text, ] comes after text
+	local open_pos = text_content:find("[", 1, true)
+	local close_pos = text_content:find("]", 1, true)
+	local text_pos = text_content:find("text", 1, true)
+	testimony.assert_true(open_pos < text_pos)
+	testimony.assert_true(close_pos > text_pos)
 end)
 
 testify:that("ts with unknown preset string is ignored", function()
@@ -630,6 +640,100 @@ testify:that("set_property can set ts configuration", function()
 	local ts = tss:get_property("test", "ts")
 	testimony.assert_equal(2, ts.s)
 	testimony.assert_equal(1, ts.v)
+end)
+
+-- =============================================================================
+-- APPLY RESULT TABLE (height/width properties)
+-- =============================================================================
+
+testify:that("apply returns result table with text, height, width", function()
+	local rss = { test = { fg = 123 } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "hello")
+
+	-- Result should be a table with required properties
+	testimony.assert_true(type(result) == "table")
+	testimony.assert_true(result.text ~= nil)
+	testimony.assert_true(result.height ~= nil)
+	testimony.assert_true(result.width ~= nil)
+end)
+
+testify:that("apply result height is 1 for non-scaled text", function()
+	local rss = { test = { fg = 123 } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "hello")
+
+	testimony.assert_equal(1, result.height)
+end)
+
+testify:that("apply result height equals scale factor", function()
+	local rss = { test = { ts = { s = 3 } } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "hello")
+
+	testimony.assert_equal(3, result.height)
+end)
+
+testify:that("apply result width reflects display width", function()
+	local rss = { test = { fg = 123 } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "hello")
+
+	-- "hello" is 5 characters, no scaling
+	testimony.assert_equal(5, result.width)
+end)
+
+testify:that("apply result width accounts for scale factor", function()
+	local rss = { test = { ts = { s = 2 } } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "hi")
+
+	-- "hi" is 2 characters, scale=2, so width = 2 * 2 = 4
+	testimony.assert_equal(4, result.width)
+end)
+
+testify:that("apply result width includes decorators", function()
+	local rss = { test = { before = "[", after = "]" } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "x")
+
+	-- "[" + "x" + "]" = 3 characters
+	testimony.assert_equal(3, result.width)
+end)
+
+testify:that("apply result supports string coercion via tostring", function()
+	local rss = { test = { fg = 123 } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "hello")
+
+	-- tostring should return the text
+	local str = tostring(result)
+	testimony.assert_true(type(str) == "string")
+	testimony.assert_true(str:find("hello") ~= nil)
+end)
+
+testify:that("apply result supports string concatenation", function()
+	local rss = { test = { fg = 123 } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "world")
+
+	-- Concatenation should work
+	local combined = "hello " .. result
+	testimony.assert_true(type(combined) == "string")
+	-- The styled text contains ANSI codes, so we check for both parts separately
+	testimony.assert_true(combined:find("hello ") ~= nil)
+	testimony.assert_true(combined:find("world") ~= nil)
+end)
+
+testify:that("apply result text contains styled content", function()
+	local rss = { test = { fg = 123 } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "hello")
+
+	-- .text should contain the actual content
+	testimony.assert_true(result.text:find("hello") ~= nil)
+	-- And ANSI codes
+	testimony.assert_true(result.text:find("\027%[") ~= nil)
 end)
 
 testify:conclude()

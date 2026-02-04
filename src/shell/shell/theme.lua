@@ -30,48 +30,14 @@ local widgets_default = {
 }
 
 local renderer_default = {
+	-- builtin_error is used for error messages in shell builtins
+	-- NOTE: The markdown module has its own default TSS. User theme support
+	-- for markdown rendering needs to be added to the markdown module itself.
+	-- For now, we rely on markdown module's built-in defaults.
 	builtin_error = {
-		global_indent = -1,
-		wrap = -1,
 		fg = 245,
-		verbatim = { fg = 95, bg = 233, s = "bold" },
-		class = {
-			flag = { s = "inverted,bold" },
-		},
-	},
-	kat = {
-		hide_links = true,
-		verbatim = { fg = { 130, 160, 130 }, s = "bold" },
-		header = { fg = { 177, 140, 169 }, s = "bold", level = { fg = 181, content = "⁜" } },
-		codeblock = {
-			indent = 1,
-			fg = { 150, 180, 150 },
-			lang = { bg = { 38, 64, 38 }, fg = { 105, 137, 105 } },
-		},
-		emph = { fg = 180 },
-		strong = { fg = 180 },
-		link = {
-			title = { fg = { 177, 140, 169 } },
-			url = { fg = { 129, 161, 193 }, w = 0.2 },
-		},
-		list = {
-			definition = { suffix = { fg = 185 }, term = { fg = 81 }, def = {} },
-			fg = 110,
-		},
-		tbl = {
-			border = { fg = 59, s = "dim" },
-		},
-		thematic_break = { fg = 137 },
-		class = {
-			tbl = { fg = 136 },
-			str = { fg = 144 },
-			num = { fg = 145 },
-			bool = { fg = 146 },
-			fn = { fg = 175 },
-			file = { fg = 152 },
-			dir = { fg = 153 },
-			status = { fg = "cyan", s = "italic" },
-		},
+		code = { fg = 95, bg = 233, s = "bold" },
+		strong = { s = "inverted,bold" },
 	},
 }
 
@@ -156,6 +122,9 @@ local builtins_default = {
 	pager = {
 		line_num = { fg = 60, selected = { s = "bold,inverted" } },
 		search_match = { fg = { 38, 62, 38 }, bg = 31, s = "italic,bold" },
+		element = {
+			focused = { fg = 220, s = "bold" },
+		},
 		status_line = {
 			fg = "cyan",
 			filename = { after = " ※ " },
@@ -167,6 +136,10 @@ local builtins_default = {
 				pattern = { before = "/", s = "bold" },
 			},
 			render_mode = { after = " ※ ", before = " ※ " },
+			url = { fg = 67 },
+			hint = { fg = 111, s = "italic", before = " ※ " },
+			codeblock = { fg = 60, lang = { before = " [", fg = 62, after = "]" } },
+			notification = { fg = 98, s = "italic" },
 		},
 	},
 }

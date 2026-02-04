@@ -47,10 +47,10 @@ local default_rss = {
 
 local draw_top_border = function(self)
 	term.go(self.l, self.c)
-	term.write(self.tss:apply("borders.top_line", nil, self.c))
+	term.write(self.tss:apply("borders.top_line", nil, self.c).text)
 	if self.label then
 		term.go(self.l, self.c + 1)
-		term.write(self.tss:apply("borders.label", self.label, self.c + 1))
+		term.write(self.tss:apply("borders.label", self.label, self.c + 1).text)
 	end
 end
 
@@ -65,22 +65,22 @@ local draw_borders = function(self)
 		height = height + 2
 		term.go(self.l + 1, self.c)
 		term.write(
-			self.tss:apply("borders.v", nil, self.c)
-				.. self.tss:apply("title", self.title, self.c + 1)
-				.. self.tss:apply("borders.v", nil, self.c + std.utf.len(self.title) + 1)
+			self.tss:apply("borders.v", nil, self.c).text
+				.. self.tss:apply("title", self.title, self.c + 1).text
+				.. self.tss:apply("borders.v", nil, self.c + std.utf.len(self.title) + 1).text
 		)
 		term.go(self.l + 2, self.c)
-		term.write(self.tss:apply("borders.subtitle_line", nil, self.c))
+		term.write(self.tss:apply("borders.subtitle_line", nil, self.c).text)
 		offset = 2
 	end
 	for i = 1, height - offset - 2 do
 		term.go(self.l + offset + i, self.c)
-		term.write(self.tss:apply("borders.v", nil, self.c))
+		term.write(self.tss:apply("borders.v", nil, self.c).text)
 		term.go(self.l + offset + i, self.c + self.w + 1)
-		term.write(self.tss:apply("borders.v", nil, self.c + self.w))
+		term.write(self.tss:apply("borders.v", nil, self.c + self.w).text)
 	end
 	term.go(self.l + height - 1, self.c)
-	term.write(self.tss:apply("borders.bottom_line", nil, self.c))
+	term.write(self.tss:apply("borders.bottom_line", nil, self.c).text)
 end
 
 local init = function(self)
@@ -102,15 +102,15 @@ local render_chooser_option = function(self, idx)
 
 	if self.kind == "chooser_multi" then
 		if self.selected[option] then
-			term.write(self.tss:apply("option.marked"))
+			term.write(self.tss:apply("option.marked").text)
 		else
-			term.write(self.tss:apply("borders.v", nil, self.c))
+			term.write(self.tss:apply("borders.v", nil, self.c).text)
 		end
 	end
 	if idx == self.idx then
-		term.write(self.tss:apply("option.selected", option))
+		term.write(self.tss:apply("option.selected", option).text)
 	else
-		term.write(self.tss:apply("option", option))
+		term.write(self.tss:apply("option", option).text)
 	end
 end
 
@@ -118,7 +118,7 @@ local goto_field = function(self, idx, to_input)
 	local label = self.tss:apply("form.label", self.content[idx])
 	local c = self.c + 1
 	if to_input then
-		c = c + std.utf.len(label)
+		c = c + label.width
 	end
 	term.go(self.l + self.content_start + idx - 1, c)
 end
@@ -127,15 +127,15 @@ local render_form_field = function(self, idx)
 	local label = self.content[idx]
 	local display_label = self.tss:apply("form.label", label)
 	self:goto_field(idx)
-	term.write(display_label)
-	term.write(self.tss:apply("form.input.line"))
+	term.write(display_label.text)
+	term.write(self.tss:apply("form.input.line").text)
 	if self.results[label] then
 		self:goto_field(idx, true)
 		local value = self.results[label]
 		if self.meta[label] and self.meta[label].secret then
 			value = string.rep("*", std.utf.len(value))
 		end
-		term.write(self.tss:apply("form.input", value))
+		term.write(self.tss:apply("form.input", value).text)
 	end
 end
 
@@ -253,7 +253,7 @@ end
 
 local simple_confirm = function(text, rss)
 	local tss = style.merge(default_rss, rss)
-	term.write(tss:apply("confirm", text))
+	term.write(tss:apply("confirm", text).text)
 	local confirmed = io.read(1)
 	if confirmed and (confirmed == "y" or confirmed == "Y") then
 		return true
@@ -318,14 +318,13 @@ local form = function(content, opts)
 			local label = w.content[w.idx]
 			local display_label = w.tss:apply("form.label", label)
 			local y = w.l + w.content_start + w.idx - 1
-			local x = w.c + 1 + std.utf.len(display_label)
+			local x = w.c + 1 + display_label.width
 			if w.meta[label] and w.meta[label].secret then
 				w.tss.__style.form.input.content = "*"
 			else
 				w.tss.__style.form.input.content = nil
 			end
-			local buf =
-				input.new({ l = y, c = x, width = w.w - std.utf.len(display_label) - 1, rss = w.tss.__style.form })
+			local buf = input.new({ l = y, c = x, width = w.w - display_label.width - 1, rss = w.tss.__style.form })
 			w:goto_field(w.idx, true)
 			term.show_cursor()
 			buf:display()

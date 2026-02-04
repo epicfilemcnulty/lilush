@@ -221,59 +221,299 @@ local ts_presets = {
 	double = { s = 2 },
 	triple = { s = 3 },
 	quadruple = { s = 4 },
-	superscript = { n = 1, d = 2, v = 0 }, -- Half-size, top-aligned
-	subscript = { n = 1, d = 2, v = 1 }, -- Half-size, bottom-aligned
-	half = { n = 1, d = 2 }, -- Half-size, default alignment
-	compact = { n = 1, d = 2, w = 1 }, -- Half-size, 2 chars per cell
+	superscript = { n = 1, d = 2, v = 0, w = 1 }, -- Half-size, top-aligned, 2 chars/cell
+	subscript = { n = 1, d = 2, v = 1, w = 1 }, -- Half-size, bottom-aligned, 2 chars/cell
+	half = { n = 1, d = 2, w = 1 }, -- Half-size, 2 chars/cell
+	compact = { n = 1, d = 2, v = 2, w = 1 }, -- Half-size, centered, 2 chars/cell
 }
 
 -- Generate text sizing escape sequence
 -- opts table can contain: s (scale 1-7), w (width 0-7), n (numerator 0-15),
 -- d (denominator 0-15), v (vertical align 0-2), h (horizontal align 0-2)
+--
+-- For fractional scaling with explicit w, text is automatically chunked so that
+-- each chunk fits within the specified cell width. Per the Kitty text sizing protocol,
+-- fractional scaling does NOT affect the number of cells - only the rendered font size.
+-- To fit multiple characters per cell, we emit separate escape sequences for each chunk.
 local text_size = function(text, opts)
 	if not text or text == "" or not opts then
 		return text or ""
 	end
 
-	-- Validate and build metadata string
-	local metadata = {}
+	-- Validate parameters and determine if we need fractional chunking
+	local scale = nil
+	local width = nil
+	local numerator = nil
+	local denominator = nil
+	local v_align = nil
+	local h_align = nil
 
 	-- Scale factor (1-7)
 	if opts.s and opts.s >= 1 and opts.s <= 7 then
-		table.insert(metadata, "s=" .. math.floor(opts.s))
+		scale = math.floor(opts.s)
 	end
 
 	-- Explicit width (0-7)
 	if opts.w and opts.w >= 0 and opts.w <= 7 then
-		table.insert(metadata, "w=" .. math.floor(opts.w))
+		width = math.floor(opts.w)
 	end
 
 	-- Fractional scaling (both must be 0-15, d must be > n when non-zero)
 	if opts.n and opts.d and opts.n >= 0 and opts.n <= 15 and opts.d >= 0 and opts.d <= 15 then
 		if opts.d > opts.n then
-			table.insert(metadata, "n=" .. math.floor(opts.n))
-			table.insert(metadata, "d=" .. math.floor(opts.d))
+			numerator = math.floor(opts.n)
+			denominator = math.floor(opts.d)
 		end
 	end
 
 	-- Vertical alignment (0-2)
 	if opts.v and opts.v >= 0 and opts.v <= 2 then
-		table.insert(metadata, "v=" .. math.floor(opts.v))
+		v_align = math.floor(opts.v)
 	end
 
 	-- Horizontal alignment (0-2)
 	if opts.h and opts.h >= 0 and opts.h <= 2 then
-		table.insert(metadata, "h=" .. math.floor(opts.h))
+		h_align = math.floor(opts.h)
+	end
+
+	-- Build base metadata string (without w, which may vary per chunk)
+	local base_metadata = {}
+	if scale then
+		table.insert(base_metadata, "s=" .. scale)
+	end
+	if numerator and denominator then
+		table.insert(base_metadata, "n=" .. numerator)
+		table.insert(base_metadata, "d=" .. denominator)
+	end
+	if v_align then
+		table.insert(base_metadata, "v=" .. v_align)
+	end
+	if h_align then
+		table.insert(base_metadata, "h=" .. h_align)
 	end
 
 	-- If no valid metadata was generated, return text as-is
-	if #metadata == 0 then
+	if #base_metadata == 0 and not width then
 		return text
 	end
 
-	-- Build the escape sequence: OSC 66 ; metadata ; text ST
+	-- Determine if we need to chunk text for fractional scaling
+	-- Chunking is needed when: fractional scaling is active AND explicit w is specified
+	-- The formula: chars_per_cell = w * d / n (how many characters fit in w cells)
+	local needs_chunking = numerator and denominator and width and width > 0 and numerator > 0
+
+	if needs_chunking then
+		-- Calculate how many display columns fit per chunk
+		-- For n=1, d=2, w=1: target_width = 1 * 2 / 1 = 2 display columns per chunk
+		local target_width = math.floor(width * denominator / numerator)
+		if target_width < 1 then
+			target_width = 1
+		end
+
+		-- Build metadata string with w included
+		local metadata_with_w = {}
+		for _, m in ipairs(base_metadata) do
+			table.insert(metadata_with_w, m)
+		end
+		table.insert(metadata_with_w, "w=" .. width)
+		local meta_str = table.concat(metadata_with_w, ":")
+
+		-- Chunk the text based on display width
+		local result = {}
+		local chunk = ""
+		local chunk_width = 0
+		local i = 1
+		local text_len = std.utf.len(text)
+
+		while i <= text_len do
+			local char = std.utf.sub(text, i, i)
+			local char_width = std.utf.display_len(char)
+
+			-- Check if adding this character would exceed target width
+			if chunk_width + char_width > target_width and chunk ~= "" then
+				-- Emit current chunk
+				table.insert(result, "\027]66;" .. meta_str .. ";" .. chunk .. "\027\\")
+				chunk = ""
+				chunk_width = 0
+			end
+
+			-- Add character to current chunk
+			chunk = chunk .. char
+			chunk_width = chunk_width + char_width
+
+			-- If chunk is exactly at target width, emit it
+			if chunk_width >= target_width then
+				table.insert(result, "\027]66;" .. meta_str .. ";" .. chunk .. "\027\\")
+				chunk = ""
+				chunk_width = 0
+			end
+
+			i = i + 1
+		end
+
+		-- Emit any remaining characters in the last chunk
+		if chunk ~= "" then
+			table.insert(result, "\027]66;" .. meta_str .. ";" .. chunk .. "\027\\")
+		end
+
+		return table.concat(result, "")
+	else
+		-- No chunking needed - emit single escape sequence
+		local metadata = {}
+		for _, m in ipairs(base_metadata) do
+			table.insert(metadata, m)
+		end
+		if width then
+			table.insert(metadata, "w=" .. width)
+		end
+
+		if #metadata == 0 then
+			return text
+		end
+
+		local meta_str = table.concat(metadata, ":")
+		return "\027]66;" .. meta_str .. ";" .. text .. "\027\\"
+	end
+end
+
+--[[
+  Calculate text-sizing chunk boundaries without generating escape sequences.
+  
+  This is a helper for apply_sized() in TSS, which needs to know where chunks
+  break so it can apply inline styles correctly within each chunk.
+  
+  Parameters:
+    text: plain text (no ANSI codes) to analyze
+    opts: text-sizing options table (same format as text_size)
+  
+  Returns:
+    If chunking is needed: table of {start, stop, meta_str} where start/stop are
+      1-based character indices (UTF-8 aware), and meta_str is the OSC 66 metadata
+    If no chunking needed: nil, meta_str (single wrap case)
+    If no text-sizing: nil, nil
+]]
+local text_size_chunks = function(text, opts)
+	if not text or text == "" or not opts then
+		return nil, nil
+	end
+
+	-- Validate parameters (same logic as text_size)
+	local scale = nil
+	local width = nil
+	local numerator = nil
+	local denominator = nil
+	local v_align = nil
+	local h_align = nil
+
+	if opts.s and opts.s >= 1 and opts.s <= 7 then
+		scale = math.floor(opts.s)
+	end
+
+	if opts.w and opts.w >= 0 and opts.w <= 7 then
+		width = math.floor(opts.w)
+	end
+
+	if opts.n and opts.d and opts.n >= 0 and opts.n <= 15 and opts.d >= 0 and opts.d <= 15 then
+		if opts.d > opts.n then
+			numerator = math.floor(opts.n)
+			denominator = math.floor(opts.d)
+		end
+	end
+
+	if opts.v and opts.v >= 0 and opts.v <= 2 then
+		v_align = math.floor(opts.v)
+	end
+
+	if opts.h and opts.h >= 0 and opts.h <= 2 then
+		h_align = math.floor(opts.h)
+	end
+
+	-- Build metadata string
+	local metadata = {}
+	if scale then
+		table.insert(metadata, "s=" .. scale)
+	end
+	if numerator and denominator then
+		table.insert(metadata, "n=" .. numerator)
+		table.insert(metadata, "d=" .. denominator)
+	end
+	if v_align then
+		table.insert(metadata, "v=" .. v_align)
+	end
+	if h_align then
+		table.insert(metadata, "h=" .. h_align)
+	end
+	if width then
+		table.insert(metadata, "w=" .. width)
+	end
+
+	if #metadata == 0 then
+		return nil, nil
+	end
+
 	local meta_str = table.concat(metadata, ":")
-	return "\027]66;" .. meta_str .. ";" .. text .. "\027\\"
+
+	-- Check if chunking is needed
+	local needs_chunking = numerator and denominator and width and width > 0 and numerator > 0
+
+	if not needs_chunking then
+		return nil, meta_str
+	end
+
+	-- Calculate chunk boundaries
+	local target_width = math.floor(width * denominator / numerator)
+	if target_width < 1 then
+		target_width = 1
+	end
+
+	local chunks = {}
+	local chunk_start = 1
+	local chunk_width = 0
+	local i = 1
+	local text_len = std.utf.len(text)
+
+	while i <= text_len do
+		local char = std.utf.sub(text, i, i)
+		local char_width = std.utf.display_len(char)
+
+		-- Check if adding this character would exceed target width
+		if chunk_width + char_width > target_width and chunk_start <= i - 1 then
+			-- Record current chunk
+			table.insert(chunks, {
+				start = chunk_start,
+				stop = i - 1,
+				meta_str = meta_str,
+			})
+			chunk_start = i
+			chunk_width = 0
+		end
+
+		chunk_width = chunk_width + char_width
+
+		-- If chunk is exactly at target width, finalize it
+		if chunk_width >= target_width then
+			table.insert(chunks, {
+				start = chunk_start,
+				stop = i,
+				meta_str = meta_str,
+			})
+			chunk_start = i + 1
+			chunk_width = 0
+		end
+
+		i = i + 1
+	end
+
+	-- Handle any remaining characters
+	if chunk_start <= text_len then
+		table.insert(chunks, {
+			start = chunk_start,
+			stop = text_len,
+			meta_str = meta_str,
+		})
+	end
+
+	return chunks, meta_str
 end
 
 --[[ 
@@ -772,26 +1012,34 @@ end
 
 local simple_get = function()
 	local cp, mods, event, shifted, base = get()
-	if cp and event ~= 3 then
-		if mods <= 2 and std.utf.len(cp) < 2 then
-			if shifted then
-				cp = shifted
-			end
-			return cp
-		end
-		if base then
-			cp = base
-		end
-		local mod_string = mods_to_string(mods - 1)
-		local shortcut = mod_string .. "+"
-		if mod_string == "" then
-			shortcut = cp
-		else
-			shortcut = shortcut .. cp
-		end
-		return shortcut
+	if not cp then
+		return nil
 	end
-	return nil
+	-- Handle case where get() returns just a character (non-KKBP input)
+	if not mods then
+		return cp
+	end
+	-- Ignore key release events (event == 3)
+	if event == 3 then
+		return nil
+	end
+	if mods <= 2 and std.utf.len(cp) < 2 then
+		if shifted then
+			cp = shifted
+		end
+		return cp
+	end
+	if base then
+		cp = base
+	end
+	local mod_string = mods_to_string(mods - 1)
+	local shortcut = mod_string .. "+"
+	if mod_string == "" then
+		shortcut = cp
+	else
+		shortcut = shortcut .. cp
+	end
+	return shortcut
 end
 
 local _M = {
@@ -831,6 +1079,7 @@ local _M = {
 	string_to_mods = string_to_mods,
 	-- Text sizing protocol
 	text_size = text_size,
+	text_size_chunks = text_size_chunks,
 	has_ts = has_ts,
 	ts_presets = ts_presets,
 }
