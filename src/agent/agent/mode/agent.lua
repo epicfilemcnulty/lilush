@@ -608,6 +608,12 @@ local function process_response(self, user_input)
 		return 1, err
 	end
 
+	-- Check for empty response (might indicate silent API error)
+	if (not resp.text or resp.text == "") and (not resp.tool_calls or #resp.tool_calls == 0) then
+		write_error("Error: Empty response from API (possible authentication or API issue)")
+		return 1, "empty response"
+	end
+
 	-- Track usage and cost
 	-- Input tokens = total context - output tokens (approximation)
 	local input_tokens = (resp.ctx or 0) - (resp.tokens or 0)

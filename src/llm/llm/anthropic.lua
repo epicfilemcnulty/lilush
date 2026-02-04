@@ -342,9 +342,16 @@ local stream = function(self, model, messages, sampler, user_callbacks, opts)
 	local stop_reason = nil
 	local message_model = nil
 	local start_ms = (std.time_ms and std.time_ms()) or nil
+	local http_error = nil
 
 	local client
 	local callbacks = {
+		error = function(msg)
+			http_error = msg
+			if user_callbacks.error then
+				user_callbacks.error(msg)
+			end
+		end,
 		message = function(event)
 			-- SSE client passes {event=..., data=...} to message callback
 			if type(event) ~= "table" or type(event.data) ~= "table" then
@@ -442,6 +449,11 @@ local stream = function(self, model, messages, sampler, user_callbacks, opts)
 	while running do
 		running = client:update() and client:is_connected()
 		std.sleep_ms(50)
+	end
+
+	-- Check for HTTP errors (non-2xx status codes)
+	if http_error then
+		return nil, http_error
 	end
 
 	-- Build final response

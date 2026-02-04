@@ -247,8 +247,15 @@ local stream = function(self, model, messages, sampler, user_callbacks, opts)
 	local tool_by_index = {}
 	local legacy_fn = { name = nil, arguments = "" }
 	local start_ms = (std.time_ms and std.time_ms()) or nil
+	local http_error = nil
 	local client
 	local callbacks = {
+		error = function(msg)
+			http_error = msg
+			if user_callbacks.error then
+				user_callbacks.error(msg)
+			end
+		end,
 		message = function(chunk)
 			if type(chunk) == "string" then
 				if chunk == "[DONE]" then
@@ -336,6 +343,11 @@ local stream = function(self, model, messages, sampler, user_callbacks, opts)
 	while running do
 		running = client:update() and client:is_connected()
 		std.sleep_ms(50)
+	end
+
+	-- Check for HTTP errors (non-2xx status codes)
+	if http_error then
+		return nil, http_error
 	end
 
 	local ft = full_text:get()
