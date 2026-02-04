@@ -24,12 +24,12 @@
 
 #define LSEC_IO_SSL -100
 
-typedef struct {
+typedef struct sni_list_entry_ {
     const char *servername;
     WOLFSSL_CTX *ctx;
 } sni_list_entry;
 
-typedef struct {
+typedef struct sni_list_ {
     sni_list_entry *entries;
     size_t count;
 } sni_list;

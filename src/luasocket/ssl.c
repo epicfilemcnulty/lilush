@@ -142,25 +142,51 @@ static int handshake(p_ssl ssl) {
   if (ssl->state == LSEC_STATE_CLOSED)
     return IO_CLOSED;
 
-  for (;;) {
-    if (ssl->mode == LSEC_MODE_SERVER) {
-      // Before accepting, peek at the ClientHello
-      char peek_buf[16384]; // Max TLS message size
+  // For server mode with SNI contexts, wait for complete ClientHello FIRST
+  if (ssl->mode == LSEC_MODE_SERVER && ssl->sni_contexts &&
+      ssl->sni_contexts->count > 0) {
+    for (;;) {
+      char peek_buf[16384];
       int peek_len = recv(ssl->sock, peek_buf, sizeof(peek_buf), MSG_PEEK);
 
       if (peek_len > 0) {
-        WOLFSSL_CTX *new_ctx =
-            check_client_sni(ssl, (unsigned char *)peek_buf, peek_len);
-        if (new_ctx) {
-          // Create new SSL object with the new context
-          WOLFSSL *new_ssl = wolfSSL_new(new_ctx);
-          if (new_ssl) {
-            wolfSSL_free(ssl->ssl);
-            ssl->ssl = new_ssl;
-            wolfSSL_set_fd(ssl->ssl, ssl->sock);
+        // Need at least 5 bytes for TLS header
+        if (peek_len >= 5 && (unsigned char)peek_buf[0] == 0x16) {
+          size_t msg_len =
+              ((unsigned char)peek_buf[3] << 8) | (unsigned char)peek_buf[4];
+          if (peek_len >= (int)(msg_len + 5)) {
+            // Complete ClientHello available, check SNI and swap context
+            WOLFSSL_CTX *new_ctx =
+                check_client_sni(ssl, (unsigned char *)peek_buf, peek_len);
+            if (new_ctx) {
+              WOLFSSL *new_ssl = wolfSSL_new(new_ctx);
+              if (new_ssl) {
+                wolfSSL_free(ssl->ssl);
+                ssl->ssl = new_ssl;
+                wolfSSL_set_fd(ssl->ssl, ssl->sock);
+              }
+            }
+            break; // Proceed to handshake
           }
         }
+      } else if (peek_len == 0) {
+        return IO_CLOSED;
+      } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
+        return IO_CLOSED;
       }
+
+      // Wait for more data
+      err = socket_waitfd(&ssl->sock, WAITFD_R, tm);
+      if (err == IO_TIMEOUT)
+        return LSEC_IO_SSL;
+      if (err != IO_DONE)
+        return err;
+    }
+  }
+
+  // Main handshake loop
+  for (;;) {
+    if (ssl->mode == LSEC_MODE_SERVER) {
       err = wolfSSL_accept(ssl->ssl);
     } else {
       // we could do some checks here, e.g.:
