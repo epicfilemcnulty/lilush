@@ -5,8 +5,9 @@
 local std = require("std")
 
 -- Default max lines to prevent overwhelming context
-local DEFAULT_MAX_LINES = 200
+local DEFAULT_MAX_LINES = 1000
 
+-- TODO: Refactor to use `offset` and `limit` instead of start_line/end_line/max_lines
 return {
 	name = "read_file",
 	description = {
@@ -15,7 +16,10 @@ return {
 			name = "read_file",
 			description = "Reads the local file at `filepath` and returns its content. "
 				.. "Supports optional line range selection with start_line/end_line. "
-				.. "Output is truncated to max_lines (default 200) to prevent context overflow.",
+				.. string.format(
+					"Output is truncated to max_lines (default %d) to prevent context overflow.",
+					DEFAULT_MAX_LINES
+				),
 			parameters = {
 				type = "object",
 				properties = {
@@ -30,7 +34,10 @@ return {
 					},
 					max_lines = {
 						type = "integer",
-						description = "Maximum number of lines to return (default: 200). Applied after range selection.",
+						description = string.format(
+							"Maximum number of lines to return (default: %d). Applied after range selection.",
+							DEFAULT_MAX_LINES
+						),
 					},
 				},
 				required = { "filepath" },
