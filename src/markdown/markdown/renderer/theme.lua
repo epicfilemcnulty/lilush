@@ -14,10 +14,11 @@ local DEFAULT_BORDERS = {
 	align = "none",
 	indent = 0,
 	fg = 59,
-	top_line = { before = "╭", content = "─", after = "╮", fill = true },
-	bottom_line = { before = "╰", content = "─", after = "╯", fill = true },
-	subtitle_line = { before = "├", content = "─", after = "┤", fill = true },
-	v = { content = "│", w = 1 },
+	clip = -1,
+	top_line = { before = "╭", content = "─", after = "╮", fill = true, clip = -1 },
+	bottom_line = { before = "╰", content = "─", after = "╯", fill = true, clip = -1 },
+	subtitle_line = { before = "├", content = "─", after = "┤", fill = true, clip = -1 },
+	v = { content = "│", w = 1, clip = -1 },
 }
 
 -- Helper to create colored border variant
@@ -26,10 +27,11 @@ local make_colored_borders = function(fg)
 		align = "none",
 		indent = 0,
 		fg = fg,
-		top_line = { before = "╭", content = "─", after = "╮", fill = true },
-		bottom_line = { before = "╰", content = "─", after = "╯", fill = true },
-		subtitle_line = { before = "├", content = "─", after = "┤", fill = true },
-		v = { content = "│", w = 1 },
+		clip = -1,
+		top_line = { before = "╭", content = "─", after = "╮", fill = true, clip = -1 },
+		bottom_line = { before = "╰", content = "─", after = "╯", fill = true, clip = -1 },
+		subtitle_line = { before = "├", content = "─", after = "┤", fill = true, clip = -1 },
+		v = { content = "│", w = 1, clip = -1 },
 	}
 end
 
@@ -50,6 +52,7 @@ local DEFAULT_TABLE_BORDERS = {
 	bottom_mid = "┴",
 	bottom_right = "┘",
 	fg = 59,
+	clip = -1,
 }
 
 -- Default raw style sheet for markdown rendering
@@ -135,6 +138,7 @@ local DEFAULT_RSS = {
 
 	-- Table styles (GFM)
 	table = {
+		-- indent = 1,  <-- setting this ruins the rendering, we must test/rethink design/debug. Divs are also shady as fuck
 		border = DEFAULT_TABLE_BORDERS,
 		header = { s = "bold", fg = 180, align = "center" },
 		cell = { fg = 250 },
@@ -150,18 +154,18 @@ local DEFAULT_RSS = {
 		content = { fg = 245 },
 	},
 
-	-- Fenced div styles (Phase 6 - Djot extension)
-	-- Divs now use bordered boxes like code_block, with class name displayed as label
+	-- Divs use bordered boxes like code_block, with class name displayed as label
 	div = {
 		default = {
-			align = "center",
+			align = "left",
 			w = 0.7,
 			pad = 1, -- Left padding inside the box
 			border = DEFAULT_BORDERS,
 			fg = 250,
-			label = { s = "italic,bold", before = "⧼ ", after = " ⧽", fg = 59 },
+			label = { s = "italic,bold", before = "⧼ ", after = " ⧽", fg = 59, w = 0 },
 		},
 		warning = {
+			align = "center",
 			fg = 214,
 			border = make_colored_borders(214),
 			label = { s = "italic,bold", before = "⧼ ", after = " ⧽", bg = { 64, 48, 28 }, fg = 214 },

@@ -41,6 +41,20 @@ local SYNC_END = "\027[?2026l"
 local DEFAULT_BORDERS = theme.DEFAULT_BORDERS
 local DEFAULT_RSS = theme.DEFAULT_RSS
 
+-- Extract text-sizing scale factor from OSC 66 sequences in a line
+-- OSC 66 format: \027]66;s=N:...;text\027\\
+local get_line_scale = function(line)
+	-- Match OSC 66 sequence and extract s=N parameter
+	local meta = line:match("\027%]66;([^;]+);")
+	if meta then
+		local scale = meta:match("s=(%d+)")
+		if scale then
+			return tonumber(scale) or 1
+		end
+	end
+	return 1
+end
+
 -- Get current position in heading content buffer
 local get_heading_pos = function(self)
 	return std.utf.len(self._heading_content.plain)
@@ -196,7 +210,11 @@ end
 local render_bordered_block = function(self, lines, label)
 	local out = buffer.new()
 	local style_base = "code_block"
+	-- When inside a div, subtract 2 to account for code block's own borders
 	local width = self._width
+	if #self._div_stack > 0 then
+		width = width - 2
+	end
 
 	-- Get border definition and padding
 	local border_def = self._tss.__style[style_base] and self._tss.__style[style_base].border or DEFAULT_BORDERS
@@ -536,6 +554,19 @@ local handle_block_start = function(self, tag, attrs)
 			el_width = available_width
 		end
 
+		-- Save and disable heading text-sizing to prevent border misalignment
+		-- Text-sizing (OSC 66) causes display_len to return incorrect widths
+		local saved_heading_ts = {}
+		if self._tss.__style.heading then
+			for i = 1, 6 do
+				local key = "h" .. i
+				if self._tss.__style.heading[key] then
+					saved_heading_ts[key] = self._tss.__style.heading[key].ts
+					self._tss.__style.heading[key].ts = nil
+				end
+			end
+		end
+
 		local captured = buffer.new()
 		local div_info = {
 			class = class,
@@ -546,6 +577,7 @@ local handle_block_start = function(self, tag, attrs)
 			lines_written = 0, -- Lines output for re-rendering
 			el_width = el_width, -- Store calculated width
 			pad = pad_value, -- Store padding for block_end
+			saved_heading_ts = saved_heading_ts, -- Saved text-sizing to restore
 		}
 		table.insert(self._div_stack, div_info)
 		-- Replace output function to capture content
@@ -771,6 +803,7 @@ local handle_block_end = function(self, tag)
 				local is_last = (i == #lines)
 				local is_empty = (line == "" or line:match("^%s*$"))
 				if not (is_last and is_empty) then
+					-- Text-sizing is disabled inside divs, so no scale adjustment needed
 					local visual_len = std.utf.display_len(line)
 					local padding = math.max(0, inner_width - visual_len)
 					local padded = line .. string.rep(" ", padding)
@@ -786,6 +819,15 @@ local handle_block_end = function(self, tag)
 
 			self._output(SYNC_END)
 			io.flush()
+
+			-- Restore heading text-sizing that was disabled for div content
+			if div_info.saved_heading_ts and self._tss.__style.heading then
+				for key, ts in pairs(div_info.saved_heading_ts) do
+					if self._tss.__style.heading[key] then
+						self._tss.__style.heading[key].ts = ts
+					end
+				end
+			end
 
 			self._in_div = (#self._div_stack > 0)
 			self._previous_block = "div"

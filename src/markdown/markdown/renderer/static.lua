@@ -39,6 +39,20 @@ local count_newlines = function(text)
 	return count
 end
 
+-- Extract text-sizing scale factor from OSC 66 sequences in a line
+-- OSC 66 format: \027]66;s=N:...;text\027\\
+local get_line_scale = function(line)
+	-- Match OSC 66 sequence and extract s=N parameter
+	local meta = line:match("\027%]66;([^;]+);")
+	if meta then
+		local scale = meta:match("s=(%d+)")
+		if scale then
+			return tonumber(scale) or 1
+		end
+	end
+	return 1
+end
+
 -- Helper: render pre-styled content with borders (for divs)
 -- Unlike render_bordered_block, this takes already-rendered content with ANSI codes
 local render_bordered_content = function(tss, style_base, content, width, label, indent, pad)
@@ -54,19 +68,24 @@ local render_bordered_content = function(tss, style_base, content, width, label,
 	-- Build top line with optional label
 	local top_line
 	if label and label ~= "" then
-		-- Style the label
+		-- Style the label first
 		local label_style = style_base .. ".label"
 		local styled_label = tss:apply(label_style, label)
 		local label_len = styled_label.width
 
-		local st = tss:apply(style_base .. ".border", border_def.top_line.before .. border_def.top_line.content).text
-		st = st
-			.. styled_label.text
-			.. tss:apply(
-				style_base .. ".border",
-				string.rep(border_def.top_line.content, math.max(width - label_len - 1, 0)) .. border_def.top_line.after
-			).text
-		top_line = st
+		-- Calculate fill width: total = before(1) + content(1) + label + fill + after(1) = width + 2
+		-- So fill = width - label_len - 1 (we add 1 content char before label)
+		local fill_count = math.max(width - label_len - 1, 0)
+
+		-- Build complete top line: ╭─ label ────╮
+		-- Style border chars separately from label to preserve label styling
+		local before_label =
+			tss:apply(style_base .. ".border", border_def.top_line.before .. border_def.top_line.content).text
+		local after_label = tss:apply(
+			style_base .. ".border",
+			string.rep(border_def.top_line.content, fill_count) .. border_def.top_line.after
+		).text
+		top_line = before_label .. styled_label.text .. after_label
 	else
 		-- Build top line without label
 		local line_content = border_def.top_line.before
@@ -96,8 +115,10 @@ local render_bordered_content = function(tss, style_base, content, width, label,
 		local is_last = (i == #lines)
 		local is_empty = (line == "" or line:match("^%s*$"))
 		if not (is_last and is_empty) then
-			-- Calculate visual width and pad to fill inner width
+			-- Text-sizing is disabled inside divs, so no scale adjustment needed
 			local visual_len = std.utf.display_len(line)
+			-- Only add padding if content is narrower than inner_width
+			-- Don't truncate - ANSI codes make truncation complex and error-prone
 			local padding = math.max(0, inner_width - visual_len)
 			local padded = line .. string.rep(" ", padding)
 
@@ -541,7 +562,11 @@ local render_code_block = function(self)
 	end
 
 	-- Calculate block width (content width + border padding)
+	-- When inside a div, subtract 2 to account for code block's own borders
 	local block_width = self._width - indent
+	if #self._div_stack > 0 then
+		block_width = block_width - 2
+	end
 
 	-- Get padding from TSS
 	local _, code_obj = self._tss:get("code_block")
@@ -849,6 +874,19 @@ local handle_block_start = function(self, tag, attrs)
 			el_width = available_width
 		end
 
+		-- Save and disable heading text-sizing to prevent border misalignment
+		-- Text-sizing (OSC 66) causes display_len to return incorrect widths
+		local saved_heading_ts = {}
+		if self._tss.__style.heading then
+			for i = 1, 6 do
+				local key = "h" .. i
+				if self._tss.__style.heading[key] then
+					saved_heading_ts[key] = self._tss.__style.heading[key].ts
+					self._tss.__style.heading[key].ts = nil
+				end
+			end
+		end
+
 		local div_info = {
 			class = class,
 			depth = #self._div_stack + 1,
@@ -857,6 +895,7 @@ local handle_block_start = function(self, tag, attrs)
 			start_line = self._current_line,
 			el_width = el_width, -- Store calculated width for block_end
 			pad = pad_value, -- Store padding for block_end
+			saved_heading_ts = saved_heading_ts, -- Saved text-sizing to restore
 		}
 		table.insert(self._div_stack, div_info)
 		-- Create new buffer to capture div content
@@ -1028,6 +1067,15 @@ local handle_block_end = function(self, tag)
 			for _, fn in ipairs(self._elements.footnote_refs) do
 				if fn.line >= start_line and fn.line <= end_line and not fn.container then
 					fn.container = { start_line = start_line, end_line = end_line }
+				end
+			end
+
+			-- Restore heading text-sizing that was disabled for div content
+			if div_info.saved_heading_ts and self._tss.__style.heading then
+				for key, ts in pairs(div_info.saved_heading_ts) do
+					if self._tss.__style.heading[key] then
+						self._tss.__style.heading[key].ts = ts
+					end
 				end
 			end
 
