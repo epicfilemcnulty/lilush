@@ -83,6 +83,9 @@ local login_page = function(store, method, query, args, headers, body)
 	if method == "GET" then
 		return login_form, 200
 	end
+	if type(body) ~= "string" then
+		body = ""
+	end
 	local body_args = web.parse_args(body)
 	if login(store, headers["host"], body_args.login, body_args.password) then
 		local session_cookie = start_session(store, headers["host"], body_args.login, 10800) -- 3 hours TTL by default

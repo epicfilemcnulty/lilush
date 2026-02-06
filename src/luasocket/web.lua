@@ -485,6 +485,9 @@ end
 -- HTTP Server related stuff below
 local parse_args = function(body)
 	local args = {}
+	if type(body) ~= "string" or body == "" then
+		return args
+	end
 	for k, v in body:gmatch("([^=]+)=([^&]+)&?") do
 		local value = v:gsub("%+", " ") -- Bring back spaces!
 		value = url.unescape(value)

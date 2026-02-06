@@ -5,8 +5,8 @@ Author: Codex review pass
 
 ## Status
 
-- Current phase: `Phase 5` completed on `2026-02-06`.
-- Next phase: `Phase 6: RELIW Regression Test Suite`.
+- Current phase: `Phase 6` completed on `2026-02-06`.
+- Next phase: `Phase 7: RELIW Documentation Completion`.
 - Open blockers: none currently.
 
 ## Scope and Baseline
@@ -65,8 +65,8 @@ Assumptions (confirmed):
    - Impact: non-IPv4 children (metrics/ipv6) can become zombies under restart/failure timing.
    - Required fix: reaping loop for all children until target shutdown condition is met.
 
-8. Auth POST parser can error on empty/malformed request body.
-   - Evidence: `src/reliw/reliw/auth.lua:86` calls `web.parse_args(body)`; parser assumes non-nil body at `src/luasocket/web.lua:486-489`.
+8. Auth POST parser can error on empty/malformed request body. (Phase 6: fixed)
+   - Evidence: prior behavior called `web.parse_args(body)` without guarding non-string body values.
    - Impact: malformed login requests can cause runtime error.
    - Required fix: guard nil/empty body in auth handler and parser entry points.
 
@@ -101,11 +101,13 @@ Current state:
   - host/query validation and store path traversal blocking
 - Phase 4 added lifecycle test coverage for:
   - manager any-child wait loop and sibling-drain reaping behavior
+- Phase 6 added auth/parser hardening coverage for:
+  - malformed login POST bodies and parser entry-point tolerance
 - Full RELIW lifecycle/protocol/security coverage is still incomplete.
 
 Missing test categories:
 
-- Auth malformed body handling.
+- none currently identified for the tracked RELIW remediation phases.
 
 ## Implementation Plan (Phased)
 
@@ -319,6 +321,8 @@ Acceptance:
 
 Objective: complete durable automated coverage for remaining RELIW risk paths.
 
+Status: Completed on 2026-02-06.
+
 Changes:
 
 - Expand RELIW-focused tests under `tests/reliw/`:
@@ -333,6 +337,22 @@ Changes:
   - `test_manager_reaping.lua`
 - Add lightweight fixtures/mocks for Redis and upstream proxy behavior.
 - Integrate new tests into `run_all_tests.bash` flow.
+
+Implementation details (implemented):
+
+1. Auth malformed-body hardening
+   - `src/reliw/reliw/auth.lua`
+     - Guarded login POST body input (`type(body) == "string"` fallback) before parse.
+   - `src/luasocket/web.lua`
+     - Hardened `parse_args` entry point to return empty args table for nil/non-string/empty bodies.
+
+2. Regression coverage
+   - Added `tests/reliw/test_auth_malformed_body.lua`:
+     - verifies `web.parse_args` tolerates nil/non-string input and still parses valid form bodies.
+     - verifies `auth.login_page` with malformed POST body returns deterministic `401` without throwing.
+
+3. Default test-flow verification
+   - Confirmed RELIW regression tests are included by default via `run_all_tests.bash` (`tests/**/*.lua` glob), including the new auth malformed-body test.
 
 Acceptance:
 
@@ -443,6 +463,24 @@ Rollback guidance:
 - Prioritize runtime stability and predictable failure modes over legacy undefined behavior.
 
 ## Progress Log
+
+### 2026-02-06 — Phase 6 Implemented
+
+Status: Completed.
+
+Implemented fixes:
+
+- `src/reliw/reliw/auth.lua`
+  - Added malformed-body guard in login POST path so non-string bodies no longer trigger parser errors.
+- `src/luasocket/web.lua`
+  - Hardened `parse_args` to return empty args for nil/non-string/empty bodies.
+- `tests/reliw/test_auth_malformed_body.lua`
+  - Added regression coverage for parser tolerance and deterministic `401` auth behavior on malformed POST body.
+
+Validation completed:
+
+- `./lilush tests/reliw/test_auth_malformed_body.lua` passed.
+- `./run_all_tests.bash` passed.
 
 ### 2026-02-06 — Phase 5 Implemented
 
