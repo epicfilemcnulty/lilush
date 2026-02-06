@@ -284,8 +284,11 @@ local server_serve = function(self)
 
 	while true do
 		-- Do house keeping
-		for i = 1, server_fork_count do
+		while true do
 			local id = std.ps.waitpid(-1)
+			if not id or id <= 0 then
+				break
+			end
 			if server_forks[id] then
 				server_fork_count = server_fork_count - 1
 				server_forks[id] = nil

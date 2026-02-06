@@ -1052,7 +1052,7 @@ int deviant_waitpid(lua_State *L) {
     ret = waitpid(pid, &status, WNOHANG);
     if (ret >= 0) {
         lua_pushinteger(L, ret);
-        if (WIFEXITED(status)) {
+        if (ret > 0 && WIFEXITED(status)) {
             lua_pushinteger(L, WEXITSTATUS(status));
             return 2;
         }

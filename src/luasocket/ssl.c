@@ -109,10 +109,7 @@ static WOLFSSL_CTX *check_client_sni(p_ssl ssl, const unsigned char *buffer,
  */
 static int meth_destroy(lua_State *L) {
   p_ssl ssl = (p_ssl)luaL_checkudata(L, 1, "SSL:Connection");
-  if (ssl->state == LSEC_STATE_CONNECTED) {
-    socket_setblocking(&ssl->sock);
-    wolfSSL_shutdown(ssl->ssl);
-  }
+  /* Fast teardown: avoid blocking shutdown on peers that disconnect abruptly. */
   if (ssl->sock != SOCKET_INVALID) {
     socket_destroy(&ssl->sock);
   }
@@ -220,12 +217,14 @@ static int handshake(p_ssl ssl) {
       if (err != IO_DONE)
         return err;
       break;
-    case SSL_ERROR_SYSCALL:
+    case SSL_ERROR_SYSCALL: {
       if (err == 0)
         return IO_CLOSED;
-      ssl->error = SSL_ERROR_SSL;
-      return LSEC_IO_SSL;
-      /*return lsec_socket_error();*/
+      int sock_err = lsec_socket_error();
+      if (sock_err == 0)
+        return IO_CLOSED;
+      return sock_err;
+    }
     default:
       return LSEC_IO_SSL;
     }
@@ -264,10 +263,14 @@ static int ssl_send(void *ctx, const char *data, size_t count, size_t *sent,
       if (err != IO_DONE)
         return err;
       break;
-    case SSL_ERROR_SYSCALL:
+    case SSL_ERROR_SYSCALL: {
       if (err == 0)
         return IO_CLOSED;
-      return lsec_socket_error();
+      int sock_err = lsec_socket_error();
+      if (sock_err == 0)
+        return IO_CLOSED;
+      return sock_err;
+    }
     default:
       return LSEC_IO_SSL;
     }
@@ -308,10 +311,14 @@ static int ssl_recv(void *ctx, char *data, size_t count, size_t *got,
       if (err != IO_DONE)
         return err;
       break;
-    case SSL_ERROR_SYSCALL:
+    case SSL_ERROR_SYSCALL: {
       if (err == 0)
         return IO_CLOSED;
-      return lsec_socket_error();
+      int sock_err = lsec_socket_error();
+      if (sock_err == 0)
+        return IO_CLOSED;
+      return sock_err;
+    }
     default:
       return LSEC_IO_SSL;
     }
