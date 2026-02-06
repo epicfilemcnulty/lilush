@@ -22,6 +22,9 @@ RELIW will try to load `/etc/reliw/config.json` file if there is any.
     "ip": "127.0.0.1",
     "port": 8080,
     "data_dir": "/var/www",
+    "keepalive_idle_timeout": 15,
+    "request_header_timeout": 10,
+    "request_body_timeout": 30,
     "metrics": {
         "ip": "127.0.0.1",
         "port": 9101
@@ -36,6 +39,7 @@ RELIW will try to load `/etc/reliw/config.json` file if there is any.
 {
     "ip": "127.0.0.1",
     "port": 443,
+    "tls_handshake_timeout": 10,
     "ssl": {
         "default": { "cert": "/var/www/certs/example.com.crt", "key": "/var/www/certs/example.com.key" },
         "hosts": {
@@ -44,3 +48,12 @@ RELIW will try to load `/etc/reliw/config.json` file if there is any.
     }
 }
 ```
+
+### Connection timeout options
+
+The server supports phase-specific timeouts (all values are in seconds):
+
+- `keepalive_idle_timeout`: max idle time while waiting for the next request on a keep-alive connection (default: `15`)
+- `request_header_timeout`: max time to receive request headers after first request line was received (default: `10`)
+- `request_body_timeout`: max time to receive request body (default: `30`)
+- `tls_handshake_timeout`: max time allowed for TLS handshake (default: `10`)

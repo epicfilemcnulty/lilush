@@ -21,9 +21,9 @@ local read_chunked_body = function(client)
 	local body = {}
 	while true do
 		-- Read chunk size
-		local size_line = client:receive()
+		local size_line, err = client:receive()
 		if not size_line then
-			return nil, "connection closed"
+			return nil, err or "connection closed"
 		end
 
 		local chunk_size = tonumber(size_line:match("^%x+"), 16)
@@ -34,19 +34,25 @@ local read_chunked_body = function(client)
 		-- End of chunked data
 		if chunk_size == 0 then
 			-- Read final CRLF
-			client:receive()
+			local _, trailer_err = client:receive()
+			if trailer_err then
+				return nil, trailer_err
+			end
 			break
 		end
 
 		-- Read chunk data
-		local chunk = client:receive(chunk_size)
+		local chunk, chunk_err = client:receive(chunk_size)
 		if not chunk then
-			return nil, "connection closed"
+			return nil, chunk_err or "connection closed"
 		end
 		table.insert(body, chunk)
 
 		-- Read trailing CRLF
-		client:receive()
+		local _, crlf_err = client:receive()
+		if crlf_err then
+			return nil, crlf_err
+		end
 	end
 
 	return table.concat(body)
@@ -75,20 +81,41 @@ local server_process_request = function(self, client, client_ip, count)
 	local start_time = os.clock()
 	local lines = {}
 	local client_ip = client_ip or "n/a"
-	local line = ""
-	repeat
+	local line
+	local err
+
+	client:settimeout(self.__config.keepalive_idle_timeout)
+	line, err = client:receive()
+	if not line then
+		if err == "timeout" then
+			return nil, "keepalive timeout"
+		end
+		return nil, err
+	end
+	if #line > self.__config.request_line_limit then
+		premature_error(client, 413, "Header/request line too long\n")
+		return nil, "header line limit violation: " .. tostring(#line)
+	end
+	table.insert(lines, line)
+
+	client:settimeout(self.__config.request_header_timeout)
+	while true do
 		line, err = client:receive()
 		if not line then
+			if err == "timeout" then
+				return nil, "request header timeout"
+			end
 			return nil, err
 		end
-		if line ~= "" then
-			if #line > self.__config.request_line_limit then
-				premature_error(client, 413, "Header/request line too long\n")
-				return nil, "header line limit violation: " .. tostring(#line)
-			end
-			table.insert(lines, line)
+		if line == "" then
+			break
 		end
-	until line == ""
+		if #line > self.__config.request_line_limit then
+			premature_error(client, 413, "Header/request line too long\n")
+			return nil, "header line limit violation: " .. tostring(#line)
+		end
+		table.insert(lines, line)
+	end
 
 	if table.concat(lines):match("[\128-\255]") then
 		premature_error(client, 400, "Non ASCII characters in headers\n")
@@ -118,8 +145,12 @@ local server_process_request = function(self, client, client_ip, count)
 		end
 	end
 	if headers["transfer-encoding"] then
+		client:settimeout(self.__config.request_body_timeout)
 		body, err = read_chunked_body(client)
 		if err then
+			if err == "timeout" then
+				return nil, "request body timeout"
+			end
 			premature_error(client, 501, "handle transfer-encoding failed\n")
 			return nil, "failed to read chunked body: " .. err
 		end
@@ -134,8 +165,12 @@ local server_process_request = function(self, client, client_ip, count)
 			premature_error(client, 413, "A body too fat\n")
 			return nil, "max_body_size limit violation: " .. tostring(content_length)
 		end
+		client:settimeout(self.__config.request_body_timeout)
 		body, err = client:receive(content_length)
 		if err then
+			if err == "timeout" then
+				return nil, "request body timeout"
+			end
 			return nil, "failed to get request body: " .. err
 		end
 	end
@@ -260,66 +295,83 @@ local server_serve = function(self)
 		if not timeout then
 			if server_fork_count < self.__config.fork_limit then
 				local client, err = server:accept()
-				local pid = 1
-				pid = std.ps.fork()
-				if pid < 0 then
-					self.logger:log("failed to fork for request processing", "error")
-				end
+				if not client then
+					if err and err ~= "timeout" then
+						self.logger:log("accept failed: " .. tostring(err), "debug")
+					end
+				else
+					local pid = std.ps.fork()
+					if pid < 0 then
+						self.logger:log("failed to fork for request processing", "error")
+						client:close()
+					elseif pid > 0 then
+						server_forks[pid] = os.time()
+						server_fork_count = server_fork_count + 1
+						client:close()
+					else
+						server:close()
+						local client_ip = client:getpeername()
+						local count = 1
+						local ssl_client
+						local conn = client
 
-				if pid > 0 then
-					server_forks[pid] = os.time()
-					server_fork_count = server_fork_count + 1
-				end
+						if self.__config.ssl then
+							-- Use the pre-loaded default context
+							ssl_client, err = ssl.wrap(client, {
+								mode = "server",
+								ctx = self.__ssl_contexts.default,
+							})
 
-				if pid == 0 and client then
-					local client_ip = client:getpeername()
-					local count = 1
-					local ssl_client, err
-
-					if self.__config.ssl then
-						-- Use the pre-loaded default context
-						ssl_client, err = ssl.wrap(client, {
-							mode = "server",
-							ctx = self.__ssl_contexts.default,
-						})
-
-						if not ssl_client then
-							self.logger:log("failed to wrap client with SSL: " .. err, "error")
-							client:close()
-							os.exit(1)
-						end
-
-						-- Add pre-loaded SNI contexts
-						if self.__ssl_contexts.hosts then
-							for hostname, ctx in pairs(self.__ssl_contexts.hosts) do
-								ssl_client:add_sni_context(hostname, ctx)
+							if not ssl_client then
+								self.logger:log("failed to wrap client with SSL: " .. err, "error")
+								client:close()
+								os.exit(1)
 							end
-						end
 
-						local status, err = ssl_client:dohandshake()
-						if not status then
-							self.logger:log("SSL handshake failed: " .. err, "debug")
+							-- Add pre-loaded SNI contexts
+							if self.__ssl_contexts.hosts then
+								for hostname, ctx in pairs(self.__ssl_contexts.hosts) do
+									ssl_client:add_sni_context(hostname, ctx)
+								end
+							end
+
+							ssl_client:settimeout(self.__config.tls_handshake_timeout)
+							local status, hs_err = ssl_client:dohandshake()
+							if not status then
+								if hs_err == "timeout" then
+									self.logger:log("TLS handshake timeout", "debug")
+								else
+									self.logger:log("SSL handshake failed: " .. hs_err, "debug")
+								end
+								ssl_client:close()
+								os.exit(1)
+							end
+							conn = ssl_client
+						end
+						repeat
+							local state, req_err = self:process_request(conn, client_ip, count)
+							if req_err then
+								if req_err == "closed" then
+									self.logger:log("client closed connection", "debug")
+								elseif req_err == "keepalive timeout" then
+									self.logger:log("client keep-alive timeout", "debug")
+								elseif req_err == "request header timeout" then
+									self.logger:log("request header timeout", "debug")
+								elseif req_err == "request body timeout" then
+									self.logger:log("request body timeout", "debug")
+								else
+									self.logger:log(req_err, "debug")
+								end
+								state = "close"
+							end
+							count = count + 1
+						until state == "close" or count > self.__config.requests_per_fork
+						if ssl_client then
 							ssl_client:close()
-							os.exit(1)
 						end
+						client:close()
+						os.exit(0)
 					end
-					repeat
-						local state, err = self:process_request(ssl_client or client, client_ip, count)
-						if err then
-							if err == "closed" then
-								self.logger:log("client closed connection", "debug")
-							else
-								self.logger:log(err, "debug")
-							end
-							state = "close"
-						end
-						count = count + 1
-					until state == "close" or count > self.__config.requests_per_fork
-					if ssl_client then
-						ssl_client:close()
-					end
-					client:close()
-					os.exit(0)
 				end
 			else
 				self.logger:log("fork limit reached", "error")
@@ -408,6 +460,10 @@ local server_new = function(config, handle)
 			requests_per_fork = 512,
 			max_body_size = 1024 * 1024 * 5, -- 5 megabytes is plenty.
 			request_line_limit = 1024 * 8, -- 8Kb for the request line or a single header is HUGE! I'm too generous here.
+			keepalive_idle_timeout = 15,
+			request_header_timeout = 10,
+			request_body_timeout = 30,
+			tls_handshake_timeout = 10,
 			compression = {
 				enabled = true,
 				min_size = 4096, -- Do not compress files smaller than 4Kb
