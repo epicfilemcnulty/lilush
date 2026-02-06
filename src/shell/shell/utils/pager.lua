@@ -363,13 +363,13 @@ local pager_display_status_line = function(self)
 	local position = string.format("%.2f", position_pct) .. "%"
 
 	-- Top bar: file info + focused element hints + notifications
-	local top_status = tss:apply("status_line.filename", file)
-		.. tss:apply("status_line.total_lines", total_lines .. " lines")
-		.. tss:apply("status_line.size", kb_size)
+	local top_status = tss:apply("status_line.filename", file).text
+		.. tss:apply("status_line.total_lines", total_lines .. " lines").text
+		.. tss:apply("status_line.size", kb_size).text
 
 	-- Add notification or focused element hints to top bar (mutually exclusive)
 	if self.__notification then
-		top_status = top_status .. tss:apply("status_line.hint", self.__notification)
+		top_status = top_status .. tss:apply("status_line.hint", self.__notification).text
 	else
 		local focused = nil
 		if self.__navigation.focused_idx > 0 then
@@ -379,26 +379,27 @@ local pager_display_status_line = function(self)
 		if focused then
 			local hint = "'y' to copy"
 			if focused.type == "code_block" then
-				top_status = top_status .. tss:apply("status_line.codeblock", "codeblock")
+				top_status = top_status .. tss:apply("status_line.codeblock", "codeblock").text
 				if focused.lang then
-					top_status = top_status .. tss:apply("status_line.codeblock.lang", focused.lang)
+					top_status = top_status .. tss:apply("status_line.codeblock.lang", focused.lang).text
 				end
-				top_status = top_status .. tss:apply("status_line.hint", hint)
+				top_status = top_status .. tss:apply("status_line.hint", hint).text
 			elseif focused.type == "link" then
-				top_status = top_status .. tss:apply("status_line.url", focused.url)
-				top_status = top_status .. tss:apply("status_line.hint", hint)
+				top_status = top_status .. tss:apply("status_line.url", focused.url).text
+				top_status = top_status .. tss:apply("status_line.hint", hint).text
 			elseif focused.type == "footnote_ref" then
-				top_status = top_status .. tss:apply("status_line.hint", "'Enter' to jump to [" .. focused.label .. "]")
+				top_status = top_status
+					.. tss:apply("status_line.hint", "'Enter' to jump to [" .. focused.label .. "]").text
 			end
 		end
 	end
 
 	-- Bottom bar: position, render mode, search
-	local bottom_status = tss:apply("status_line.position", position)
-		.. tss:apply("status_line.render_mode", self.__config.render_mode)
+	local bottom_status = tss:apply("status_line.position", position).text
+		.. tss:apply("status_line.render_mode", self.__config.render_mode).text
 
 	if self.__search.pattern ~= "" then
-		bottom_status = bottom_status .. tss:apply("status_line.search.pattern", self.__search.pattern)
+		bottom_status = bottom_status .. tss:apply("status_line.search.pattern", self.__search.pattern).text
 	end
 
 	local y, _ = term.window_size()

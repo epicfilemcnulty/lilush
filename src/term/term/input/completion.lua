@@ -32,7 +32,7 @@ local get = function(self, promoted)
 			if promoted then
 				return variant
 			end
-			return tss:apply("default", variant)
+			return tss:apply("default", variant).text
 		end
 	end
 	return ""

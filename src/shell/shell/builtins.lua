@@ -39,6 +39,10 @@ local helpmsg = function(msg)
 	io.stderr:write(out)
 	io.stderr:flush()
 end
+
+local style_text = function(tss, ...)
+	return tss:apply(...).text
+end
 --[[ 
     DIR FUNCTIONS 
 ]]
@@ -103,11 +107,11 @@ render_dir = function(path, pattern, indent, args)
 			local user = sys_users[all_files[dir].uid].login
 			local group = sys_users[all_files[dir].gid].login
 			ext_attr:put(
-				tss:apply("builtins.ls.user", user),
+				style_text(tss, "builtins.ls.user", user),
 				":",
-				tss:apply("builtins.ls.group", group),
+				style_text(tss, "builtins.ls.group", group),
 				" ",
-				tss:apply("builtins.ls.atime", atime),
+				style_text(tss, "builtins.ls.atime", atime),
 				" "
 			)
 		end
@@ -118,16 +122,20 @@ render_dir = function(path, pattern, indent, args)
 			local spaces = (math.floor(indent / 4) - 1) * 4
 			local arrows = indent - spaces
 			ind = ind
-				.. tss:apply("builtins.ls.offset", string.rep(" ", spaces) .. "" .. string.rep("", arrows - 1))
+				.. style_text(
+					tss,
+					"builtins.ls.offset",
+					string.rep(" ", spaces) .. "" .. string.rep("", arrows - 1)
+				)
 		end
-		buf:put(ind, tss:apply("builtins.ls.dir", dir), string.rep(" ", alignment + 2))
+		buf:put(ind, style_text(tss, "builtins.ls.dir", dir), string.rep(" ", alignment + 2))
 		if not args.tree then
 			buf:put(
 				" ",
 				ext_attr:get(),
-				tss:apply("builtins.ls.perms", perms),
+				style_text(tss, "builtins.ls.perms", perms),
 				" ",
-				tss:apply("builtins.ls.size", std.conv.bytes_human(size))
+				style_text(tss, "builtins.ls.size", std.conv.bytes_human(size))
 			)
 		end
 		buf:put("\n")
@@ -160,16 +168,16 @@ render_dir = function(path, pattern, indent, args)
 			local user = sys_users[all_files[file].uid].login
 			local group = sys_users[all_files[file].gid].login
 			ext_attr:put(
-				tss:apply("builtins.ls.user", user),
+				style_text(tss, "builtins.ls.user", user),
 				":",
-				tss:apply("builtins.ls.group", group),
+				style_text(tss, "builtins.ls.group", group),
 				" ",
-				tss:apply("builtins.ls.atime", atime),
+				style_text(tss, "builtins.ls.atime", atime),
 				" "
 			)
 			if targets[file] then
 				link_target = " -> "
-				link_target = link_target .. tss:apply("builtins.ls.target", targets[file])
+				link_target = link_target .. style_text(tss, "builtins.ls.target", targets[file])
 				alignment = alignment - std.utf.len(targets[file]) - 4
 			end
 		end
@@ -178,20 +186,24 @@ render_dir = function(path, pattern, indent, args)
 			local spaces = (math.floor(indent / 4) - 1) * 4
 			local arrows = indent - spaces
 			ind = ind
-				.. tss:apply("builtins.ls.offset", string.rep(" ", spaces) .. "⦁" .. string.rep("", arrows - 1))
+				.. style_text(
+					tss,
+					"builtins.ls.offset",
+					string.rep(" ", spaces) .. "⦁" .. string.rep("", arrows - 1)
+				)
 		end
-		local prefix_and_name = tss:apply(prefixes[mode], file)
+		local prefix_and_name = style_text(tss, prefixes[mode], file)
 		if mode == "f" and perms:match("[75]") then
-			prefix_and_name = tss:apply("builtins.ls.exec", file)
+			prefix_and_name = style_text(tss, "builtins.ls.exec", file)
 		end
 		buf:put(ind, prefix_and_name, link_target, string.rep(" ", alignment + 2))
 		if not args.tree then
 			buf:put(
 				" ",
 				ext_attr:get(),
-				tss:apply("builtins.ls.perms", perms),
+				style_text(tss, "builtins.ls.perms", perms),
 				" ",
-				tss:apply("builtins.ls.size", std.conv.bytes_human(size))
+				style_text(tss, "builtins.ls.size", std.conv.bytes_human(size))
 			)
 		end
 		buf:put("\n")
@@ -650,7 +662,12 @@ local list_env = function(cmd, args)
 
 	local out = buffer.new()
 	for _, entry in ipairs(matched) do
-		out:put(tss:apply("builtins.envlist.var", entry), " ", tss:apply("builtins.envlist.value", env[entry]), "\n")
+		out:put(
+			style_text(tss, "builtins.envlist.var", entry),
+			" ",
+			style_text(tss, "builtins.envlist.value", env[entry]),
+			"\n"
+		)
 	end
 	term.write(out:get())
 	return 0
@@ -701,14 +718,14 @@ local render_dns_record = function(records)
 			end
 		end
 		out:put(
-			tss:apply("builtins.dig.name", rec[1]),
+			style_text(tss, "builtins.dig.name", rec[1]),
 			" ",
-			tss:apply("builtins.dig._in", "IN "),
-			tss:apply("builtins.dig._type", rec[4]),
+			style_text(tss, "builtins.dig._in", "IN "),
+			style_text(tss, "builtins.dig._type", rec[4]),
 			" ",
-			tss:apply("builtins.dig.content", content),
+			style_text(tss, "builtins.dig.content", content),
 			" ",
-			tss:apply("builtins.dig.ttl", rec[3]),
+			style_text(tss, "builtins.dig.ttl", rec[3]),
 			"\n"
 		)
 	end
@@ -766,8 +783,8 @@ local dig = function(cmd, args)
 		elseif dig.config.fallback == ns then
 			ns_type = "fallback"
 		end
-		local out = tss:apply("builtins.dig.ns", "NS: " .. ns)
-			.. tss:apply("builtins.dig.ns_type", " " .. ns_type)
+		local out = style_text(tss, "builtins.dig.ns", "NS: " .. ns)
+			.. style_text(tss, "builtins.dig.ns_type", " " .. ns_type)
 			.. "\n"
 			.. render_dns_record(records)
 		term.write(out)
@@ -780,24 +797,24 @@ local dig = function(cmd, args)
 			return 255
 		end
 		local out = "\n"
-			.. tss:apply("builtins.dig.query", "Asking ")
-			.. tss:apply("builtins.dig.root_ns", response.root_ns_name)
-			.. tss:apply("builtins.dig.answer", " who is in charge of ")
-			.. tss:apply("builtins.dig.tld", response.tld)
+			.. style_text(tss, "builtins.dig.query", "Asking ")
+			.. style_text(tss, "builtins.dig.root_ns", response.root_ns_name)
+			.. style_text(tss, "builtins.dig.answer", " who is in charge of ")
+			.. style_text(tss, "builtins.dig.tld", response.tld)
 			.. "\n\n"
-			.. tss:apply("builtins.dig.answer", "Got ")
-			.. tss:apply("builtins.dig.tld_ns", #response.tld_ns)
-			.. tss:apply("builtins.dig.answer", " servers, using ")
-			.. tss:apply("builtins.dig.tld_ns", response.tld_ns_name)
-			.. tss:apply("builtins.dig.answer", " to get NS for ")
-			.. tss:apply("builtins.dig.domain", domain)
+			.. style_text(tss, "builtins.dig.answer", "Got ")
+			.. style_text(tss, "builtins.dig.tld_ns", #response.tld_ns)
+			.. style_text(tss, "builtins.dig.answer", " servers, using ")
+			.. style_text(tss, "builtins.dig.tld_ns", response.tld_ns_name)
+			.. style_text(tss, "builtins.dig.answer", " to get NS for ")
+			.. style_text(tss, "builtins.dig.domain", domain)
 			.. "\n"
-			.. tss:apply("builtins.dig.answer", "Got ")
-			.. tss:apply("builtins.dig.domain_ns", #response.domain_ns)
-			.. tss:apply("builtins.dig.answer", " servers, asking ")
-			.. tss:apply("builtins.dig.domain_ns", response.domain_ns_name)
-			.. tss:apply("builtins.dig.answer", " for ")
-			.. tss:apply("builtins.dig.rtype", rtype)
+			.. style_text(tss, "builtins.dig.answer", "Got ")
+			.. style_text(tss, "builtins.dig.domain_ns", #response.domain_ns)
+			.. style_text(tss, "builtins.dig.answer", " servers, asking ")
+			.. style_text(tss, "builtins.dig.domain_ns", response.domain_ns_name)
+			.. style_text(tss, "builtins.dig.answer", " for ")
+			.. style_text(tss, "builtins.dig.rtype", rtype)
 			.. "\n\n"
 			.. render_dns_record(response.recs)
 		term.write(out)
@@ -1131,32 +1148,37 @@ local render_netstat = function(cmd, args)
 				end
 			end
 			out = out
-				.. tss:apply(
+				.. style_text(
+					tss,
 					"builtins.netstat.src",
 					conn.src .. string.rep(" ", 2 + longest.src - #conn.src) .. direction
 				)
-				.. tss:apply("builtins.netstat.dst", conn.dst .. string.rep(" ", 2 + longest.dst - #conn.dst))
-				.. tss:apply("builtins.netstat.state", "ESTABLISHED" .. string.rep(" ", 2 + longest.state - 11))
-				.. tss:apply("builtins.netstat.user", conn.user .. string.rep(" ", 2 + longest.user - #conn.user))
-				.. tss:apply("builtins.netstat.user", process)
+				.. style_text(tss, "builtins.netstat.dst", conn.dst .. string.rep(" ", 2 + longest.dst - #conn.dst))
+				.. style_text(tss, "builtins.netstat.state", "ESTABLISHED" .. string.rep(" ", 2 + longest.state - 11))
+				.. style_text(tss, "builtins.netstat.user", conn.user .. string.rep(" ", 2 + longest.user - #conn.user))
+				.. style_text(tss, "builtins.netstat.user", process)
 				.. "\n"
 		end
 	end
 	for i, conn in ipairs(other) do
 		local direction = " ⇢  "
 		out = out
-			.. tss:apply("builtins.netstat.src", conn.src .. string.rep(" ", 2 + longest.src - #conn.src) .. direction)
-			.. tss:apply("builtins.netstat.dst", conn.dst .. string.rep(" ", 2 + longest.dst - #conn.dst))
-			.. tss:apply("builtins.netstat.state", conn.state .. string.rep(" ", 2 + longest.state - #conn.state))
-			.. tss:apply("builtins.netstat.user", conn.user .. string.rep(" ", 2 + longest.user - #conn.user))
-			.. tss:apply("builtins.netstat.user", conn.process)
+			.. style_text(
+				tss,
+				"builtins.netstat.src",
+				conn.src .. string.rep(" ", 2 + longest.src - #conn.src) .. direction
+			)
+			.. style_text(tss, "builtins.netstat.dst", conn.dst .. string.rep(" ", 2 + longest.dst - #conn.dst))
+			.. style_text(tss, "builtins.netstat.state", conn.state .. string.rep(" ", 2 + longest.state - #conn.state))
+			.. style_text(tss, "builtins.netstat.user", conn.user .. string.rep(" ", 2 + longest.user - #conn.user))
+			.. style_text(tss, "builtins.netstat.user", conn.process)
 			.. "\n"
 	end
 	for src, conn in pairs(listen) do
 		out = out
-			.. tss:apply("builtins.netstat.src", src .. string.rep(" ", 2 + longest.src - #src + longest.dst + 6))
-			.. tss:apply("builtins.netstat.state", "LISTEN" .. string.rep(" ", 2 + longest.state - 6))
-			.. tss:apply("builtins.netstat.user", conn)
+			.. style_text(tss, "builtins.netstat.src", src .. string.rep(" ", 2 + longest.src - #src + longest.dst + 6))
+			.. style_text(tss, "builtins.netstat.state", "LISTEN" .. string.rep(" ", 2 + longest.state - 6))
+			.. style_text(tss, "builtins.netstat.user", conn)
 			.. "\n"
 	end
 	term.write(out)
@@ -1193,13 +1215,13 @@ local history = function(cmd, args)
 	end
 	local buf = buffer.new()
 	for _, entry in ipairs(entries) do
-		local date = tss:apply("builtins.history.date", os.date("%Y-%m-%d", entry.ts))
-		local time = tss:apply("builtins.history.time", os.date("%H:%M:%S", entry.ts))
+		local date = style_text(tss, "builtins.history.date", os.date("%Y-%m-%d", entry.ts))
+		local time = style_text(tss, "builtins.history.time", os.date("%H:%M:%S", entry.ts))
 		local duration = entry.d
 		local status = entry.exit
-		local cmd = tss:apply("builtins.history.cmd.ok", entry.cmd)
+		local cmd = style_text(tss, "builtins.history.cmd.ok", entry.cmd)
 		if status > 0 then
-			cmd = tss:apply("builtins.history.cmd.fail", entry.cmd)
+			cmd = style_text(tss, "builtins.history.cmd.fail", entry.cmd)
 		end
 		if args.short then
 			buf:put(cmd, "\n")
@@ -1240,7 +1262,9 @@ local wgcli = function(cmd, args)
 	local wg_info = utils.wg_info()
 	for net, info in pairs(wg_info) do
 		term.write(
-			tss:apply("builtins.wg.net.name", net) .. tss:apply("builtins.wg.net.pub_key", info.pub_key) .. "\n\n"
+			style_text(tss, "builtins.wg.net.name", net)
+				.. style_text(tss, "builtins.wg.net.pub_key", info.pub_key)
+				.. "\n\n"
 		)
 		for pub_key, peer in pairs(info.peers) do
 			local endpoint = "dynamic"
@@ -1248,8 +1272,8 @@ local wgcli = function(cmd, args)
 				endpoint = peer.endpoint.ip .. ":" .. peer.endpoint.port
 			end
 			term.write(
-				tss:apply("builtins.wg.endpoint.name", endpoint)
-					.. tss:apply("builtins.wg.endpoint.pub_key", pub_key)
+				style_text(tss, "builtins.wg.endpoint.name", endpoint)
+					.. style_text(tss, "builtins.wg.endpoint.pub_key", pub_key)
 					.. "\n"
 			)
 			local last_handshake = "never"
@@ -1257,15 +1281,18 @@ local wgcli = function(cmd, args)
 				last_handshake = std.conv.time_diff_human(peer.last_handshake) .. " ago"
 			end
 			term.write(
-				tss:apply("builtins.wg.endpoint.seen", "Last handshake: " .. last_handshake)
+				style_text(tss, "builtins.wg.endpoint.seen", "Last handshake: " .. last_handshake)
 					.. "\n"
-					.. tss:apply(
+					.. style_text(
+						tss,
 						"builtins.wg.endpoint.bytes",
 						"↓ " .. std.conv.bytes_human(peer.bytes.rx) .. " ↑ " .. std.conv.bytes_human(peer.bytes.tx)
 					)
 					.. "\n"
 			)
-			term.write(tss:apply("builtins.wg.endpoint.nets", "NETS: " .. table.concat(peer.nets, ", ")).text .. "\n\n")
+			term.write(
+				style_text(tss, "builtins.wg.endpoint.nets", "NETS: " .. table.concat(peer.nets, ", ")) .. "\n\n"
+			)
 		end
 		term.write("\n")
 	end

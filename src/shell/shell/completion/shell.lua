@@ -137,7 +137,7 @@ local get = function(self, promoted)
 				return variant
 			end
 			local metadata = self.__meta[self.__chosen]
-			return tss:apply(metadata.source, variant)
+			return tss:apply(metadata.source, variant).text
 		end
 	end
 	return ""

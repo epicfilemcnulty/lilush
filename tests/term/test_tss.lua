@@ -282,7 +282,7 @@ testify:that("apply aligns text left", function()
 	-- Set a reasonable window size for testing
 	tss.__window.w = 80
 	tss.__window.h = 24
-	local result = strip_ansi(tss:apply("test", "hi"))
+	local result = strip_ansi(tss:apply("test", "hi").text)
 
 	testimony.assert_equal(10, std.utf.len(result))
 	testimony.assert_match("^hi", result)
@@ -293,7 +293,7 @@ testify:that("apply aligns text right", function()
 	local tss = style.new(rss)
 	tss.__window.w = 80
 	tss.__window.h = 24
-	local result = strip_ansi(tss:apply("test", "hi"))
+	local result = strip_ansi(tss:apply("test", "hi").text)
 
 	testimony.assert_equal(10, std.utf.len(result))
 	testimony.assert_match("hi$", result)
@@ -304,7 +304,7 @@ testify:that("apply aligns text center", function()
 	local tss = style.new(rss)
 	tss.__window.w = 80
 	tss.__window.h = 24
-	local result = strip_ansi(tss:apply("test", "hi"))
+	local result = strip_ansi(tss:apply("test", "hi").text)
 
 	testimony.assert_equal(10, std.utf.len(result))
 	-- Should have spaces on both sides
@@ -320,7 +320,7 @@ testify:that("apply clips text when too long (auto-clip)", function()
 	local tss = style.new(rss)
 	tss.__window.w = 80
 	tss.__window.h = 24
-	local result = strip_ansi(tss:apply("test", "very long text"))
+	local result = strip_ansi(tss:apply("test", "very long text").text)
 
 	-- Should be clipped to width 5 with ellipsis
 	testimony.assert_equal(5, std.utf.len(result))
@@ -332,7 +332,7 @@ testify:that("apply respects explicit clip value", function()
 	local tss = style.new(rss)
 	tss.__window.w = 80
 	tss.__window.h = 24
-	local result = strip_ansi(tss:apply("test", "hello world"))
+	local result = strip_ansi(tss:apply("test", "hello world").text)
 
 	-- Should show first 2 chars, ellipsis, then last 7 chars (10 - 3)
 	testimony.assert_equal(10, std.utf.len(result))
@@ -342,7 +342,7 @@ end)
 testify:that("apply with clip=-1 disables clipping", function()
 	local rss = { test = { w = 5, clip = -1 } }
 	local tss = style.new(rss)
-	local result = strip_ansi(tss:apply("test", "longer text"))
+	local result = strip_ansi(tss:apply("test", "longer text").text)
 
 	-- Should NOT be clipped, but also won't be padded to width
 	testimony.assert_true(std.utf.len(result) > 5)
@@ -355,7 +355,7 @@ end)
 testify:that("apply uses content override when specified", function()
 	local rss = { test = { content = "OVERRIDE", clip = -1 } }
 	local tss = style.new(rss)
-	local result = strip_ansi(tss:apply("test", "original"))
+	local result = strip_ansi(tss:apply("test", "original").text)
 
 	testimony.assert_equal("OVERRIDE", result)
 end)
@@ -363,7 +363,7 @@ end)
 testify:that("apply adds before decorator", function()
 	local rss = { test = { before = "[", clip = -1 } }
 	local tss = style.new(rss)
-	local result = strip_ansi(tss:apply("test", "text"))
+	local result = strip_ansi(tss:apply("test", "text").text)
 
 	testimony.assert_equal("[text", result)
 end)
@@ -371,7 +371,7 @@ end)
 testify:that("apply adds after decorator", function()
 	local rss = { test = { after = "]", clip = -1 } }
 	local tss = style.new(rss)
-	local result = strip_ansi(tss:apply("test", "text"))
+	local result = strip_ansi(tss:apply("test", "text").text)
 
 	testimony.assert_equal("text]", result)
 end)
@@ -379,7 +379,7 @@ end)
 testify:that("apply adds both before and after decorators", function()
 	local rss = { test = { before = "[", after = "]", clip = -1 } }
 	local tss = style.new(rss)
-	local result = strip_ansi(tss:apply("test", "text"))
+	local result = strip_ansi(tss:apply("test", "text").text)
 
 	testimony.assert_equal("[text]", result)
 end)
@@ -393,7 +393,7 @@ testify:that("apply fills content to width when fill is true", function()
 	local tss = style.new(rss)
 	tss.__window.w = 80
 	tss.__window.h = 24
-	local result = strip_ansi(tss:apply("test", "ignored"))
+	local result = strip_ansi(tss:apply("test", "ignored").text)
 
 	testimony.assert_equal(10, std.utf.len(result))
 	testimony.assert_equal("----------", result)
@@ -404,7 +404,7 @@ testify:that("apply fills multi-char content", function()
 	local tss = style.new(rss)
 	tss.__window.w = 80
 	tss.__window.h = 24
-	local result = strip_ansi(tss:apply("test", "ignored"))
+	local result = strip_ansi(tss:apply("test", "ignored").text)
 
 	-- Should repeat "ab" and clip to exactly 10 chars
 	testimony.assert_equal(10, std.utf.len(result))
@@ -418,7 +418,7 @@ end)
 testify:that("apply adds text_indent indentation", function()
 	local rss = { test = { text_indent = 4 } }
 	local tss = style.new(rss)
-	local result = strip_ansi(tss:apply("test", "text"))
+	local result = strip_ansi(tss:apply("test", "text").text)
 
 	testimony.assert_match("^    text", result)
 end)
@@ -428,7 +428,7 @@ testify:that("apply combines text_indent with width and alignment", function()
 	local tss = style.new(rss)
 	tss.__window.w = 80
 	tss.__window.h = 24
-	local result = strip_ansi(tss:apply("test", "hi"))
+	local result = strip_ansi(tss:apply("test", "hi").text)
 
 	-- text_indent adds 2 spaces to text, making it "  hi" (4 chars)
 	-- Then it gets padded to width 10, so total is 10 chars
@@ -439,7 +439,7 @@ end)
 testify:that("apply ignores block_indent", function()
 	local rss = { test = { block_indent = 4 } }
 	local tss = style.new(rss)
-	local result = strip_ansi(tss:apply("test", "text"))
+	local result = strip_ansi(tss:apply("test", "text").text)
 
 	testimony.assert_equal("text", result)
 end)
@@ -447,7 +447,7 @@ end)
 testify:that("apply ignores legacy indent property", function()
 	local rss = { test = { indent = 4 } }
 	local tss = style.new(rss)
-	local result = strip_ansi(tss:apply("test", "text"))
+	local result = strip_ansi(tss:apply("test", "text").text)
 
 	testimony.assert_equal("text", result)
 end)
@@ -465,7 +465,7 @@ testify:that("apply clips to available window width even when props.w is larger"
 	tss.__window.h = 24
 
 	-- Simulate a position that leaves little room (position 75, so only 5 columns left)
-	local result = strip_ansi(tss:apply("test", "short text", 75))
+	local result = strip_ansi(tss:apply("test", "short text", 75).text)
 
 	-- Should be clipped to fit in remaining 5 columns
 	testimony.assert_true(std.utf.len(result) <= 5)
@@ -492,7 +492,7 @@ testify:that("apply handles complex nested styles", function()
 	local tss = style.new(rss)
 	tss.__window.w = 80
 	tss.__window.h = 24
-	local result = strip_ansi(tss:apply("border.top", "ignored"))
+	local result = strip_ansi(tss:apply("border.top", "ignored").text)
 
 	-- Should be: ╭ + 20 dashes + ╮
 	testimony.assert_equal(22, std.utf.len(result))
@@ -513,18 +513,18 @@ testify:that("apply with multiple element paths", function()
 	local result = tss:apply({ "base", "highlight" }, "text")
 
 	-- Should have ANSI codes (we can't easily test exact codes, but it shouldn't be plain text)
-	testimony.assert_true(result ~= "text")
-	testimony.assert_match("text", result)
+	testimony.assert_true(result.text ~= "text")
+	testimony.assert_match("text", result.text)
 end)
 
 testify:that("apply converts non-string content to string", function()
 	local rss = { clip = -1 }
 	local tss = style.new(rss)
 
-	local result = strip_ansi(tss:apply("", 42))
+	local result = strip_ansi(tss:apply("", 42).text)
 	testimony.assert_equal("42", result)
 
-	result = strip_ansi(tss:apply("", true))
+	result = strip_ansi(tss:apply("", true).text)
 	testimony.assert_equal("true", result)
 end)
 
@@ -538,7 +538,7 @@ testify:that("apply with ts=nil produces no text sizing escape", function()
 	local result = tss:apply("test", "hello")
 
 	-- Should not contain OSC 66 escape sequence
-	testimony.assert_false(result:match("\027%]66;"))
+	testimony.assert_false(result.text:match("\027%]66;"))
 end)
 
 testify:that("apply with ts preset string generates escape sequence", function()
@@ -547,8 +547,8 @@ testify:that("apply with ts preset string generates escape sequence", function()
 	local result = tss:apply("test", "hello")
 
 	-- Should contain OSC 66 with s=2
-	testimony.assert_true(result:match("\027%]66;"))
-	testimony.assert_true(result:match("s=2"))
+	testimony.assert_true(result.text:match("\027%]66;"))
+	testimony.assert_true(result.text:match("s=2"))
 end)
 
 testify:that("apply ignores ts when supports_ts is false", function()
@@ -556,7 +556,7 @@ testify:that("apply ignores ts when supports_ts is false", function()
 	local tss = style.new(rss, { supports_ts = false })
 	local result = tss:apply("test", "hello")
 
-	testimony.assert_false(result:match("\027%]66;"))
+	testimony.assert_false(result.text:match("\027%]66;"))
 	testimony.assert_equal(5, result.width)
 	testimony.assert_equal(1, result.height)
 end)
@@ -583,8 +583,8 @@ testify:that("apply with ts table generates correct escape sequence", function()
 	local result = tss:apply("test", "text")
 
 	-- Should contain s=3 and v=2
-	testimony.assert_true(result:match("s=3"))
-	testimony.assert_true(result:match("v=2"))
+	testimony.assert_true(result.text:match("s=3"))
+	testimony.assert_true(result.text:match("v=2"))
 end)
 
 testify:that("ts with fractional scaling generates correct metadata", function()
@@ -593,9 +593,9 @@ testify:that("ts with fractional scaling generates correct metadata", function()
 	local result = tss:apply("test", "text")
 
 	-- Should contain all three parameters
-	testimony.assert_true(result:match("s=2"))
-	testimony.assert_true(result:match("n=1"))
-	testimony.assert_true(result:match("d=2"))
+	testimony.assert_true(result.text:match("s=2"))
+	testimony.assert_true(result.text:match("n=1"))
+	testimony.assert_true(result.text:match("d=2"))
 end)
 
 testify:that("ts with invalid fractional scaling (d <= n) ignores n and d", function()
@@ -604,9 +604,9 @@ testify:that("ts with invalid fractional scaling (d <= n) ignores n and d", func
 	local result = tss:apply("test", "text")
 
 	-- Should contain s=2 but not n or d
-	testimony.assert_true(result:match("s=2"))
-	testimony.assert_false(result:match("n="))
-	testimony.assert_false(result:match("d="))
+	testimony.assert_true(result.text:match("s=2"))
+	testimony.assert_false(result.text:match("n="))
+	testimony.assert_false(result.text:match("d="))
 end)
 
 testify:that("ts preset 'superscript' resolves correctly", function()
@@ -615,9 +615,9 @@ testify:that("ts preset 'superscript' resolves correctly", function()
 	local result = tss:apply("test", "2")
 
 	-- Superscript: n=1, d=2, v=0
-	testimony.assert_true(result:match("n=1"))
-	testimony.assert_true(result:match("d=2"))
-	testimony.assert_true(result:match("v=0"))
+	testimony.assert_true(result.text:match("n=1"))
+	testimony.assert_true(result.text:match("d=2"))
+	testimony.assert_true(result.text:match("v=0"))
 end)
 
 testify:that("ts preset 'subscript' resolves correctly", function()
@@ -626,9 +626,9 @@ testify:that("ts preset 'subscript' resolves correctly", function()
 	local result = tss:apply("test", "2")
 
 	-- Subscript: n=1, d=2, v=1
-	testimony.assert_true(result:match("n=1"))
-	testimony.assert_true(result:match("d=2"))
-	testimony.assert_true(result:match("v=1"))
+	testimony.assert_true(result.text:match("n=1"))
+	testimony.assert_true(result.text:match("d=2"))
+	testimony.assert_true(result.text:match("v=1"))
 end)
 
 testify:that("ts does NOT cascade from parent to child", function()
@@ -642,7 +642,7 @@ testify:that("ts does NOT cascade from parent to child", function()
 	local result = tss:apply("parent.child", "text")
 
 	-- Child should NOT inherit ts from parent
-	testimony.assert_false(result:match("\027%]66;"))
+	testimony.assert_false(result.text:match("\027%]66;"))
 end)
 
 testify:that("child ts completely overrides parent ts", function()
@@ -656,8 +656,8 @@ testify:that("child ts completely overrides parent ts", function()
 	local result = tss:apply("parent.child", "text")
 
 	-- Should have s=3 (triple), not s=2 (double)
-	testimony.assert_true(result:match("s=3"))
-	testimony.assert_false(result:match("s=2"))
+	testimony.assert_true(result.text:match("s=3"))
+	testimony.assert_false(result.text:match("s=2"))
 end)
 
 testify:that("ts with string alignment values converts to numbers", function()
@@ -666,8 +666,8 @@ testify:that("ts with string alignment values converts to numbers", function()
 	local result = tss:apply("test", "text")
 
 	-- center=2, right=1
-	testimony.assert_true(result:match("v=2"))
-	testimony.assert_true(result:match("h=1"))
+	testimony.assert_true(result.text:match("v=2"))
+	testimony.assert_true(result.text:match("h=1"))
 end)
 
 testify:that("ts with invalid scale value is ignored", function()
@@ -676,7 +676,7 @@ testify:that("ts with invalid scale value is ignored", function()
 	local result = tss:apply("test", "text")
 
 	-- Should not generate escape sequence
-	testimony.assert_false(result:match("\027%]66;"))
+	testimony.assert_false(result.text:match("\027%]66;"))
 end)
 
 testify:that("ts with empty text does not generate escape sequence", function()
@@ -685,7 +685,7 @@ testify:that("ts with empty text does not generate escape sequence", function()
 	local result = tss:apply("test", "")
 
 	-- Should not contain text sizing escape for empty content
-	testimony.assert_false(result:match("\027%]66;"))
+	testimony.assert_false(result.text:match("\027%]66;"))
 end)
 
 testify:that("ts decorators (before/after) are inside escape sequence", function()
@@ -696,7 +696,7 @@ testify:that("ts decorators (before/after) are inside escape sequence", function
 	-- Decorators should be INSIDE the OSC 66 escape (both styled AND scaled)
 	-- Format: ... OSC 66 ; params ; [text] ST ...
 	-- Extract the text content from inside the OSC 66 sequence
-	local text_content = result:match("\027%]66;[^;]*;([^\027]*)\027\\")
+	local text_content = result.text:match("\027%]66;[^;]*;([^\027]*)\027\\")
 
 	-- The OSC 66 sequence should exist
 	testimony.assert_not_nil(text_content)
@@ -721,7 +721,7 @@ testify:that("ts with unknown preset string is ignored", function()
 	local result = tss:apply("test", "text")
 
 	-- Should not generate escape sequence
-	testimony.assert_false(result:match("\027%]66;"))
+	testimony.assert_false(result.text:match("\027%]66;"))
 end)
 
 testify:that("ts width parameter generates w= in metadata", function()
@@ -729,7 +729,7 @@ testify:that("ts width parameter generates w= in metadata", function()
 	local tss = style.new(rss)
 	local result = tss:apply("test", "text")
 
-	testimony.assert_true(result:match("w=3"))
+	testimony.assert_true(result.text:match("w=3"))
 end)
 
 testify:that("get_property retrieves ts configuration", function()
@@ -831,28 +831,26 @@ testify:that("apply result width includes decorators", function()
 	testimony.assert_equal(3, result.width)
 end)
 
-testify:that("apply result supports string coercion via tostring", function()
+testify:that("apply result tostring is standard table representation", function()
 	local rss = { test = { fg = 123 } }
 	local tss = style.new(rss)
 	local result = tss:apply("test", "hello")
 
-	-- tostring should return the text
+	-- tostring should not coerce to styled text.
 	local str = tostring(result)
 	testimony.assert_true(type(str) == "string")
-	testimony.assert_true(str:find("hello") ~= nil)
+	testimony.assert_true(str:find("^table:") ~= nil)
 end)
 
-testify:that("apply result supports string concatenation", function()
+testify:that("apply result does not support string concatenation", function()
 	local rss = { test = { fg = 123 } }
 	local tss = style.new(rss)
 	local result = tss:apply("test", "world")
 
-	-- Concatenation should work
-	local combined = "hello " .. result
-	testimony.assert_true(type(combined) == "string")
-	-- The styled text contains ANSI codes, so we check for both parts separately
-	testimony.assert_true(combined:find("hello ") ~= nil)
-	testimony.assert_true(combined:find("world") ~= nil)
+	local ok = pcall(function()
+		return "hello " .. result
+	end)
+	testimony.assert_false(ok)
 end)
 
 testify:that("apply result text contains styled content", function()

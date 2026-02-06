@@ -93,8 +93,8 @@ local alias = function(self, cmd, args)
 			local out = ""
 			tss:set_property("builtins.alias.name", "w", std.tbl.longest(sorted))
 			for _, entry in ipairs(sorted) do
-				out = out .. tss:apply("builtins.alias.name", entry)
-				out = out .. tss:apply("builtins.alias.value", self.aliases[entry]) .. "\n"
+				out = out .. tss:apply("builtins.alias.name", entry).text
+				out = out .. tss:apply("builtins.alias.value", self.aliases[entry]).text .. "\n"
 			end
 			term.write(out)
 		elseif #args > 1 then

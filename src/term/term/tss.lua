@@ -213,32 +213,6 @@ local get = function(self, el, base_props)
 	return props, obj
 end
 
--- Metatable for apply() result that allows string coercion and method delegation.
--- This enables gradual migration: callers that concatenate, print, or call string
--- methods on the result directly will still work, while new code can access .text,
--- .height, and .width explicitly.
--- TODO: Remove these compatibility shims once all callers are migrated to use result.text
-local apply_result_mt = {
-	__tostring = function(self)
-		return self.text
-	end,
-	__concat = function(a, b)
-		local a_str = type(a) == "table" and a.text or tostring(a)
-		local b_str = type(b) == "table" and b.text or tostring(b)
-		return a_str .. b_str
-	end,
-	-- Delegate string methods (match, find, gsub, sub, etc.) to the text field
-	__index = function(self, key)
-		local str_method = string[key]
-		if str_method then
-			return function(_, ...)
-				return str_method(self.text, ...)
-			end
-		end
-		return nil
-	end,
-}
-
 local apply = function(self, elements, content, position)
 	local position = position or 0
 	local all = {}
@@ -355,11 +329,11 @@ local apply = function(self, elements, content, position)
 		styled_text = term.style(unpack(props.s)) .. term.color(props.fg, props.bg) .. text .. term.style("reset")
 	end
 
-	return setmetatable({
+	return {
 		text = styled_text,
 		height = final_height,
 		width = final_width,
-	}, apply_result_mt)
+	}
 end
 
 local set_property = function(self, path, property, value)
@@ -387,12 +361,12 @@ end
 
 --[[
   Apply styling and text-sizing to content with inline style ranges.
-  
+
   This function handles the case where content has inline formatting (bold, italic,
   links, etc.) that needs to be combined with text-sizing (scaled text). The key
   challenge is that text-sizing chunks text by display width, and we need to apply
   inline styles correctly within each chunk.
-  
+
   Parameters:
     self: TSS object
     base_elements: base style elements (e.g., {"heading", "heading.h1"})
@@ -404,7 +378,7 @@ end
       }
     }
     position: cursor position for width calculations (optional)
-  
+
   Returns:
     result table with .text, .height, .width (same as apply())
 ]]
@@ -755,11 +729,11 @@ local apply_sized = function(self, base_elements, content, position)
 	local final_width = std.utf.cell_len(final_text)
 	final_height = std.utf.cell_height(final_text)
 
-	return setmetatable({
+	return {
 		text = final_text,
 		height = final_height,
 		width = final_width,
-	}, apply_result_mt)
+	}
 end
 
 local new

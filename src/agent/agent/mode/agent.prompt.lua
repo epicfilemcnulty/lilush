@@ -17,6 +17,9 @@ local style = require("term.tss")
 local theme = require("agent.theme")
 
 local tss = style.new(theme)
+local style_text = function(ctx, ...)
+	return ctx:apply(...).text
+end
 
 -- Format token count for display (e.g., 1234 -> "1.2k")
 local function format_tokens(count)
@@ -79,15 +82,15 @@ local get = function(self)
 	local buf = buffer.new()
 
 	-- Mode indicator: [agent:model]
-	buf:put(tss:apply("prompts.agent.mode.prefix"))
-	buf:put(tss:apply("prompts.agent.mode.label"))
+	buf:put(style_text(tss, "prompts.agent.mode.prefix"))
+	buf:put(style_text(tss, "prompts.agent.mode.label"))
 
 	if self.model then
-		buf:put(tss:apply("prompts.agent.sep", ":"))
-		buf:put(tss:apply("prompts.agent.mode.model", short_model_name(self.model)))
+		buf:put(style_text(tss, "prompts.agent.sep", ":"))
+		buf:put(style_text(tss, "prompts.agent.mode.model", short_model_name(self.model)))
 	end
 
-	buf:put(tss:apply("prompts.agent.mode.suffix"))
+	buf:put(style_text(tss, "prompts.agent.mode.suffix"))
 
 	-- Working directory
 	local cwd = std.fs.cwd() or "?"
@@ -95,12 +98,12 @@ local get = function(self)
 	cwd = cwd:gsub("^" .. std.escape_magic_chars(home), "~")
 
 	buf:put(" ")
-	buf:put(tss:apply("prompts.agent.dir", cwd))
+	buf:put(style_text(tss, "prompts.agent.dir", cwd))
 
 	-- Token count and cost
 	if self.tokens and self.tokens > 0 then
 		buf:put(" ")
-		buf:put(tss:apply("prompts.agent.tokens.prefix"))
+		buf:put(style_text(tss, "prompts.agent.tokens.prefix"))
 
 		-- Color based on usage percentage
 		local token_style = "prompts.agent.tokens.count"
@@ -113,36 +116,36 @@ local get = function(self)
 			end
 		end
 
-		buf:put(tss:apply(token_style, format_tokens(self.tokens)))
-		buf:put(tss:apply("prompts.agent.tokens.unit"))
+		buf:put(style_text(tss, token_style, format_tokens(self.tokens)))
+		buf:put(style_text(tss, "prompts.agent.tokens.unit"))
 
 		-- Show cost if available
 		if self.cost and self.cost > 0 then
 			local pricing = require("llm.pricing")
-			buf:put(tss:apply("prompts.agent.cost.prefix"))
-			buf:put(tss:apply("prompts.agent.cost.amount", pricing.format_cost(self.cost)))
+			buf:put(style_text(tss, "prompts.agent.cost.prefix"))
+			buf:put(style_text(tss, "prompts.agent.cost.amount", pricing.format_cost(self.cost)))
 		end
 
-		buf:put(tss:apply("prompts.agent.tokens.suffix"))
+		buf:put(style_text(tss, "prompts.agent.tokens.suffix"))
 	end
 
 	-- Status indicator
 	if self.status then
 		buf:put(" ")
 		local status_style = "prompts.agent.status." .. self.status
-		buf:put(tss:apply(status_style))
+		buf:put(style_text(tss, status_style))
 	end
 
 	-- Multi-line indicator
 	if self.lines and self.lines > 1 then
-		buf:put(tss:apply("prompts.agent.sep", "["))
-		buf:put(tss:apply("prompts.agent.sep", tostring(self.line or 1)))
-		buf:put(tss:apply("prompts.agent.sep", "]"))
+		buf:put(style_text(tss, "prompts.agent.sep", "["))
+		buf:put(style_text(tss, "prompts.agent.sep", tostring(self.line or 1)))
+		buf:put(style_text(tss, "prompts.agent.sep", "]"))
 	end
 
 	-- Cursor (on same line as prompt info)
 	buf:put(" ")
-	buf:put(tss:apply("prompts.agent.cursor"))
+	buf:put(style_text(tss, "prompts.agent.cursor"))
 
 	return buf:get()
 end

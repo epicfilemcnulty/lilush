@@ -120,8 +120,7 @@ TSS object methods:
 - `width`: terminal cell width of rendered output
 - `height`: terminal cell height of rendered output
 
-The result can also be string-coerced for compatibility, but new code should use
-`.text`, `.width`, `.height` explicitly.
+Use `.text`, `.width`, and `.height` explicitly.
 
 ## Renderer-Specific Style Fields
 
