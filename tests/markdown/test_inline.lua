@@ -567,7 +567,9 @@ end)
 testify:that("parses footnote reference", function()
 	local evts = {}
 	local parser = inline.new({
-		emit = function(e) evts[#evts + 1] = e end,
+		emit = function(e)
+			evts[#evts + 1] = e
+		end,
 		footnote_tracker = { used = {} },
 	})
 	parser:parse("text[^1] more")
@@ -580,7 +582,9 @@ testify:that("footnote reference after exclamation mark", function()
 	-- This was a bug: ![^1] was being parsed as image open, not ! + footnote
 	local evts = {}
 	local parser = inline.new({
-		emit = function(e) evts[#evts + 1] = e end,
+		emit = function(e)
+			evts[#evts + 1] = e
+		end,
 		footnote_tracker = { used = {} },
 	})
 	parser:parse("text![^1]")
@@ -594,7 +598,9 @@ end)
 testify:that("footnote reference with alpha label", function()
 	local evts = {}
 	local parser = inline.new({
-		emit = function(e) evts[#evts + 1] = e end,
+		emit = function(e)
+			evts[#evts + 1] = e
+		end,
 		footnote_tracker = { used = {} },
 	})
 	parser:parse("[^note]")
@@ -606,7 +612,9 @@ end)
 testify:that("footnote reference label is normalized to lowercase", function()
 	local evts = {}
 	local parser = inline.new({
-		emit = function(e) evts[#evts + 1] = e end,
+		emit = function(e)
+			evts[#evts + 1] = e
+		end,
 		footnote_tracker = { used = {} },
 	})
 	parser:parse("[^NOTE]")

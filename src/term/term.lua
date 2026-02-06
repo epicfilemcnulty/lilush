@@ -609,6 +609,33 @@ local has_ts = function()
 		return false -- No support
 	end
 end
+
+--[[
+ `has_ts_combined` checks how terminals handle combined s+w metadata.
+
+ IMPORTANT: This function must be called while terminal is in raw mode.
+
+ It sends OSC66 with both s and w and inspects cursor advance:
+ - 4 cells advance for "s=2:w=2; " => combined semantics (s * w)
+ - 2 cells advance => width-only semantics (w)
+]]
+local has_ts_combined = function()
+	write("\r")
+	local l1, c1 = cursor_position()
+	if not l1 or not c1 then
+		return false
+	end
+
+	write("\027]66;s=2:w=2; \027\\")
+	local l2, c2 = cursor_position()
+	write("\r")
+
+	if not l2 or not c2 then
+		return false
+	end
+
+	return (c2 - c1) == 4
+end
 --[[
     kkbp has progressive enhancements, which are encoded as a bitfield enum:
 
@@ -1081,6 +1108,7 @@ local _M = {
 	text_size = text_size,
 	text_size_chunks = text_size_chunks,
 	has_ts = has_ts,
+	has_ts_combined = has_ts_combined,
 	ts_presets = ts_presets,
 }
 

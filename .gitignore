@@ -1,5 +1,9 @@
 Dockerfile
 CLAUDE.md
+AGENTS.md
+packages.json
+bun.lock
+node_modules/
 lilush
 *.o
 *.a

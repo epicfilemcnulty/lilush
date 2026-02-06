@@ -45,42 +45,45 @@ local default_rss = {
 	},
 }
 
-local draw_top_border = function(self)
+local draw_top_border = function(self, tss_ctx)
+	local tss_ctx = tss_ctx or self.tss
 	term.go(self.l, self.c)
-	term.write(self.tss:apply("borders.top_line", nil, self.c).text)
+	term.write(tss_ctx:apply("borders.top_line", nil, self.c).text)
 	if self.label then
 		term.go(self.l, self.c + 1)
-		term.write(self.tss:apply("borders.label", self.label, self.c + 1).text)
+		term.write(tss_ctx:apply("borders.label", self.label, self.c + 1).text)
 	end
 end
 
 local draw_borders = function(self)
 	local height = self.h + 2
-	self.tss.__style.w = self.w
-	self.tss.__style.borders.w = self.w + 2
+	local border_tss = self.tss:scope({
+		w = self.w,
+		borders = { w = self.w + 2 },
+	})
 
-	self:draw_top_border()
+	self:draw_top_border(border_tss)
 	local offset = 1
 	if self.title ~= "" then
 		height = height + 2
 		term.go(self.l + 1, self.c)
 		term.write(
-			self.tss:apply("borders.v", nil, self.c).text
-				.. self.tss:apply("title", self.title, self.c + 1).text
-				.. self.tss:apply("borders.v", nil, self.c + std.utf.len(self.title) + 1).text
+			border_tss:apply("borders.v", nil, self.c).text
+				.. border_tss:apply("title", self.title, self.c + 1).text
+				.. border_tss:apply("borders.v", nil, self.c + std.utf.len(self.title) + 1).text
 		)
 		term.go(self.l + 2, self.c)
-		term.write(self.tss:apply("borders.subtitle_line", nil, self.c).text)
+		term.write(border_tss:apply("borders.subtitle_line", nil, self.c).text)
 		offset = 2
 	end
 	for i = 1, height - offset - 2 do
 		term.go(self.l + offset + i, self.c)
-		term.write(self.tss:apply("borders.v", nil, self.c).text)
+		term.write(border_tss:apply("borders.v", nil, self.c).text)
 		term.go(self.l + offset + i, self.c + self.w + 1)
-		term.write(self.tss:apply("borders.v", nil, self.c + self.w).text)
+		term.write(border_tss:apply("borders.v", nil, self.c + self.w).text)
 	end
 	term.go(self.l + height - 1, self.c)
-	term.write(self.tss:apply("borders.bottom_line", nil, self.c).text)
+	term.write(border_tss:apply("borders.bottom_line", nil, self.c).text)
 end
 
 local init = function(self)
@@ -292,8 +295,8 @@ local form = function(content, opts)
 	w.meta = opts.meta
 	w:init()
 	w:draw_borders()
-	w.tss.__style.form.input.w = max_input + 2
-	w.tss.__style.form.label.w = max_label + 1
+	w.tss:set_property("form.input", "w", max_input + 2)
+	w.tss:set_property("form.label", "w", max_label + 1)
 
 	for i, field in ipairs(w.content) do
 		w:render_form_field(i)
@@ -319,12 +322,14 @@ local form = function(content, opts)
 			local display_label = w.tss:apply("form.label", label)
 			local y = w.l + w.content_start + w.idx - 1
 			local x = w.c + 1 + display_label.width
+			local form_rss = std.tbl.copy(w.tss.__style.form or {})
+			form_rss.input = form_rss.input or {}
 			if w.meta[label] and w.meta[label].secret then
-				w.tss.__style.form.input.content = "*"
+				form_rss.input.content = "*"
 			else
-				w.tss.__style.form.input.content = nil
+				form_rss.input.content = nil
 			end
-			local buf = input.new({ l = y, c = x, width = w.w - display_label.width - 1, rss = w.tss.__style.form })
+			local buf = input.new({ l = y, c = x, width = w.w - display_label.width - 1, rss = form_rss })
 			w:goto_field(w.idx, true)
 			term.show_cursor()
 			buf:display()
@@ -390,7 +395,7 @@ local file_chooser = function(title, start_dir, rss, patterns)
 			max_width = #title
 		end
 		local w = max_width + 4
-		tss.__style.w = w
+			tss = tss:scope({ w = w })
 		local h = #file_names
 		local idx = 1
 		local c = math.floor((w_x - w) / 2)

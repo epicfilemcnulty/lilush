@@ -111,12 +111,15 @@ local DEFAULT_RSS = {
 	thematic_break = {
 		w = 0.5,
 		align = "center",
-		fill_char = "⁓",
+		content = "⁓",
+		fill = true,
 		fg = 59,
 	},
 
 	-- List styles
-	list = {},
+	list = {
+		indent_per_level = 4,
+	},
 
 	list_item = {
 		-- Unordered list marker (uses TSS content property)
@@ -138,7 +141,7 @@ local DEFAULT_RSS = {
 
 	-- Table styles (GFM)
 	table = {
-		-- indent = 1,  <-- setting this ruins the rendering, we must test/rethink design/debug. Divs are also shady as fuck
+		-- block_indent = 1, -- applies to full rendered table lines
 		border = DEFAULT_TABLE_BORDERS,
 		header = { s = "bold", fg = 180, align = "center" },
 		cell = { fg = 250 },

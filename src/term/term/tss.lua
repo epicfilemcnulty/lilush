@@ -34,6 +34,10 @@ local term = require("term")
      String aliases for alignments are also supported:
      - v: "top" | "bottom" | "center"
      - h: "left" | "right" | "center"
+
+     Runtime note:
+     `ts` application is capability-gated. If TSS instance is created with
+     `supports_ts = false`, `ts` properties are ignored in apply/apply_sized.
 ]]
 
 local resolve_ts = function(ts)
@@ -128,7 +132,17 @@ end
 
 local get = function(self, el, base_props)
 	local props = base_props
-		or { fg = "reset", bg = "reset", s = {}, align = "none", clip = 0, indent = 0, w = 0, ts = nil }
+		or {
+			fg = "reset",
+			bg = "reset",
+			s = {},
+			align = "none",
+			clip = 0,
+			text_indent = 0,
+			block_indent = 0,
+			w = 0,
+			ts = nil,
+		}
 
 	local add_style = function(tbl, s)
 		for opt in s:gmatch("([^,]+)") do
@@ -238,16 +252,23 @@ local apply = function(self, elements, content, position)
 		props, obj = self:get(el, props)
 	end
 
-	-- Resolve text sizing configuration
-	local ts = resolve_ts(props.ts)
+	-- Resolve text sizing configuration only when terminal support is enabled.
+	local ts = nil
+	if self.__supports_ts ~= false then
+		ts = resolve_ts(props.ts)
+	end
 	local scale = ts and ts.s or 1
 
 	local text = tostring(content) or ""
 	if obj.content then
 		text = tostring(obj.content)
 	end
-	if props.indent > 0 then
-		text = string.rep(" ", props.indent) .. text
+	local text_indent = 0
+	if type(props.text_indent) == "number" then
+		text_indent = math.max(0, math.floor(props.text_indent))
+	end
+	if text_indent > 0 then
+		text = string.rep(" ", text_indent) .. text
 	end
 	local ulen = std.utf.display_len(text)
 
@@ -312,18 +333,16 @@ local apply = function(self, elements, content, position)
 		text = text .. obj.after
 	end
 
-	-- Calculate final display dimensions before applying escape sequences
-	-- Width is the display width in terminal columns (scaled)
-	-- Height is the number of terminal rows occupied (scale factor)
-	local final_width = std.utf.display_len(text) * scale
-	local final_height = scale
-
-	-- Apply text sizing to plain text BEFORE adding ANSI codes
-	-- This ensures the OSC 66 sequence wraps only visible text, not ANSI codes
-	-- Otherwise the terminal would display ANSI codes literally at scaled size
+	-- Apply text sizing to plain text BEFORE adding ANSI codes.
+	-- This ensures the OSC 66 sequence wraps only visible text, not ANSI codes.
 	if ts and text ~= "" then
 		text = term.text_size(text, ts)
 	end
+
+	-- Calculate final display dimensions after text sizing wrapping.
+	-- Width/height are terminal cell dimensions (OSC 66 aware).
+	local final_width = std.utf.cell_len(text)
+	local final_height = std.utf.cell_height(text)
 
 	-- Build the styled text (ANSI codes wrapping the possibly-scaled text)
 	local styled_text
@@ -407,8 +426,12 @@ local apply_sized = function(self, base_elements, content, position)
 		props, obj = self:get(el, props)
 	end
 
-	-- Resolve text sizing configuration from base style
-	local ts = resolve_ts(props.ts)
+	-- Resolve text sizing configuration from base style only when terminal
+	-- capability supports text sizing.
+	local ts = nil
+	if self.__supports_ts ~= false then
+		ts = resolve_ts(props.ts)
+	end
 	local scale = ts and ts.s or 1
 
 	-- Add decorators to plain text (adjusting ranges accordingly)
@@ -426,10 +449,8 @@ local apply_sized = function(self, base_elements, content, position)
 		plain = plain .. obj.after
 	end
 
-	-- Calculate final dimensions
-	local plain_display_len = std.utf.display_len(plain)
-	local final_width = plain_display_len * scale
-	local final_height = scale
+	-- Height follows terminal cell occupancy, not only ts.s.
+	local final_height = 1
 
 	-- Helper function to build ANSI style codes for given elements
 	local function build_style_codes(elements)
@@ -731,6 +752,9 @@ local apply_sized = function(self, base_elements, content, position)
 		final_text = table.concat(result)
 	end
 
+	local final_width = std.utf.cell_len(final_text)
+	final_height = std.utf.cell_height(final_text)
+
 	return setmetatable({
 		text = final_text,
 		height = final_height,
@@ -738,24 +762,42 @@ local apply_sized = function(self, base_elements, content, position)
 	}, apply_result_mt)
 end
 
-local new = function(rss)
+local new
+
+local scope = function(self, overrides)
+	local scoped_rss = std.tbl.copy(self.__style or {})
+	if type(overrides) == "table" then
+		scoped_rss = std.tbl.merge(scoped_rss, overrides)
+	end
+
+	local child = new(scoped_rss, { supports_ts = self.__supports_ts })
+	child.__window.w = self.__window.w
+	child.__window.h = self.__window.h
+	return child
+end
+
+new = function(rss, opts)
+	opts = opts or {}
 	local win_l, win_c = term.window_size()
 	return {
 		__window = { h = win_l, w = win_c },
 		__style = rss or {},
+		-- TSS-level protocol gate: when false, ts properties are ignored.
+		__supports_ts = opts.supports_ts ~= false,
 		calc_el_width = calc_el_width,
 		get = get,
 		apply = apply,
 		apply_sized = apply_sized,
+		scope = scope,
 		set_property = set_property,
 		get_property = get_property,
 	}
 end
 
-local merge = function(rss_1, rss_2)
+local merge = function(rss_1, rss_2, opts)
 	local merged = std.tbl.copy(rss_1)
 	merged = std.tbl.merge(merged, rss_2)
-	return new(merged)
+	return new(merged, opts)
 end
 
 return { new = new, merge = merge }

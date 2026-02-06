@@ -62,34 +62,173 @@ static int deviant_remove_signal_handler(lua_State *L) {
     return 0;
 }
 
-// Return terminal display width for a UTF-8 string (ANSI SGR sequences ignored).
-// Uses libc wcwidth to match terminal cell widths for wide glyphs.
-static int deviant_display_len(lua_State *L) {
-    static int locale_set = 0;
-    size_t len = 0;
-    const char *str = luaL_checklstring(L, 1, &len);
-    size_t i = 0;
-    int width = 0;
-    mbstate_t st;
-
-    if (!locale_set) {
-        setlocale(LC_CTYPE, "");
-        locale_set = 1;
+// Return terminal display width for a UTF-8 string while ignoring non-printing
+// terminal protocol sequences and control bytes.
+static size_t skip_csi_sequence(const char *str, size_t i, size_t len) {
+    size_t j = i + 2;
+    while (j < len) {
+        unsigned char b = (unsigned char)str[j];
+        if (b >= 0x40 && b <= 0x7E) {
+            return j + 1;
+        }
+        j++;
     }
+    return len;
+}
+
+static size_t skip_st_terminated_sequence(const char *str, size_t i, size_t len) {
+    size_t j = i + 2;
+    while (j < len) {
+        if ((unsigned char)str[j] == 0x1B && j + 1 < len && str[j + 1] == '\\') {
+            return j + 2;
+        }
+        j++;
+    }
+    return len;
+}
+
+// Parse OSC sequence and extract OSC 66 metadata + payload if present.
+static int parse_osc_sequence(const char *str, size_t i, size_t len, size_t *next_i,
+                              size_t *meta_start, size_t *meta_end,
+                              size_t *payload_start, size_t *payload_end) {
+    size_t j = i + 2;
+    size_t terminator = len;
+    size_t terminator_len = 0;
+
+    while (j < len) {
+        unsigned char b = (unsigned char)str[j];
+        if (b == 0x07) {
+            terminator = j;
+            terminator_len = 1;
+            break;
+        }
+        if (b == 0x1B && j + 1 < len && str[j + 1] == '\\') {
+            terminator = j;
+            terminator_len = 2;
+            break;
+        }
+        j++;
+    }
+
+    *next_i = terminator == len ? len : terminator + terminator_len;
+    *meta_start = 0;
+    *meta_end = 0;
+    *payload_start = 0;
+    *payload_end = 0;
+
+    if (terminator <= i + 2) {
+        return 0;
+    }
+
+    size_t content_start = i + 2;
+    size_t content_end = terminator; // exclusive
+    size_t content_len = content_end - content_start;
+    if (content_len < 3) {
+        return 0;
+    }
+
+    // Must start with "66;" to be Kitty text sizing OSC payload.
+    if (str[content_start] != '6' || str[content_start + 1] != '6' || str[content_start + 2] != ';') {
+        return 0;
+    }
+
+    // Find second ';': ESC ] 66 ; metadata ; text ST
+    size_t second_sep = content_end;
+    for (size_t k = content_start + 3; k < content_end; k++) {
+        if (str[k] == ';') {
+            second_sep = k;
+            break;
+        }
+    }
+    if (second_sep == content_end) {
+        return 0;
+    }
+
+    *meta_start = content_start + 3;
+    *meta_end = second_sep;
+    *payload_start = second_sep + 1;
+    *payload_end = content_end;
+    return 1;
+}
+
+static int parse_meta_uint_param(const char *meta, size_t len, char key, int min, int max, int *out) {
+    size_t i = 0;
+    while (i < len) {
+        size_t token_start = i;
+        while (i < len && meta[i] != ':') {
+            i++;
+        }
+        size_t token_len = i - token_start;
+        if (token_len >= 3 && meta[token_start] == key && meta[token_start + 1] == '=') {
+            int value = 0;
+            int has_digit = 0;
+            int valid = 1;
+            for (size_t k = token_start + 2; k < token_start + token_len; k++) {
+                unsigned char c = (unsigned char)meta[k];
+                if (!isdigit(c)) {
+                    valid = 0;
+                    break;
+                }
+                has_digit = 1;
+                value = (value * 10) + (int)(c - '0');
+            }
+            if (valid && has_digit && value >= min && value <= max) {
+                *out = value;
+                return 1;
+            }
+        }
+        if (i < len && meta[i] == ':') {
+            i++;
+        }
+    }
+    return 0;
+}
+
+static int display_len_bytes(const char *str, size_t len) {
+ size_t i = 0;
+ int width = 0;
+    mbstate_t st;
     memset(&st, 0, sizeof(st));
 
     while (i < len) {
-        // Skip ANSI SGR sequences like "\033[...m"
-        if (str[i] == '\033' && i + 1 < len && str[i + 1] == '[') {
-            i += 2;
-            while (i < len && str[i] != 'm') {
-                i++;
+        unsigned char b = (unsigned char)str[i];
+
+        if (b == 0x1B) {
+            if (i + 1 >= len) {
+                i += 1;
+                memset(&st, 0, sizeof(st));
+                continue;
             }
-            if (i < len && str[i] == 'm') {
-                i++;
+            unsigned char next_b = (unsigned char)str[i + 1];
+            if (next_b == '[') {
+                i = skip_csi_sequence(str, i, len);
+            } else if (next_b == ']') {
+                size_t next_i = len;
+                size_t meta_start = 0;
+                size_t meta_end = 0;
+                size_t payload_start = 0;
+                size_t payload_end = 0;
+                int has_payload = parse_osc_sequence(str, i, len, &next_i, &meta_start, &meta_end, &payload_start, &payload_end);
+                if (has_payload && payload_end > payload_start) {
+                    width += display_len_bytes(str + payload_start, payload_end - payload_start);
+                }
+                i = next_i;
+            } else if (next_b == 'P' || next_b == 'X' || next_b == '^' || next_b == '_') {
+                i = skip_st_terminated_sequence(str, i, len);
+            } else {
+                i += 2;
             }
+            memset(&st, 0, sizeof(st));
             continue;
         }
+
+        // C0 controls and DEL are non-printing.
+        if (b <= 0x1F || b == 0x7F) {
+            i += 1;
+            memset(&st, 0, sizeof(st));
+            continue;
+        }
+
         wchar_t wc;
         // Decode next UTF-8 codepoint and accumulate its display width.
         size_t ret = mbrtowc(&wc, str + i, len - i, &st);
@@ -110,7 +249,246 @@ static int deviant_display_len(lua_State *L) {
         i += ret;
     }
 
-    lua_pushinteger(L, width);
+    return width;
+}
+
+static int cell_len_bytes(const char *str, size_t len) {
+    size_t i = 0;
+    int width = 0;
+    mbstate_t st;
+    memset(&st, 0, sizeof(st));
+
+    while (i < len) {
+        unsigned char b = (unsigned char)str[i];
+
+        if (b == 0x1B) {
+            if (i + 1 >= len) {
+                i += 1;
+                memset(&st, 0, sizeof(st));
+                continue;
+            }
+            unsigned char next_b = (unsigned char)str[i + 1];
+            if (next_b == '[') {
+                i = skip_csi_sequence(str, i, len);
+            } else if (next_b == ']') {
+                size_t next_i = len;
+                size_t meta_start = 0;
+                size_t meta_end = 0;
+                size_t payload_start = 0;
+                size_t payload_end = 0;
+                int has_payload =
+                    parse_osc_sequence(str, i, len, &next_i, &meta_start, &meta_end, &payload_start, &payload_end);
+
+                if (has_payload) {
+                    int payload_cells = 0;
+                    int s = 0;
+                    int w = 0;
+                    int n = 0;
+                    int d = 0;
+                    int has_s = 0;
+                    int has_w = 0;
+                    int has_n = 0;
+                    int has_d = 0;
+
+                    if (payload_end > payload_start) {
+                        payload_cells = cell_len_bytes(str + payload_start, payload_end - payload_start);
+                    }
+
+                    if (meta_end > meta_start) {
+                        const char *meta = str + meta_start;
+                        size_t meta_len = meta_end - meta_start;
+                        has_s = parse_meta_uint_param(meta, meta_len, 's', 1, 7, &s);
+                        has_w = parse_meta_uint_param(meta, meta_len, 'w', 0, 7, &w);
+                        has_n = parse_meta_uint_param(meta, meta_len, 'n', 0, 15, &n);
+                        has_d = parse_meta_uint_param(meta, meta_len, 'd', 0, 15, &d);
+                    }
+
+                    if (has_w && w > 0) {
+                        int seg_cells = w;
+                        if (has_s) {
+                            seg_cells *= s;
+                        }
+                        // Fractional + explicit width can still overflow in some terminals
+                        // depending on glyph metrics. Use a conservative lower bound.
+                        if (has_s && has_n && has_d && d > n) {
+                            int fallback_cells = payload_cells * s;
+                            if (fallback_cells > seg_cells) {
+                                seg_cells = fallback_cells;
+                            }
+                        }
+                        width += seg_cells;
+                    } else if (has_s) {
+                        width += payload_cells * s;
+                    } else {
+                        width += payload_cells;
+                    }
+                }
+
+                i = next_i;
+            } else if (next_b == 'P' || next_b == 'X' || next_b == '^' || next_b == '_') {
+                i = skip_st_terminated_sequence(str, i, len);
+            } else {
+                i += 2;
+            }
+            memset(&st, 0, sizeof(st));
+            continue;
+        }
+
+        // C0 controls and DEL are non-printing.
+        if (b <= 0x1F || b == 0x7F) {
+            i += 1;
+            memset(&st, 0, sizeof(st));
+            continue;
+        }
+
+        wchar_t wc;
+        size_t ret = mbrtowc(&wc, str + i, len - i, &st);
+        if (ret == (size_t)-1 || ret == (size_t)-2) {
+            memset(&st, 0, sizeof(st));
+            width += 1;
+            i += 1;
+            continue;
+        }
+        if (ret == 0) {
+            i += 1;
+            continue;
+        }
+        int w = wcwidth(wc);
+        if (w > 0) {
+            width += w;
+        }
+        i += ret;
+    }
+
+    return width;
+}
+
+static int cell_height_bytes(const char *str, size_t len) {
+    size_t i = 0;
+    int height = 1;
+    mbstate_t st;
+    memset(&st, 0, sizeof(st));
+
+    while (i < len) {
+        unsigned char b = (unsigned char)str[i];
+
+        if (b == 0x1B) {
+            if (i + 1 >= len) {
+                i += 1;
+                memset(&st, 0, sizeof(st));
+                continue;
+            }
+            unsigned char next_b = (unsigned char)str[i + 1];
+            if (next_b == '[') {
+                i = skip_csi_sequence(str, i, len);
+            } else if (next_b == ']') {
+                size_t next_i = len;
+                size_t meta_start = 0;
+                size_t meta_end = 0;
+                size_t payload_start = 0;
+                size_t payload_end = 0;
+                int has_payload =
+                    parse_osc_sequence(str, i, len, &next_i, &meta_start, &meta_end, &payload_start, &payload_end);
+
+                if (has_payload) {
+                    int payload_height = 1;
+                    int seg_height = 1;
+                    int s = 0;
+                    int has_s = 0;
+
+                    if (payload_end > payload_start) {
+                        payload_height = cell_height_bytes(str + payload_start, payload_end - payload_start);
+                    }
+
+                    if (meta_end > meta_start) {
+                        const char *meta = str + meta_start;
+                        size_t meta_len = meta_end - meta_start;
+                        has_s = parse_meta_uint_param(meta, meta_len, 's', 1, 7, &s);
+                    }
+
+                    seg_height = has_s ? payload_height * s : payload_height;
+                    if (seg_height > height) {
+                        height = seg_height;
+                    }
+                }
+
+                i = next_i;
+            } else if (next_b == 'P' || next_b == 'X' || next_b == '^' || next_b == '_') {
+                i = skip_st_terminated_sequence(str, i, len);
+            } else {
+                i += 2;
+            }
+            memset(&st, 0, sizeof(st));
+            continue;
+        }
+
+        // C0 controls and DEL are non-printing.
+        if (b <= 0x1F || b == 0x7F) {
+            i += 1;
+            memset(&st, 0, sizeof(st));
+            continue;
+        }
+
+        wchar_t wc;
+        size_t ret = mbrtowc(&wc, str + i, len - i, &st);
+        if (ret == (size_t)-1 || ret == (size_t)-2) {
+            memset(&st, 0, sizeof(st));
+            i += 1;
+            continue;
+        }
+        if (ret == 0) {
+            i += 1;
+            continue;
+        }
+
+        i += ret;
+    }
+
+    if (height < 1) {
+        height = 1;
+    }
+    return height;
+}
+
+static int deviant_display_len(lua_State *L) {
+    static int locale_set = 0;
+    size_t len = 0;
+    const char *str = luaL_checklstring(L, 1, &len);
+
+    if (!locale_set) {
+        setlocale(LC_CTYPE, "");
+        locale_set = 1;
+    }
+
+    lua_pushinteger(L, display_len_bytes(str, len));
+    return 1;
+}
+
+static int deviant_cell_len(lua_State *L) {
+    static int locale_set = 0;
+    size_t len = 0;
+    const char *str = luaL_checklstring(L, 1, &len);
+
+    if (!locale_set) {
+        setlocale(LC_CTYPE, "");
+        locale_set = 1;
+    }
+
+    lua_pushinteger(L, cell_len_bytes(str, len));
+    return 1;
+}
+
+static int deviant_cell_height(lua_State *L) {
+    static int locale_set = 0;
+    size_t len = 0;
+    const char *str = luaL_checklstring(L, 1, &len);
+
+    if (!locale_set) {
+        setlocale(LC_CTYPE, "");
+        locale_set = 1;
+    }
+
+    lua_pushinteger(L, cell_height_bytes(str, len));
     return 1;
 }
 
@@ -1052,6 +1430,8 @@ int deviant_unpackvec(lua_State *L) {
 
 static luaL_Reg funcs[] = {
     {"display_len",     deviant_display_len            },
+    {"cell_len",        deviant_cell_len               },
+    {"cell_height",     deviant_cell_height            },
     {"clockticks",      deviant_clockticks             },
     {"kill",            deviant_kill                   },
     {"fork",            deviant_fork                   },

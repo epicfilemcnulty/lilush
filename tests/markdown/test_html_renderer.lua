@@ -249,7 +249,7 @@ end)
 
 testify:that("renders basic image", function()
 	local result = markdown.render_html("![Alt text](image.png)")
-	testimony.assert_true(contains(result, '<img'))
+	testimony.assert_true(contains(result, "<img"))
 	testimony.assert_true(contains(result, 'src="image.png"'))
 	testimony.assert_true(contains(result, 'alt="Alt text"'))
 end)
@@ -341,8 +341,8 @@ end)
 
 testify:that("renders table with alignment", function()
 	local result = markdown.render_html("| Left | Center | Right |\n|:-----|:------:|------:|\n| a | b | c |")
-	testimony.assert_true(contains(result, 'text-align: center'))
-	testimony.assert_true(contains(result, 'text-align: right'))
+	testimony.assert_true(contains(result, "text-align: center"))
+	testimony.assert_true(contains(result, "text-align: right"))
 end)
 
 -- ============================================

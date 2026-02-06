@@ -39,6 +39,52 @@ testify:that("merge combines two RSS tables", function()
 	testimony.assert_true(tss.__style.extra ~= nil)
 end)
 
+testify:that("scope creates isolated derived tss with deep overrides", function()
+	local rss = {
+		code_block = {
+			w = 10,
+			align = "none",
+			border = { w = 10, v = { content = "|" } },
+		},
+	}
+	local tss = style.new(rss, { supports_ts = false })
+	tss.__window.w = 120
+	tss.__window.h = 40
+
+	local scoped = tss:scope({
+		code_block = {
+			w = 20,
+			border = { w = 20 },
+		},
+	})
+
+	testimony.assert_equal(10, tss.__style.code_block.w)
+	testimony.assert_equal(10, tss.__style.code_block.border.w)
+	testimony.assert_equal(20, scoped.__style.code_block.w)
+	testimony.assert_equal(20, scoped.__style.code_block.border.w)
+	testimony.assert_equal("|", scoped.__style.code_block.border.v.content)
+	testimony.assert_equal(120, scoped.__window.w)
+	testimony.assert_equal(40, scoped.__window.h)
+	testimony.assert_equal(false, scoped.__supports_ts)
+end)
+
+testify:that("scope is independent from parent mutations", function()
+	local rss = { test = { w = 0.5, align = "none", border = { w = 8 } } }
+	local tss = style.new(rss)
+	tss.__window.w = 80
+	tss.__window.h = 24
+
+	local scoped = tss:scope()
+	scoped:set_property("test", "align", "left")
+	scoped:set_property("test.border", "w", 30)
+
+	testimony.assert_equal("none", tss:get_property("test", "align"))
+	testimony.assert_equal(8, tss:get_property("test.border", "w"))
+
+	local props, _ = scoped:get("test")
+	testimony.assert_equal(40, props.w)
+end)
+
 -- =============================================================================
 -- STYLE RESET BUG FIX (CRITICAL)
 -- =============================================================================
@@ -92,15 +138,33 @@ testify:that("calc_el_width handles absolute widths", function()
 	testimony.assert_equal(10, width)
 end)
 
+testify:that("calc_el_width treats w=1 as absolute one-cell width", function()
+	local tss = style.new({})
+	local width = tss:calc_el_width(1, 100)
+	testimony.assert_equal(1, width)
+end)
+
 testify:that("calc_el_width handles fractional widths", function()
 	local tss = style.new({})
 	local width = tss:calc_el_width(0.5, 100)
 	testimony.assert_equal(50, width)
 end)
 
+testify:that("calc_el_width floors fractional widths", function()
+	local tss = style.new({})
+	local width = tss:calc_el_width(0.99, 100)
+	testimony.assert_equal(99, width)
+end)
+
 testify:that("calc_el_width clamps to max width", function()
 	local tss = style.new({})
 	local width = tss:calc_el_width(150, 100)
+	testimony.assert_equal(100, width)
+end)
+
+testify:that("calc_el_width reaches full width via clamped absolute value", function()
+	local tss = style.new({})
+	local width = tss:calc_el_width(math.huge, 100)
 	testimony.assert_equal(100, width)
 end)
 
@@ -351,25 +415,41 @@ end)
 -- INDENTATION
 -- =============================================================================
 
-testify:that("apply adds indentation", function()
-	local rss = { test = { indent = 4 } }
+testify:that("apply adds text_indent indentation", function()
+	local rss = { test = { text_indent = 4 } }
 	local tss = style.new(rss)
 	local result = strip_ansi(tss:apply("test", "text"))
 
 	testimony.assert_match("^    text", result)
 end)
 
-testify:that("apply combines indent with width and alignment", function()
-	local rss = { test = { indent = 2, w = 10, align = "left" } }
+testify:that("apply combines text_indent with width and alignment", function()
+	local rss = { test = { text_indent = 2, w = 10, align = "left" } }
 	local tss = style.new(rss)
 	tss.__window.w = 80
 	tss.__window.h = 24
 	local result = strip_ansi(tss:apply("test", "hi"))
 
-	-- Indent adds 2 spaces to text, making it "  hi" (4 chars)
+	-- text_indent adds 2 spaces to text, making it "  hi" (4 chars)
 	-- Then it gets padded to width 10, so total is 10 chars
 	testimony.assert_equal(10, std.utf.len(result))
 	testimony.assert_match("^  hi", result)
+end)
+
+testify:that("apply ignores block_indent", function()
+	local rss = { test = { block_indent = 4 } }
+	local tss = style.new(rss)
+	local result = strip_ansi(tss:apply("test", "text"))
+
+	testimony.assert_equal("text", result)
+end)
+
+testify:that("apply ignores legacy indent property", function()
+	local rss = { test = { indent = 4 } }
+	local tss = style.new(rss)
+	local result = strip_ansi(tss:apply("test", "text"))
+
+	testimony.assert_equal("text", result)
 end)
 
 -- =============================================================================
@@ -469,6 +549,32 @@ testify:that("apply with ts preset string generates escape sequence", function()
 	-- Should contain OSC 66 with s=2
 	testimony.assert_true(result:match("\027%]66;"))
 	testimony.assert_true(result:match("s=2"))
+end)
+
+testify:that("apply ignores ts when supports_ts is false", function()
+	local rss = { test = { ts = "double" } }
+	local tss = style.new(rss, { supports_ts = false })
+	local result = tss:apply("test", "hello")
+
+	testimony.assert_false(result:match("\027%]66;"))
+	testimony.assert_equal(5, result.width)
+	testimony.assert_equal(1, result.height)
+end)
+
+testify:that("apply_sized ignores ts when supports_ts is false", function()
+	local rss = {
+		test = { ts = "double" },
+		strong = { s = "bold" },
+	}
+	local tss = style.new(rss, { supports_ts = false })
+	local result = tss:apply_sized("test", {
+		plain = "hello",
+		ranges = { { start = 2, stop = 4, elements = { "strong" } } },
+	})
+
+	testimony.assert_false(result.text:match("\027%]66;"))
+	testimony.assert_equal(5, result.width)
+	testimony.assert_equal(1, result.height)
 end)
 
 testify:that("apply with ts table generates correct escape sequence", function()
@@ -690,6 +796,30 @@ testify:that("apply result width accounts for scale factor", function()
 
 	-- "hi" is 2 characters, scale=2, so width = 2 * 2 = 4
 	testimony.assert_equal(4, result.width)
+end)
+
+testify:that("apply result width respects explicit ts.w cell width", function()
+	local rss = { test = { ts = { w = 3 } } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "hello")
+
+	testimony.assert_equal(3, result.width)
+end)
+
+testify:that("apply result width scales explicit ts.w when s is set", function()
+	local rss = { test = { ts = { s = 2, w = 3 } } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "hello")
+
+	testimony.assert_equal(6, result.width)
+end)
+
+testify:that("apply result width handles fractional ts presets with chunking", function()
+	local rss = { test = { ts = "superscript" } }
+	local tss = style.new(rss)
+	local result = tss:apply("test", "ab")
+
+	testimony.assert_equal(1, result.width)
 end)
 
 testify:that("apply result width includes decorators", function()

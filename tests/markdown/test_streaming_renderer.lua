@@ -6,6 +6,7 @@ local markdown = require("markdown")
 local renderer_registry = require("markdown.renderer")
 local streaming = require("markdown.renderer.streaming")
 local buffer = require("string.buffer")
+local std = require("std")
 local tss = require("term.tss")
 local theme = require("markdown.renderer.theme")
 local default_tss = tss.new(theme.DEFAULT_RSS)
@@ -40,16 +41,18 @@ end
 
 -- Helper to strip ANSI escape codes and OSC sequences for content testing
 local function strip_ansi(str)
-	-- Strip SGR sequences: ESC [ ... m
-	str = str:gsub("\027%[[^m]*m", "")
-	-- Strip OSC 66 text sizing sequences: ESC ] 66 ; params ; text ESC \
-	str = str:gsub("\027%]66;[^;]*;([^\027]*)\027\\", "%1")
-	-- Strip cursor movement sequences: ESC [ n A/B/C/D/E/F/G/H
-	str = str:gsub("\027%[%d*[ABCDEFGH]", "")
 	-- Strip synchronized output sequences
 	str = str:gsub("\027%[%?2026[hl]", "")
+	-- Strip cursor movement sequences: ESC [ n A/B/C/D/E/F/G/H
+	str = str:gsub("\027%[%d*[ABCDEFGH]", "")
 	-- Strip clear line sequences: ESC [ n K
 	str = str:gsub("\027%[%d*K", "")
+	-- Strip OSC 66 text sizing sequences: ESC ] 66 ; params ; text ESC \
+	str = str:gsub("\027%]66;[^;]*;([^\027]*)\027\\", "%1")
+	-- Strip SGR sequences: ESC [ ... m
+	str = str:gsub("\027%[[%d;]*m", "")
+	-- Strip carriage returns emitted during cursor repositioning
+	str = str:gsub("\r", "")
 	return str
 end
 
@@ -243,19 +246,32 @@ testify:that("renders thematic break with dashes", function()
 	local plain = strip_ansi(result)
 	testimony.assert_true(contains(plain, "Before"))
 	testimony.assert_true(contains(plain, "After"))
-	testimony.assert_true(contains(plain, default_tss:get_property("thematic_break", "fill_char")))
+	testimony.assert_true(contains(plain, default_tss:get_property("thematic_break", "content")))
 end)
 
 testify:that("renders thematic break with asterisks", function()
 	local result = render_with_streaming("Before\n\n***\n\nAfter")
 	local plain = strip_ansi(result)
-	testimony.assert_true(contains(plain, default_tss:get_property("thematic_break", "fill_char")))
+	testimony.assert_true(contains(plain, default_tss:get_property("thematic_break", "content")))
 end)
 
 testify:that("renders thematic break with underscores", function()
 	local result = render_with_streaming("Before\n\n___\n\nAfter")
 	local plain = strip_ansi(result)
-	testimony.assert_true(contains(plain, default_tss:get_property("thematic_break", "fill_char")))
+	testimony.assert_true(contains(plain, default_tss:get_property("thematic_break", "content")))
+end)
+
+testify:that("thematic break uses custom TSS content", function()
+	local result = render_with_streaming("Before\n\n---\n\nAfter", {
+		tss = {
+			thematic_break = {
+				content = "=",
+				fill = true,
+			},
+		},
+	})
+	local plain = strip_ansi(result)
+	testimony.assert_true(contains(plain, "="))
 end)
 
 -- ============================================
@@ -279,7 +295,11 @@ testify:that("code block has borders", function()
 	local result = render_with_streaming("```\ncode\n```")
 	local plain = strip_ansi(result)
 	local border = theme.DEFAULT_BORDERS
-	testimony.assert_true(contains(plain, border.top_line.before) or contains(plain, border.top_line.content) or contains(plain, border.v.content))
+	testimony.assert_true(
+		contains(plain, border.top_line.before)
+			or contains(plain, border.top_line.content)
+			or contains(plain, border.v.content)
+	)
 end)
 
 testify:that("code block preserves content", function()
@@ -300,6 +320,50 @@ testify:that("code block with multiple lines", function()
 	testimony.assert_true(contains(plain, "line1"))
 	testimony.assert_true(contains(plain, "line2"))
 	testimony.assert_true(contains(plain, "line3"))
+end)
+
+testify:that("code block expands tabs and keeps right border aligned", function()
+	local result = render_with_streaming("```lua\n\tlocal a = 1\n\tlocal b = 2\n```", { width = 50 })
+	local plain = strip_ansi(result)
+
+	local bordered = {}
+	for line in plain:gmatch("[^\n]+") do
+		if line:find("│", 1, true) then
+			bordered[#bordered + 1] = line
+		end
+	end
+
+	testimony.assert_true(#bordered > 0)
+	for _, line in ipairs(bordered) do
+		testimony.assert_true(line:match("│%s*$") ~= nil)
+		testimony.assert_nil(line:find("\t", 1, true))
+		testimony.assert_true(std.utf.display_len(line) <= 50)
+	end
+end)
+
+testify:that("table rows are clipped to configured width", function()
+	local input = [[| Property | Description |
+|---|---|
+| text_indent | Text-level indentation applied by tss:apply() for simple elements that can become very long and should be clipped |
+]]
+	local width = 60
+	local result = render_with_streaming(input, { width = width })
+	local plain = strip_ansi(result)
+
+	local has_table = false
+	local has_ellipsis = false
+	for line in plain:gmatch("[^\n]+") do
+		if line:find("┌", 1, true) or line:find("│", 1, true) or line:find("└", 1, true) then
+			has_table = true
+			testimony.assert_true(std.utf.display_len(line) <= width)
+			if line:find("…", 1, true) then
+				has_ellipsis = true
+			end
+		end
+	end
+
+	testimony.assert_true(has_table)
+	testimony.assert_true(has_ellipsis)
 end)
 
 -- ============================================
@@ -339,6 +403,43 @@ testify:that("renders nested list", function()
 	testimony.assert_true(contains(plain, "Inner"))
 end)
 
+testify:that("applies list.indent_per_level to nested list depth spacing", function()
+	local result = render_with_streaming("- Outer\n  - Inner", {
+		tss = {
+			list = { indent_per_level = 2 },
+		},
+	})
+	local plain = strip_ansi(result)
+	local inner_line = nil
+	for line in plain:gmatch("[^\n]+") do
+		if contains(line, "Inner") then
+			inner_line = line
+			break
+		end
+	end
+	testimony.assert_not_nil(inner_line)
+	testimony.assert_equal("  ", inner_line:sub(1, 2))
+end)
+
+testify:that("combines list.indent_per_level with list_item.block_indent", function()
+	local result = render_with_streaming("- Outer\n  - Inner", {
+		tss = {
+			list = { indent_per_level = 2 },
+			list_item = { block_indent = 3 },
+		},
+	})
+	local plain = strip_ansi(result)
+	local inner_line = nil
+	for line in plain:gmatch("[^\n]+") do
+		if contains(line, "Inner") then
+			inner_line = line
+			break
+		end
+	end
+	testimony.assert_not_nil(inner_line)
+	testimony.assert_equal("     ", inner_line:sub(1, 5))
+end)
+
 testify:that("renders list after paragraph", function()
 	local result = render_with_streaming("Some paragraph.\n\n- List item")
 	local plain = strip_ansi(result)
@@ -359,6 +460,160 @@ testify:that("renders list item with inline formatting", function()
 	testimony.assert_true(contains(plain, "Item with"))
 	testimony.assert_true(contains(plain, "bold"))
 	testimony.assert_true(contains(plain, "italic"))
+end)
+
+-- ============================================
+-- Block Indent Tests
+-- ============================================
+
+testify:that("applies table block_indent to full rendered line", function()
+	local input = "| A | B |\n|---|---|\n| 1 | 2 |"
+	local result = render_with_streaming(input, {
+		tss = {
+			table = { block_indent = 2 },
+		},
+	})
+	local plain = strip_ansi(result)
+	local top_line = nil
+	for line in plain:gmatch("[^\n]+") do
+		if line:find("┌", 1, true) then
+			top_line = line
+			break
+		end
+	end
+	testimony.assert_not_nil(top_line)
+	testimony.assert_equal("  ", top_line:sub(1, 2))
+	testimony.assert_true(top_line:find("┌─", 1, true) ~= nil)
+end)
+
+testify:that("applies code block_indent to bordered code blocks", function()
+	local input = "```\ncode\n```"
+	local result = render_with_streaming(input, {
+		tss = {
+			code_block = { block_indent = 3 },
+		},
+	})
+	local plain = strip_ansi(result)
+	local top_line = nil
+	for line in plain:gmatch("[^\n]+") do
+		if line:find(theme.DEFAULT_BORDERS.top_line.before, 1, true) then
+			top_line = line
+			break
+		end
+	end
+	testimony.assert_not_nil(top_line)
+	local border_pos = top_line:find(theme.DEFAULT_BORDERS.top_line.before, 1, true)
+	testimony.assert_not_nil(border_pos)
+	testimony.assert_equal("   ", top_line:sub(border_pos - 3, border_pos - 1))
+end)
+
+testify:that("applies blockquote block_indent to quoted lines", function()
+	local input = "> Quoted line."
+	local result = render_with_streaming(input, {
+		tss = {
+			blockquote = { block_indent = 2 },
+		},
+	})
+	local plain = strip_ansi(result)
+	local quote_line = nil
+	local bar_char = theme.DEFAULT_RSS.blockquote.bar.content:sub(1, 1)
+	for line in plain:gmatch("[^\n]+") do
+		if contains(line, "Quoted line") and contains(line, bar_char) then
+			quote_line = line
+			break
+		end
+	end
+	testimony.assert_not_nil(quote_line)
+	testimony.assert_equal("  ", quote_line:sub(1, 2))
+	testimony.assert_true(contains(quote_line, "Quoted line"))
+end)
+
+testify:that("applies div block_indent to full rendered box lines", function()
+	local input = "::: note\nIndented div\n:::"
+	local result = render_with_streaming(input, {
+		tss = {
+			div = {
+				note = { block_indent = 2 },
+			},
+		},
+	})
+	local plain = strip_ansi(result)
+	local top_line = nil
+	for line in plain:gmatch("[^\n]+") do
+		local trimmed = line:gsub("^%s+", "")
+		if trimmed:find(theme.DEFAULT_BORDERS.top_line.before, 1, true) == 1 then
+			top_line = line
+			break
+		end
+	end
+	testimony.assert_not_nil(top_line)
+	testimony.assert_equal("  ", top_line:sub(1, 2))
+end)
+
+testify:that("div disables heading text sizing and keeps side borders aligned", function()
+	local input = "::: note\n## Scaled heading\n:::"
+	local result = render_with_streaming(input)
+	local border = theme.DEFAULT_BORDERS
+
+	testimony.assert_false(result:find("\027%]66;") ~= nil)
+
+	local bordered_lines = {}
+	for line in result:gmatch("[^\n]+") do
+		if
+			contains(line, border.top_line.before)
+			or contains(line, border.v.content)
+			or contains(line, border.bottom_line.before)
+		then
+			bordered_lines[#bordered_lines + 1] = line
+		end
+	end
+
+	testimony.assert_true(#bordered_lines >= 3)
+	local expected = std.utf.cell_len(bordered_lines[1])
+	for i = 2, #bordered_lines do
+		testimony.assert_equal(expected, std.utf.cell_len(bordered_lines[i]))
+	end
+end)
+
+testify:that("div with long heading disables text sizing and keeps borders aligned", function()
+	local input = "::: warning\n## This heading should definitely overflow the configured div width when doubled\n:::"
+	local result = render_with_streaming(input, { width = 60 })
+	local border = theme.DEFAULT_BORDERS
+
+	testimony.assert_false(result:find("\027%]66;") ~= nil)
+
+	local bordered_lines = {}
+	for line in result:gmatch("[^\n]+") do
+		if
+			contains(line, border.top_line.before)
+			or contains(line, border.v.content)
+			or contains(line, border.bottom_line.before)
+		then
+			bordered_lines[#bordered_lines + 1] = line
+		end
+	end
+
+	testimony.assert_true(#bordered_lines >= 3)
+	local expected = std.utf.cell_len(bordered_lines[1])
+	testimony.assert_true(expected <= 60)
+	for i = 2, #bordered_lines do
+		local line_width = std.utf.cell_len(bordered_lines[i])
+		testimony.assert_equal(expected, line_width)
+		testimony.assert_true(line_width <= 60)
+	end
+end)
+
+testify:that("applies list_item block_indent to list marker lines", function()
+	local result = render_with_streaming("- Item with indent", {
+		tss = {
+			list_item = { block_indent = 3 },
+		},
+	})
+	local plain = strip_ansi(result)
+	local first_line = plain:match("([^\n]+)")
+	testimony.assert_not_nil(first_line)
+	testimony.assert_equal("   ", first_line:sub(1, 3))
+	testimony.assert_true(contains(first_line, "Item with indent"))
 end)
 
 -- ============================================
@@ -433,7 +688,7 @@ Visit [our site](https://example.com) for more.
 	testimony.assert_true(contains(plain, "italic"))
 	testimony.assert_true(contains(plain, "Section One"))
 	testimony.assert_true(contains(plain, "print"))
-	testimony.assert_true(contains(plain, default_tss:get_property("thematic_break", "fill_char")))
+	testimony.assert_true(contains(plain, default_tss:get_property("thematic_break", "content")))
 	testimony.assert_true(contains(plain, "Section Two"))
 	testimony.assert_true(contains(plain, "our site"))
 end)

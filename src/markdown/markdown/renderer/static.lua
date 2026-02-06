@@ -39,18 +39,90 @@ local count_newlines = function(text)
 	return count
 end
 
--- Extract text-sizing scale factor from OSC 66 sequences in a line
--- OSC 66 format: \027]66;s=N:...;text\027\\
-local get_line_scale = function(line)
-	-- Match OSC 66 sequence and extract s=N parameter
-	local meta = line:match("\027%]66;([^;]+);")
-	if meta then
-		local scale = meta:match("s=(%d+)")
-		if scale then
-			return tonumber(scale) or 1
-		end
+local get_block_indent = function(tss, style_key)
+	if not style_key then
+		return 0
 	end
-	return 1
+	local props = tss:get(style_key)
+	local block_indent = props and props.block_indent or 0
+	if type(block_indent) ~= "number" then
+		return 0
+	end
+	return math.max(0, math.floor(block_indent))
+end
+
+local get_list_indent_per_level = function(tss)
+	local _, list_obj = tss:get("list")
+	local indent_per_level = list_obj and list_obj.indent_per_level or 4
+	if type(indent_per_level) ~= "number" then
+		return 4
+	end
+	return math.max(0, math.floor(indent_per_level))
+end
+
+local expand_tabs = function(line, tabstop)
+	line = line or ""
+	tabstop = tabstop or 4
+	return (line:gsub("\t", string.rep(" ", tabstop)))
+end
+
+local clamp_display_width = function(text, width)
+	if width <= 0 then
+		return ""
+	end
+	if std.utf.display_len(text) <= width then
+		return text
+	end
+	return std.txt.limit(text, width, width)
+end
+
+local fit_table_width = function(col_widths, available_width)
+	local cols = #col_widths
+	if cols == 0 then
+		return col_widths
+	end
+
+	-- Row width = sum(col_widths) + (3 * cols + 1)
+	local fixed_width = 3 * cols + 1
+	local target_sum = available_width - fixed_width
+
+	local min_col_width = 3
+	if target_sum < cols * min_col_width then
+		min_col_width = 1
+	end
+
+	local total = 0
+	for i = 1, cols do
+		local w = math.floor(tonumber(col_widths[i]) or 0)
+		if w < min_col_width then
+			w = min_col_width
+		end
+		col_widths[i] = w
+		total = total + w
+	end
+
+	local min_total = cols * min_col_width
+	if target_sum < min_total then
+		target_sum = min_total
+	end
+
+	while total > target_sum do
+		local widest_idx = nil
+		local widest = min_col_width
+		for i = 1, cols do
+			if col_widths[i] > widest then
+				widest = col_widths[i]
+				widest_idx = i
+			end
+		end
+		if not widest_idx then
+			break
+		end
+		col_widths[widest_idx] = col_widths[widest_idx] - 1
+		total = total - 1
+	end
+
+	return col_widths
 end
 
 -- Helper: render pre-styled content with borders (for divs)
@@ -64,6 +136,15 @@ local render_bordered_content = function(tss, style_base, content, width, label,
 
 	-- Get border definition
 	local border_def = tss.__style[style_base] and tss.__style[style_base].border or DEFAULT_BORDERS
+
+	-- Split content into logical lines.
+	local lines = {}
+	for line in (content .. "\n"):gmatch("([^\n]*)\n") do
+		lines[#lines + 1] = line
+	end
+
+	-- Keep configured width fixed for bordered elements.
+	local width = math.max(1, math.floor(width or 1))
 
 	-- Build top line with optional label
 	local top_line
@@ -97,32 +178,29 @@ local render_bordered_content = function(tss, style_base, content, width, label,
 	-- Output top border
 	out:put(indent_str, top_line, "\n")
 
-	-- Split content into lines and wrap each with borders
-	local lines = {}
-	for line in (content .. "\n"):gmatch("([^\n]*)\n") do
-		lines[#lines + 1] = line
-	end
-
 	-- Get border characters
 	local left_border = tss:apply(style_base .. ".border.v").text
 	local right_border = tss:apply(style_base .. ".border.v").text
 
 	-- Calculate inner width (width minus padding)
-	local inner_width = width - pad
+	local inner_width = math.max(0, width - pad)
+	local blank_inner = string.rep(" ", inner_width)
 
 	for i, line in ipairs(lines) do
-		-- Skip trailing empty lines
+		-- Skip trailing empty line produced by content capture.
 		local is_last = (i == #lines)
 		local is_empty = (line == "" or line:match("^%s*$"))
 		if not (is_last and is_empty) then
-			-- Text-sizing is disabled inside divs, so no scale adjustment needed
-			local visual_len = std.utf.display_len(line)
-			-- Only add padding if content is narrower than inner_width
-			-- Don't truncate - ANSI codes make truncation complex and error-prone
-			local padding = math.max(0, inner_width - visual_len)
-			local padded = line .. string.rep(" ", padding)
+			if is_empty then
+				out:put(indent_str, left_border, pad_str, blank_inner, right_border, "\n")
+			else
+				local clipped_line = clamp_display_width(line, inner_width)
+				local visual_len = std.utf.cell_len(clipped_line)
+				local padding = math.max(0, inner_width - visual_len)
+				local padded = clipped_line .. string.rep(" ", padding)
 
-			out:put(indent_str, left_border, pad_str, padded, right_border, "\n")
+				out:put(indent_str, left_border, pad_str, padded, right_border, "\n")
+			end
 		end
 	end
 
@@ -143,47 +221,47 @@ local render_bordered_block = function(tss, style_base, lines, width, label, ind
 	local out = buffer.new()
 	local indent_str = string.rep(" ", indent)
 	local pad_str = string.rep(" ", pad)
-
-	-- Store original values to restore later
-	local orig_w = tss.__style[style_base] and tss.__style[style_base].w
-	local orig_align = tss.__style[style_base] and tss.__style[style_base].align
-	local orig_border_w = tss.__style[style_base]
-		and tss.__style[style_base].border
-		and tss.__style[style_base].border.w
-
-	-- Set border width
-	if tss.__style[style_base] and tss.__style[style_base].border then
-		tss.__style[style_base].border.w = width
+	local inner_width = width - pad
+	local style_props, _ = tss:get(style_base)
+	local content_align = style_props and style_props.align or "none"
+	if content_align == "none" then
+		content_align = "left"
 	end
 
+	local border_tss = tss:scope({
+		[style_base] = {
+			w = width,
+			border = { w = width },
+		},
+	})
+	local content_tss = tss:scope({
+		[style_base] = {
+			w = inner_width,
+			align = content_align,
+			border = { w = width },
+		},
+	})
+
 	-- Build top line
-	local border_def = tss.__style[style_base] and tss.__style[style_base].border or DEFAULT_BORDERS
+	local border_def = border_tss.__style[style_base] and border_tss.__style[style_base].border or DEFAULT_BORDERS
 	local top_line
 
 	if label and label ~= "" then
 		-- Build top line with label
-		local styled_label = tss:apply(style_base .. ".lang", label)
+		local styled_label = border_tss:apply(style_base .. ".lang", label)
 		local label_len = styled_label.width
 
-		local st = tss:apply(style_base .. ".border", border_def.top_line.before .. border_def.top_line.content).text
+		local st =
+			border_tss:apply(style_base .. ".border", border_def.top_line.before .. border_def.top_line.content).text
 		st = st
 			.. styled_label.text
-			.. tss:apply(
+			.. border_tss:apply(
 				style_base .. ".border",
 				string.rep(border_def.top_line.content, math.max(width - label_len - 1, 0)) .. border_def.top_line.after
 			).text
 		top_line = st
 	else
-		top_line = tss:apply(style_base .. ".border.top_line").text
-	end
-
-	-- Set content width for padding alignment (minus padding)
-	local inner_width = width - pad
-	if tss.__style[style_base] then
-		tss.__style[style_base].w = inner_width
-		if not orig_align or orig_align == "none" then
-			tss.__style[style_base].align = "left"
-		end
+		top_line = border_tss:apply(style_base .. ".border.top_line").text
 	end
 
 	-- Output top border
@@ -197,31 +275,17 @@ local render_bordered_block = function(tss, style_base, lines, width, label, ind
 		if not (is_last and is_empty) then
 			out:put(
 				indent_str,
-				tss:apply(style_base .. ".border.v").text,
+				content_tss:apply(style_base .. ".border.v").text,
 				pad_str,
-				tss:apply(style_base, l).text,
-				tss:apply(style_base .. ".border.v").text,
+				content_tss:apply(style_base, l).text,
+				content_tss:apply(style_base .. ".border.v").text,
 				"\n"
 			)
 		end
 	end
 
-	-- Restore width for bottom border (must be full width, not inner_width)
-	if tss.__style[style_base] then
-		tss.__style[style_base].w = width
-	end
-
 	-- Output bottom border
-	out:put(indent_str, tss:apply(style_base .. ".border.bottom_line").text, "\n")
-
-	-- Restore original values
-	if tss.__style[style_base] then
-		tss.__style[style_base].w = orig_w
-		tss.__style[style_base].align = orig_align
-		if tss.__style[style_base].border then
-			tss.__style[style_base].border.w = orig_border_w
-		end
-	end
+	out:put(indent_str, border_tss:apply(style_base .. ".border.bottom_line").text, "\n")
 
 	return out:get()
 end
@@ -368,8 +432,11 @@ local render_paragraph = function(self)
 			-- For ordered lists, add start offset to get actual number (e.g., start=5, count=1 -> num=5)
 			local item_num = list.ordered and (list.start + item_count - 1) or item_count
 
-			-- Build base indent for nesting (4 spaces per level, starting at level 2)
-			local base_indent = string.rep("    ", depth - 1)
+			-- Build base indent for nesting (configured spaces per level, starting at level 2)
+			local list_block_indent = get_block_indent(self._tss, "list_item")
+			local indent_per_level = get_list_indent_per_level(self._tss)
+			local raw_base_indent = string.rep(" ", indent_per_level * (depth - 1))
+			local base_indent = string.rep(" ", list_block_indent) .. raw_base_indent
 
 			if self._list_item_first_block then
 				-- First block gets the marker
@@ -378,7 +445,7 @@ local render_paragraph = function(self)
 					local num_str = string.format("%d. ", item_num)
 					local styled = self._tss:apply("list_item.ol", num_str)
 					marker_text = base_indent .. styled.text
-					marker_width = #base_indent + std.utf.display_len(num_str)
+					marker_width = list_block_indent + #raw_base_indent + std.utf.display_len(num_str)
 				elseif self._list_item_task then
 					-- Task list: render checkbox
 					local checkbox_style = self._list_item_task.checked and "task_list.checked" or "task_list.unchecked"
@@ -387,7 +454,7 @@ local render_paragraph = function(self)
 					-- Get display width of the checkbox content
 					local _, obj = self._tss:get(checkbox_style)
 					local checkbox_content = obj.content or (self._list_item_task.checked and "☑ " or "☐ ")
-					marker_width = #base_indent + std.utf.display_len(checkbox_content)
+					marker_width = list_block_indent + #raw_base_indent + std.utf.display_len(checkbox_content)
 				else
 					-- Unordered: get marker from TSS (uses content property)
 					local styled = self._tss:apply("list_item.ul")
@@ -395,7 +462,7 @@ local render_paragraph = function(self)
 					-- Get display width of the content (bullet + space)
 					local _, obj = self._tss:get("list_item.ul")
 					local marker_content = obj.content or "- "
-					marker_width = #base_indent + std.utf.display_len(marker_content)
+					marker_width = list_block_indent + #raw_base_indent + std.utf.display_len(marker_content)
 				end
 
 				self._list_item_first_block = false
@@ -537,19 +604,21 @@ local render_code_block = function(self)
 				-- First block: calculate continuation indent like paragraphs do
 				local item_count = self._list_item_count[depth] or 1
 				local item_num = list.ordered and (list.start + item_count - 1) or item_count
-				local base_indent = string.rep("    ", depth - 1)
+				local list_block_indent = get_block_indent(self._tss, "list_item")
+				local indent_per_level = get_list_indent_per_level(self._tss)
+				local raw_base_indent = string.rep(" ", indent_per_level * (depth - 1))
 				local marker_width
 				if list.ordered then
-					marker_width = #base_indent + #string.format("%d. ", item_num)
+					marker_width = list_block_indent + #raw_base_indent + #string.format("%d. ", item_num)
 				elseif self._list_item_task then
 					local _, obj =
 						self._tss:get(self._list_item_task.checked and "task_list.checked" or "task_list.unchecked")
 					local checkbox_content = obj.content or (self._list_item_task.checked and "☑ " or "☐ ")
-					marker_width = #base_indent + std.utf.display_len(checkbox_content)
+					marker_width = list_block_indent + #raw_base_indent + std.utf.display_len(checkbox_content)
 				else
 					local _, obj = self._tss:get("list_item.ul")
 					local marker_content = obj.content or "- "
-					marker_width = #base_indent + std.utf.display_len(marker_content)
+					marker_width = list_block_indent + #raw_base_indent + std.utf.display_len(marker_content)
 				end
 				indent = marker_width
 				self._list_continuation_indent = string.rep(" ", marker_width)
@@ -560,20 +629,27 @@ local render_code_block = function(self)
 			end
 		end
 	end
+	indent = indent + get_block_indent(self._tss, "code_block")
 
-	-- Calculate block width (content width + border padding)
-	-- When inside a div, subtract 2 to account for code block's own borders
-	local block_width = self._width - indent
+	-- Calculate inner block width (without left/right border glyphs)
+	local block_width = self._width - indent - 2
 	if #self._div_stack > 0 then
 		block_width = block_width - 2
 	end
+	block_width = math.max(1, block_width)
 
 	-- Get padding from TSS
 	local _, code_obj = self._tss:get("code_block")
 	local pad_value = (code_obj and code_obj.pad) or 0
 
+	-- Normalize tabs for stable terminal cell width accounting in bordered blocks
+	local render_lines = {}
+	for i, line in ipairs(lines) do
+		render_lines[i] = expand_tabs(line, 4)
+	end
+
 	-- Render bordered block
-	local rendered = render_bordered_block(self._tss, "code_block", lines, block_width, lang, indent, pad_value)
+	local rendered = render_bordered_block(self._tss, "code_block", render_lines, block_width, lang, indent, pad_value)
 
 	-- Track element position
 	local lines_in_block = count_newlines(rendered)
@@ -609,14 +685,13 @@ local render_thematic_break = function(self)
 		el_width = self._width
 	end
 
-	-- Generate the content (fill with the character)
-	local fill_char = obj.fill_char or "─"
-	local filled = string.rep(fill_char, math.ceil(el_width / std.utf.display_len(fill_char)))
-	filled = std.utf.sub(filled, 1, el_width)
+	-- Thematic break pattern comes from thematic_break.content.
+	-- Width expansion is handled by core TSS fill semantics (fill = true).
+	local base_content = obj.content or "─"
 
 	-- Apply styling (TSS won't add alignment padding since tss.__window.w = content width,
 	-- making effective_w = el_width, so there's no room for TSS to add padding)
-	local styled = self._tss:apply("thematic_break", filled).text
+	local styled = self._tss:apply("thematic_break", base_content).text
 
 	-- Manual alignment to center element within the content area
 	local align = props.align or "none"
@@ -639,6 +714,9 @@ local render_table = function(self)
 	if not tbl or not tbl.rows or #tbl.rows == 0 then
 		return
 	end
+	local table_block_indent = get_block_indent(self._tss, "table")
+	local table_indent_str = string.rep(" ", table_block_indent)
+	local table_available_width = math.max(1, self._width - table_block_indent)
 
 	-- Pre-calculate styled content for all cells
 	-- This allows accurate width calculation including before/after from TSS
@@ -657,7 +735,7 @@ local render_table = function(self)
 			end
 			styled_cells[i] = {
 				text = styled_text,
-				width = std.utf.display_len(styled_text), -- Handles ANSI codes
+				width = std.utf.cell_len(styled_text), -- Handles ANSI + OSC 66
 			}
 		end
 		styled_rows[row_idx] = {
@@ -674,10 +752,7 @@ local render_table = function(self)
 		end
 	end
 
-	-- Ensure minimum column width
-	for i = 1, #col_widths do
-		col_widths[i] = math.max(col_widths[i], 3)
-	end
+	col_widths = fit_table_width(col_widths, table_available_width)
 
 	-- Get border characters from TSS
 	local border = self._tss.__style.table and self._tss.__style.table.border or {}
@@ -711,7 +786,8 @@ local render_table = function(self)
 		end
 	end
 	top_line = top_line .. styled_border(b.top_right)
-	self._output:put(top_line, "\n")
+	top_line = clamp_display_width(top_line, table_available_width)
+	self._output:put(table_indent_str, top_line, "\n")
 
 	-- Render rows using pre-calculated styled content
 	for row_idx, row in ipairs(styled_rows) do
@@ -725,10 +801,17 @@ local render_table = function(self)
 			local cell_props, _ = self._tss:get(style_key)
 			local align = cell_props.align or tbl.alignments[i] or "left"
 
+			local cell_text = cell.text
+			local cell_width = cell.width
+			if cell_width > w then
+				cell_text = clamp_display_width(cell_text, w)
+				cell_width = std.utf.cell_len(cell_text)
+			end
+
 			-- Apply alignment with padding (padding uses base cell style)
 			local left_pad = ""
 			local right_pad = ""
-			local total_pad = w - cell.width
+			local total_pad = w - cell_width
 
 			if total_pad > 0 then
 				if align == "right" then
@@ -743,13 +826,14 @@ local render_table = function(self)
 				end
 			end
 
-			row_line = row_line .. " " .. left_pad .. cell.text .. right_pad .. " "
+			row_line = row_line .. " " .. left_pad .. cell_text .. right_pad .. " "
 			if i < #col_widths then
 				row_line = row_line .. styled_border(b.mid)
 			end
 		end
 		row_line = row_line .. styled_border(b.right)
-		self._output:put(row_line, "\n")
+		row_line = clamp_display_width(row_line, table_available_width)
+		self._output:put(table_indent_str, row_line, "\n")
 
 		-- After header row, add separator: ├───┼───┼───┤
 		if row.header and row_idx < #styled_rows then
@@ -761,7 +845,8 @@ local render_table = function(self)
 				end
 			end
 			sep_line = sep_line .. styled_border(b.mid_right)
-			self._output:put(sep_line, "\n")
+			sep_line = clamp_display_width(sep_line, table_available_width)
+			self._output:put(table_indent_str, sep_line, "\n")
 		end
 	end
 
@@ -774,7 +859,8 @@ local render_table = function(self)
 		end
 	end
 	bottom_line = bottom_line .. styled_border(b.bottom_right)
-	self._output:put(bottom_line, "\n\n")
+	bottom_line = clamp_display_width(bottom_line, table_available_width)
+	self._output:put(table_indent_str, bottom_line, "\n\n")
 
 	-- Update current line: top border + rows + separators + bottom border + empty line
 	local lines_count = 1 -- top border
@@ -874,34 +960,27 @@ local handle_block_start = function(self, tag, attrs)
 			el_width = available_width
 		end
 
-		-- Save and disable heading text-sizing to prevent border misalignment
-		-- Text-sizing (OSC 66) causes display_len to return incorrect widths
-		local saved_heading_ts = {}
-		if self._tss.__style.heading then
-			for i = 1, 6 do
-				local key = "h" .. i
-				if self._tss.__style.heading[key] then
-					saved_heading_ts[key] = self._tss.__style.heading[key].ts
-					self._tss.__style.heading[key].ts = nil
-				end
-			end
-		end
-
 		local div_info = {
 			class = class,
 			depth = #self._div_stack + 1,
 			saved_output = self._output, -- Save current output buffer
 			saved_width = self._width, -- Save original width
+			saved_tss_window_w = self._tss.__window.w, -- Save TSS layout width
+			saved_supports_ts = self._tss.__supports_ts, -- Save ts capability gate
 			start_line = self._current_line,
 			el_width = el_width, -- Store calculated width for block_end
 			pad = pad_value, -- Store padding for block_end
-			saved_heading_ts = saved_heading_ts, -- Saved text-sizing to restore
 		}
 		table.insert(self._div_stack, div_info)
 		-- Create new buffer to capture div content
 		self._output = buffer.new()
 		-- Set narrower width for content inside the div (minus padding)
 		self._width = el_width - pad_value
+		self._tss.__window.w = math.max(1, self._width)
+		-- Intentionally disable text sizing in bordered div content.
+		-- Kitty/foot diverge on scaled multicell cursor behavior around box glyphs,
+		-- which causes persistent right-border misalignment artifacts.
+		self._tss.__supports_ts = false
 	elseif tag == "blockquote" then
 		-- Blockquote - track nesting and capture output
 		local bq_info = {
@@ -1011,6 +1090,8 @@ local handle_block_end = function(self, tag)
 			-- Restore original output buffer and width
 			self._output = div_info.saved_output
 			self._width = div_info.saved_width
+			self._tss.__window.w = div_info.saved_tss_window_w
+			self._tss.__supports_ts = div_info.saved_supports_ts
 
 			-- Determine style base for this div class
 			local style_base = "div." .. class
@@ -1018,6 +1099,7 @@ local handle_block_end = function(self, tag)
 			if not (self._tss.__style.div and self._tss.__style.div[class] and self._tss.__style.div[class].border) then
 				style_base = "div.default"
 			end
+			local div_block_indent = get_block_indent(self._tss, style_base)
 
 			-- Use pre-calculated width from block_start
 			local el_width = div_info.el_width
@@ -1047,6 +1129,9 @@ local handle_block_end = function(self, tag)
 				end
 				rendered = table.concat(lines, "\n")
 			end
+			if div_block_indent > 0 then
+				rendered = std.txt.indent(rendered, div_block_indent)
+			end
 
 			-- Track start line
 			local start_line = div_info.start_line
@@ -1070,15 +1155,6 @@ local handle_block_end = function(self, tag)
 				end
 			end
 
-			-- Restore heading text-sizing that was disabled for div content
-			if div_info.saved_heading_ts and self._tss.__style.heading then
-				for key, ts in pairs(div_info.saved_heading_ts) do
-					if self._tss.__style.heading[key] then
-						self._tss.__style.heading[key].ts = ts
-					end
-				end
-			end
-
 			self._previous_block = "div"
 		end
 	elseif tag == "blockquote" then
@@ -1098,6 +1174,8 @@ local handle_block_end = function(self, tag)
 			local bar_style = self._tss.__style.blockquote and self._tss.__style.blockquote.bar
 			local bar_char = bar_style and bar_style.content or "┃ "
 			local styled_bar = self._tss:apply({ "blockquote.bar" }, bar_char).text
+			local bq_block_indent = get_block_indent(self._tss, "blockquote")
+			local bq_indent_str = string.rep(" ", bq_block_indent)
 
 			-- Split content into lines and add bar prefix to non-empty lines
 			local out = buffer.new()
@@ -1111,10 +1189,10 @@ local handle_block_end = function(self, tag)
 				if line == "" or line:match("^%s*$") then
 					-- Empty line - add bar only if not last line
 					if i < #lines then
-						out:put(styled_bar, "\n")
+						out:put(bq_indent_str, styled_bar, "\n")
 					end
 				else
-					out:put(styled_bar, line, "\n")
+					out:put(bq_indent_str, styled_bar, line, "\n")
 				end
 			end
 
@@ -1405,7 +1483,7 @@ local new = function(options)
 
 	-- Create TSS instance
 	local rss = options.tss or DEFAULT_RSS
-	local tss = tss_mod.merge(DEFAULT_RSS, rss)
+	local tss = tss_mod.merge(DEFAULT_RSS, rss, { supports_ts = options.supports_ts })
 	-- Override TSS window width to match content width so all width/alignment
 	-- calculations (especially in apply()) use content width, not terminal width
 	tss.__window.w = options.width or 80

@@ -41,6 +41,7 @@ end
 --   tss: table - custom TSS style sheet to merge with defaults
 --   indent: number - global indentation (default 0)
 --   hide_link_urls: boolean - hide URLs in rendered output (default false)
+--   supports_ts: boolean - whether terminal supports OSC 66 text sizing (default true)
 --   return_metadata: boolean - return { rendered, elements } instead of just string (default false)
 local render = function(input, options)
 	options = options or {}
@@ -52,6 +53,7 @@ local render = function(input, options)
 		tss = options.tss,
 		indent = options.indent or 0,
 		hide_link_urls = options.hide_link_urls or false,
+		supports_ts = options.supports_ts,
 	})
 
 	if not r then

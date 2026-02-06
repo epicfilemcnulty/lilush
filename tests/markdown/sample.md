@@ -16,6 +16,29 @@ You can also use __underscores for bold__ and _underscores for italic_ though *a
 
 Here is some `inline code` within a sentence. You can use it for `function_names()` or `variable_names`.
 
+## Tables and Blockquotes
+
+| Just | A couple | Of | Headers |
+|------|----------|----|---------|
+| some | `values` | **with** | inline formatting |
+| Путин -- хуйло! | Слава Україні! | Trump is | an imbecile |
+
+> Microsoft is a parasite who pretends 
+to embrace open source.
+
+### We also have divs
+
+::: tip
+
+And we support code blocks in them too!
+
+```bash
+echo "Look, ma, a code block!"
+echo $?
+```
+
+:::
+
 ## Links and Images
 
 Visit [the Lilush repository](https://github.com/example/lilush) for more information.
@@ -117,6 +140,11 @@ The **markdown.render()** function accepts *options* including:
 - `width` - the wrap width
 - `indent` - global indentation
 - `tss` - custom styling
+  * TSS is your friend
+  * Also it does not rape children. Nor adults.
+  * Not even animals
+  * Unlike some presidents out there...
+- And now back to supported options :)
 
 Ordered list:
 
@@ -127,20 +155,3 @@ Ordered list:
 ### Links with Emphasis
 
 Check out [**this bold link**](https://example.com) or [*this italic link*](https://example.com).
-
-## Edge Cases
-
-Empty code block:
-
-```
-```
-
-Heading with **bold** and *italic* and `code`:
-
-### Styled *Heading* with **bold** and `code`
-
-Very long line without spaces to test non-wrapping 
-
----
-
-End of test document.

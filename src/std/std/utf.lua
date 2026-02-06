@@ -3,6 +3,281 @@
 local bit = require("bit")
 local byte = string.byte
 local core = require("std.core")
+local ts_width_mode = "combined"
+
+local is_c0_control = function(b)
+	return (b and b <= 0x1F) or b == 0x7F
+end
+
+local consume_csi = function(str, i, len)
+	local j = i + 2
+	while j <= len do
+		local b = byte(str, j)
+		if b and b >= 0x40 and b <= 0x7E then
+			return j + 1
+		end
+		j = j + 1
+	end
+	return len + 1
+end
+
+local consume_st_terminated = function(str, i, len)
+	local j = i + 2
+	while j <= len do
+		local b = byte(str, j)
+		local next_b = byte(str, j + 1)
+		if b == 0x1B and next_b == 0x5C then
+			return j + 2
+		end
+		j = j + 1
+	end
+	return len + 1
+end
+
+local find_osc_terminator = function(str, i, len)
+	local j = i
+	while j <= len do
+		local b = byte(str, j)
+		local next_b = byte(str, j + 1)
+		if b == 0x07 then
+			return j, 1
+		end
+		if b == 0x1B and next_b == 0x5C then
+			return j, 2
+		end
+		j = j + 1
+	end
+	return len + 1, 0
+end
+
+local parse_meta_uint_param = function(meta, key, min, max)
+	for token in meta:gmatch("([^:]+)") do
+		local k, v = token:match("^([a-z])=(%d+)$")
+		if k == key and v then
+			local n = tonumber(v)
+			if n and n >= min and n <= max then
+				return n
+			end
+		end
+	end
+	return nil
+end
+
+local cell_len_lua
+local cell_height_lua
+cell_len_lua = function(str)
+	local str = tostring(str) or ""
+	local i = 1
+	local len = #str
+	local width = 0
+	local seg = {}
+	local seg_count = 0
+
+	local flush_segment = function()
+		if seg_count > 0 then
+			width = width + core.display_len(table.concat(seg, "", 1, seg_count))
+			seg = {}
+			seg_count = 0
+		end
+	end
+
+	while i <= len do
+		local b = byte(str, i)
+		local next_b = byte(str, i + 1)
+
+		if b == 0x1B then
+			flush_segment()
+			if next_b == 0x5B then
+				i = consume_csi(str, i, len)
+			elseif next_b == 0x5D then
+				local term_pos, term_len = find_osc_terminator(str, i + 2, len)
+				local end_pos = term_pos - 1
+				if end_pos >= i + 2 then
+					local content = str:sub(i + 2, end_pos)
+					if content:sub(1, 3) == "66;" then
+						local second_sep = content:find(";", 4, true)
+						if second_sep then
+							local meta = content:sub(4, second_sep - 1)
+							local payload = content:sub(second_sep + 1)
+							local payload_cells = cell_len_lua(payload)
+							local s = parse_meta_uint_param(meta, "s", 1, 7)
+							local w = parse_meta_uint_param(meta, "w", 0, 7)
+							local n = parse_meta_uint_param(meta, "n", 0, 15)
+							local d = parse_meta_uint_param(meta, "d", 0, 15)
+							if w and w > 0 then
+								local seg_cells = w
+								if ts_width_mode == "combined" and s then
+									seg_cells = seg_cells * s
+								end
+								-- Fractional + explicit width can still overflow in some
+								-- terminals depending on glyph metrics. Use a conservative
+								-- lower bound.
+								if ts_width_mode == "combined" and s and n and d and d > n then
+									seg_cells = math.max(seg_cells, payload_cells * s)
+								end
+								width = width + seg_cells
+							elseif s then
+								width = width + (payload_cells * s)
+							else
+								width = width + payload_cells
+							end
+						end
+					end
+				end
+				if term_len == 0 then
+					i = len + 1
+				else
+					i = term_pos + term_len
+				end
+			elseif next_b == 0x50 or next_b == 0x58 or next_b == 0x5E or next_b == 0x5F then
+				i = consume_st_terminated(str, i, len)
+			elseif next_b then
+				i = i + 2
+			else
+				i = i + 1
+			end
+		elseif is_c0_control(b) then
+			flush_segment()
+			i = i + 1
+		else
+			seg_count = seg_count + 1
+			seg[seg_count] = str:sub(i, i)
+			i = i + 1
+		end
+	end
+
+	flush_segment()
+	return width
+end
+
+cell_height_lua = function(str)
+	local str = tostring(str) or ""
+	local i = 1
+	local len = #str
+	local height = 1
+
+	while i <= len do
+		local b = byte(str, i)
+		local next_b = byte(str, i + 1)
+
+		if b == 0x1B then
+			if next_b == 0x5B then
+				i = consume_csi(str, i, len)
+			elseif next_b == 0x5D then
+				local term_pos, term_len = find_osc_terminator(str, i + 2, len)
+				local end_pos = term_pos - 1
+				if end_pos >= i + 2 then
+					local content = str:sub(i + 2, end_pos)
+					if content:sub(1, 3) == "66;" then
+						local second_sep = content:find(";", 4, true)
+						if second_sep then
+							local meta = content:sub(4, second_sep - 1)
+							local payload = content:sub(second_sep + 1)
+							local payload_height = cell_height_lua(payload)
+							local s = parse_meta_uint_param(meta, "s", 1, 7)
+							local seg_height = s and (payload_height * s) or payload_height
+							if seg_height > height then
+								height = seg_height
+							end
+						end
+					end
+				end
+				if term_len == 0 then
+					i = len + 1
+				else
+					i = term_pos + term_len
+				end
+			elseif next_b == 0x50 or next_b == 0x58 or next_b == 0x5E or next_b == 0x5F then
+				i = consume_st_terminated(str, i, len)
+			elseif next_b then
+				i = i + 2
+			else
+				i = i + 1
+			end
+		elseif is_c0_control(b) then
+			i = i + 1
+		else
+			-- Consume printable byte run until next control/escape.
+			-- Any printable run contributes a baseline height of 1.
+			while i <= len do
+				local cur = byte(str, i)
+				if cur == 0x1B or is_c0_control(cur) then
+					break
+				end
+				i = i + 1
+			end
+		end
+	end
+
+	return math.max(height, 1)
+end
+
+local extract_printable = function(str)
+	local out = {}
+	local out_count = 0
+	local str = tostring(str) or ""
+	local i = 1
+	local len = #str
+
+	while i <= len do
+		local b = byte(str, i)
+		local next_b = byte(str, i + 1)
+
+		-- Handle terminal escape sequences (ESC ...)
+		if b == 0x1B then
+			if next_b == 0x5B then
+				-- CSI: ESC [ ... final-byte
+				i = consume_csi(str, i, len)
+			elseif next_b == 0x5D then
+				-- OSC: ESC ] ... BEL or ST
+				local term_pos, term_len = find_osc_terminator(str, i + 2, len)
+				local end_pos = term_pos - 1
+				if end_pos >= i + 2 then
+					local content = str:sub(i + 2, end_pos)
+					-- Kitty text sizing OSC 66: ESC ] 66 ; params ; text ST
+					-- Keep printable text payload; drop protocol wrappers.
+					if content:sub(1, 3) == "66;" then
+						local second_sep = content:find(";", 4, true)
+						if second_sep then
+							out_count = out_count + 1
+							out[out_count] = content:sub(second_sep + 1)
+						end
+					end
+				end
+				if term_len == 0 then
+					i = len + 1
+				else
+					i = term_pos + term_len
+				end
+			elseif next_b == 0x50 or next_b == 0x58 or next_b == 0x5E or next_b == 0x5F then
+				-- DCS/SOS/PM/APC: ESC P/X/^/_ ... ST
+				i = consume_st_terminated(str, i, len)
+			elseif next_b then
+				-- Other single ESC sequences
+				i = i + 2
+			else
+				i = i + 1
+			end
+		elseif is_c0_control(b) then
+			-- C0 controls and DEL are non-printing for std.utf semantics
+			i = i + 1
+		else
+			out_count = out_count + 1
+			out[out_count] = str:sub(i, i)
+			i = i + 1
+		end
+	end
+
+	return table.concat(out, "")
+end
+
+local count_utf_chars = function(str, pattern)
+	local count = 0
+	for _ in str:gmatch(pattern) do
+		count = count + 1
+	end
+	return count
+end
 
 local utf
 utf = {
@@ -51,7 +326,7 @@ utf = {
 					return false
 				elseif byte(first) == 0xF0 and (byte(char) < 0x90 or byte(char) > 0xBF) then
 					return false
-				elseif byte(first) == 0xF4 and (byte(char) < 0x90 or byte(char) > 0x8F) then
+				elseif byte(first) == 0xF4 and (byte(char) < 0x80 or byte(char) > 0x8F) then
 					return false
 				end
 			end
@@ -62,24 +337,39 @@ utf = {
 		return true
 	end,
 	len = function(str)
-		local count = 0
-		local esc_count = 0
-		local str = tostring(str) or ""
-		if str:match(utf.patterns.sgr_csi_pattern) then
-			str, esc_count = str:gsub(utf.patterns.sgr_csi_pattern, "")
-		end
-		for char in str:gmatch(utf.patterns.glob) do
-			count = count + 1
-		end
-		return count, esc_count
+		local printable = extract_printable(str)
+		return count_utf_chars(printable, utf.patterns.glob)
 	end,
 	display_len = function(str)
 		return core.display_len(str)
 	end,
+	cell_len = function(str)
+		if ts_width_mode == "combined" and core.cell_len then
+			return core.cell_len(str)
+		end
+		return cell_len_lua(str)
+	end,
+	cell_height = function(str)
+		if core.cell_height then
+			return core.cell_height(str)
+		end
+		return cell_height_lua(str)
+	end,
+	set_ts_width_mode = function(mode)
+		if mode == "combined" or mode == "w_only" then
+			ts_width_mode = mode
+			return true
+		end
+		return nil, "invalid ts width mode: " .. tostring(mode)
+	end,
+	get_ts_width_mode = function()
+		return ts_width_mode
+	end,
 	find_all_spaces = function(str)
 		local spaces = {}
+		local printable = extract_printable(str)
 		local i = 1
-		for c in str:gmatch(utf.patterns.glob) do
+		for c in printable:gmatch(utf.patterns.glob) do
 			if c:match("%s") then
 				table.insert(spaces, i)
 			end
@@ -91,7 +381,8 @@ utf = {
 		if not str or not i then
 			return nil, "no string or index"
 		end
-		local l = utf.len(str)
+		local printable = extract_printable(str)
+		local l = count_utf_chars(printable, utf.patterns.glob)
 		local j = j or l
 		-- Check and translate negative indices first
 		if j < 0 then
@@ -112,7 +403,7 @@ utf = {
 		end
 		local idx = 0
 		local result = ""
-		for char in str:gmatch(utf.patterns.glob) do
+		for char in printable:gmatch(utf.patterns.glob) do
 			idx = idx + 1
 			if idx >= i and idx <= j then
 				result = result .. char

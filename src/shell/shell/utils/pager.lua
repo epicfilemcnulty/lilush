@@ -33,6 +33,21 @@ local pager_set_render_mode = function(self, mode)
 	self.__config.render_mode = mode
 
 	if mode == "markdown" then
+		-- Align OSC66 width accounting with terminal behavior.
+		-- Some terminals treat s+w as combined width (s*w), others as w-only.
+		local supports_ts = true
+		if std.utf and std.utf.set_ts_width_mode and term.raw_mode and term.raw_mode() then
+			local ts_mode = "combined"
+			local ts_support = term.has_ts and term.has_ts() or false
+			supports_ts = (ts_support ~= false)
+			if ts_support == "width" then
+				ts_mode = "w_only"
+			elseif ts_support == true and term.has_ts_combined and not term.has_ts_combined() then
+				ts_mode = "w_only"
+			end
+			std.utf.set_ts_width_mode(ts_mode)
+		end
+
 		-- Calculate content width with priority:
 		-- 1. Pager config wrap override
 		-- 2. TSS wrap value
@@ -59,6 +74,7 @@ local pager_set_render_mode = function(self, mode)
 			width = content_width,
 			return_metadata = true,
 			hide_link_urls = true,
+			supports_ts = supports_ts,
 		})
 
 		self.content.rendered = result.rendered
