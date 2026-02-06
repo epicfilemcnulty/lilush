@@ -17,7 +17,7 @@ Lilush is by design Linux only and not portable.
 
 Primary target is kitty, since it has other QoL enhancements, like
 graphics, text-sizing, etc.
- 
+
 ## Key Dependencies
 
 - **LuaJIT 2.1** - Lua runtime (with Lua 5.2 compat enabled)
@@ -38,3 +38,4 @@ All file names in the documentation are relative to the root of the repo.
 * `docs/BUILDING.md`: Building instructions and building system architecture
 * `docs/TESTING.md`: Testing system, running tests
 * `docs/TSS.md`: TSS (Terminal Style Sheets) semantics, properties, cascading, and API contract
+* `docs/RELIW.md`: RELIW operator/developer guide (config, Redis schema, WAF, request semantics, operations)

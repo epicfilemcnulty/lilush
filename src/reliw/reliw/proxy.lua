@@ -175,8 +175,9 @@ function proxy.handle(client, method, path, headers, body, target)
 	-- Add X-Forwarded headers
 	upstream_headers["x-forwarded-host"] = original_host
 	upstream_headers["x-forwarded-proto"] = "https" -- Since your RELIW server is running on HTTPS
-	if headers["x-real-ip"] then
-		upstream_headers["x-forwarded-for"] = headers["x-real-ip"]
+	local forwarded_for = headers["x-client-ip"] or headers["x-real-ip"]
+	if forwarded_for then
+		upstream_headers["x-forwarded-for"] = forwarded_for
 	end
 
 	-- Send headers

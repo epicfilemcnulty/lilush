@@ -341,7 +341,7 @@ local handle = function(method, query, args, headers, body, ctx)
 	end
 	-- Check rate limits
 	if metadata.rate_limit and metadata.rate_limit[method] then
-		local remote_ip = headers["x-real-ip"]
+		local remote_ip = headers["x-client-ip"] or headers["x-real-ip"] or "unknown"
 		-- better move all this whitelist stuff into a dedicated func
 		local whitelisted = metadata.rate_limit.whitelisted_ip or "127.0.66.6"
 		if remote_ip ~= whitelisted then

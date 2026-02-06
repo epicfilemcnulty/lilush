@@ -198,7 +198,14 @@ local server_process_request = function(self, client, client_ip, count)
 	then
 		compress_output = true
 	end
-	headers["x-real-ip"] = client_ip
+	local peer_ip = client_ip
+	if type(peer_ip) ~= "string" or peer_ip == "" then
+		peer_ip = "n/a"
+	end
+	headers["x-client-ip"] = peer_ip
+	if not headers["x-real-ip"] or headers["x-real-ip"] == "" then
+		headers["x-real-ip"] = peer_ip
+	end
 
 	local content, status, response_headers = self.handle(method, query, args, headers, body, {
 		logger = self.logger,
@@ -257,6 +264,7 @@ local server_process_request = function(self, client, client_ip, count)
 		local elapsed_time = os.clock() - start_time
 		local log_msg = {
 			vhost = host,
+			client_ip = headers["x-client-ip"] or "n/a",
 			method = method,
 			query = query,
 			status = status,
@@ -264,6 +272,12 @@ local server_process_request = function(self, client, client_ip, count)
 			size = #content,
 			time = string.format("%.4f", elapsed_time),
 		}
+		if headers["x-forwarded-for"] then
+			log_msg.forwarded_for = headers["x-forwarded-for"]
+		end
+		if headers["x-real-ip"] and headers["x-real-ip"] ~= log_msg.client_ip then
+			log_msg.forwarded_real_ip = headers["x-real-ip"]
+		end
 		for _, h in ipairs(self.__config.log_headers) do
 			if headers[h] then
 				log_msg[h] = headers[h]

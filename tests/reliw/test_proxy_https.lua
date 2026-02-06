@@ -180,4 +180,42 @@ testify:that("does not wrap plain HTTP upstream sockets", function()
 	testimony.assert_equal(1, close_count)
 end)
 
+testify:that("uses x-client-ip as x-forwarded-for when provided", function()
+	scenario = {
+		receive_values = {
+			"HTTP/1.1 200 OK",
+			"Content-Length: 2",
+			"",
+			"ok",
+		},
+	}
+	close_count = 0
+	wrap_calls = 0
+	handshake_calls = 0
+	last_tls_cfg = nil
+	sent_requests = {}
+
+	local content, status = proxy.handle(
+		nil,
+		"GET",
+		"/",
+		{
+			host = "example.com",
+			["x-client-ip"] = "10.10.10.10",
+			["x-real-ip"] = "203.0.113.77",
+		},
+		nil,
+		{
+			scheme = "http",
+			host = "upstream.example",
+			port = 8080,
+		}
+	)
+
+	testimony.assert_equal("ok", content)
+	testimony.assert_equal(200, status)
+	testimony.assert_match("x%-forwarded%-for: 10%.10%.10%.10", sent_requests[1])
+	testimony.assert_equal(1, close_count)
+end)
+
 testify:conclude()

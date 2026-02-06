@@ -1,12 +1,29 @@
-# RELIW -- A Redis-centric HTTP Web Server/Framework for Lua
+# RELIW -- Redis-centric HTTP Server/Framework for Lua
 
-## Configuration
+RELIW is a standalone app built from this repo (`buildgen/apps/reliw.lua`).
 
-RELIW requires a configuration file in JSON format. The location of
-the file can be set by `RELIW_CONFIG_FILE` environment variable. If it's absent,
-RELIW will try to load `/etc/reliw/config.json` file if there is any.
+For full operator/developer documentation, see:
 
-### A minimal config of a plain HTTP server
+- `docs/RELIW.md`
+
+That guide includes:
+
+- complete configuration reference and defaults
+- Redis data schema and proxy metadata model
+- WAF semantics and request handling flow
+- failure-mode response matrix and troubleshooting
+- rollout/rollback notes and observability guidance
+
+## Quickstart
+
+### Configure RELIW
+
+RELIW reads config from:
+
+1. `RELIW_CONFIG_FILE` (if set)
+2. `/etc/reliw/config.json` (fallback)
+
+Minimal HTTP config:
 
 ```json
 {
@@ -15,45 +32,51 @@ RELIW will try to load `/etc/reliw/config.json` file if there is any.
 }
 ```
 
-### A more complex one, with metrics server
+HTTPS + metrics example:
 
 ```json
 {
+  "ip": "127.0.0.1",
+  "port": 443,
+  "data_dir": "/var/www",
+  "tls_handshake_timeout": 10,
+  "metrics": {
     "ip": "127.0.0.1",
-    "port": 8080,
-    "data_dir": "/var/www",
-    "keepalive_idle_timeout": 15,
-    "request_header_timeout": 10,
-    "request_body_timeout": 30,
-    "metrics": {
-        "ip": "127.0.0.1",
-        "port": 9101
+    "port": 9101,
+    "scan_count": 100,
+    "scan_limit": 2000
+  },
+  "ssl": {
+    "default": {
+      "cert": "/var/www/certs/example.com.crt",
+      "key": "/var/www/certs/example.com.key"
     },
-    "log_headers": [ "user-agent", "x-real-ip" ]
-}
-```
-
-### HTTPS server with externally provisioned SSL certificates
-
-```json
-{
-    "ip": "127.0.0.1",
-    "port": 443,
-    "tls_handshake_timeout": 10,
-    "ssl": {
-        "default": { "cert": "/var/www/certs/example.com.crt", "key": "/var/www/certs/example.com.key" },
-        "hosts": {
-            "example2.com": { "cert": "/var/www/certs/example2.com.crt", "key": "/var/www/certs/example2.com.key" }
-        }
+    "hosts": {
+      "example2.com": {
+        "cert": "/var/www/certs/example2.com.crt",
+        "key": "/var/www/certs/example2.com.key"
+      }
     }
+  }
 }
 ```
 
-### Connection timeout options
+### Seed minimal Redis routing
 
-The server supports phase-specific timeouts (all values are in seconds):
+```bash
+redis-cli -n 13 SET RLW:API:example.com '[["/","home",true]]'
+redis-cli -n 13 SET RLW:API:example.com:home '{"methods":{"GET":true,"HEAD":true},"index":"index.md"}'
+```
 
-- `keepalive_idle_timeout`: max idle time while waiting for the next request on a keep-alive connection (default: `15`)
-- `request_header_timeout`: max time to receive request headers after first request line was received (default: `10`)
-- `request_body_timeout`: max time to receive request body (default: `30`)
-- `tls_handshake_timeout`: max time allowed for TLS handshake (default: `10`)
+### Add content
+
+```bash
+mkdir -p /var/www/example.com
+printf '# Hello\n' > /var/www/example.com/index.md
+```
+
+### Run RELIW
+
+```bash
+RELIW_CONFIG_FILE=/etc/reliw/config.json /usr/local/bin/reliw
+```
