@@ -30,4 +30,10 @@ int timeout_meth_gettimeout(lua_State *L, p_timeout tm);
 
 #pragma GCC visibility pop
 
-#define timeout_iszero(tm) ((tm)->block == 0.0)
+static inline int timeout_iszero(p_timeout tm) {
+    if (tm->block == 0.0)
+        return 1; /* fast path: explicitly non-blocking */
+    if (tm->block < 0.0 && tm->total < 0.0)
+        return 0; /* no timeout set */
+    return timeout_getretry(tm) <= 0.0;
+}
