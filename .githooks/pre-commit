@@ -1,0 +1,39 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Get list of staged files (excluding deleted files)
+staged_files=$(git diff --cached --name-only --diff-filter=d)
+
+if [ -z "$staged_files" ]; then
+    exit 0
+fi
+
+# 1) Remove trailing whitespace from otherwise-blank lines in all staged files
+echo "Cleaning whitespace-only lines..."
+echo "$staged_files" | while IFS= read -r file; do
+    if [ -f "$file" ]; then
+        sed -i 's/^[[:space:]]\+$//' "$file"
+        git add "$file"
+    fi
+done
+
+# 2) Run stylua on staged .lua files
+lua_files=$(echo "$staged_files" | grep '\.lua$' || true)
+
+if [ -n "$lua_files" ]; then
+    if ! command -v stylua &>/dev/null; then
+        echo "Error: stylua is not installed. Please install it first."
+        exit 1
+    fi
+
+    echo "Running stylua on Lua files..."
+    echo "$lua_files" | while IFS= read -r file; do
+        if [ -f "$file" ]; then
+            stylua "$file"
+            git add "$file"
+        fi
+    done
+fi
+
+exit 0
