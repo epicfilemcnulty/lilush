@@ -21,7 +21,7 @@ Here is some `inline code` within a sentence. You can use it for `function_names
 | Just | A couple | Of | Headers |
 |------|----------|----|---------|
 | some | `values` | **with** | inline formatting |
-| Путин -- хуйло! | Слава Україні! | Trump is | an imbecile |
+| Путин -- хуйло! | Слава Україні! | Trump is a moral degenerate | with no sense of decency |
 
 > Microsoft is a parasite who pretends 
 to embrace open source.
