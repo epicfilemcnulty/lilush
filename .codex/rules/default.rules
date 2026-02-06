@@ -1,0 +1,2 @@
+prefix_rule(pattern=["./build.bash"], decision="allow")
+prefix_rule(pattern=["./run_all_tests.bash"], decision="allow")
