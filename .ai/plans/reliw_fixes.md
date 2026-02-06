@@ -5,8 +5,8 @@ Author: Codex review pass
 
 ## Status
 
-- Current phase: `Phase 1` completed on `2026-02-06`.
-- Next phase: `Phase 2: Protocol Correctness`.
+- Current phase: `Phase 2` completed on `2026-02-06`.
+- Next phase: `Phase 3: Request-Body and Path Hardening`.
 - Open blockers: none currently.
 
 ## Scope and Baseline
@@ -43,8 +43,8 @@ Assumptions (confirmed):
    - Impact: upstream connect failures can crash request worker instead of returning `502`.
    - Required fix: replace `assert` with explicit error returns and controlled upstream close behavior.
 
-4. HTTPS proxy targets are not using TLS.
-   - Evidence: `src/reliw/reliw/proxy.lua:80` chooses 443 for HTTPS, but no SSL wrap/handshake occurs in `src/reliw/reliw/proxy.lua:75-140`.
+4. HTTPS proxy targets are not using TLS. (Phase 2: fixed)
+   - Evidence: prior behavior selected 443 for HTTPS but did not perform TLS wrap/handshake.
    - Impact: plaintext sent to TLS backends, failed proxying, security mismatch.
    - Required fix: wrap upstream TCP socket using `ssl.wrap` and handshake when `target.scheme == "https"`.
 
@@ -70,13 +70,13 @@ Assumptions (confirmed):
    - Impact: malformed login requests can cause runtime error.
    - Required fix: guard nil/empty body in auth handler and parser entry points.
 
-9. ETag conditional flow can emit `304` for non-GET/HEAD methods.
-   - Evidence: `src/reliw/reliw/handle.lua:169-173`.
+9. ETag conditional flow can emit `304` for non-GET/HEAD methods. (Phase 2: fixed)
+   - Evidence: prior behavior allowed `If-None-Match` short-circuit on non-`GET` methods.
    - Impact: incorrect HTTP semantics for unsafe methods.
    - Required fix: apply `If-None-Match` shortcut only for `GET` and `HEAD`.
 
-10. Proxy chunk parser does not support chunk extensions.
-    - Evidence: `tonumber(line, 16)` in `src/reliw/reliw/proxy.lua:12`.
+10. Proxy chunk parser does not support chunk extensions. (Phase 2: fixed)
+    - Evidence: prior behavior used direct `tonumber(line, 16)` and rejected valid extension forms.
     - Impact: valid chunked responses using extensions fail to parse.
     - Required fix: parse leading hex token only (`^%s*([0-9A-Fa-f]+)`).
 
@@ -93,15 +93,16 @@ Current state:
   - store initialization failure handling in request path
   - metrics connection close behavior and init-failure response
   - proxy socket/connect failure non-crashing behavior
+- Phase 2 added protocol-correctness tests for:
+  - HTTPS upstream TLS proxy behavior and chunk-extension parsing
+  - ETag method semantics (`GET`/`HEAD`/non-`GET`)
 - Full RELIW lifecycle/protocol/security coverage is still incomplete.
 
 Missing test categories:
 
-- Proxy `https` TLS behavior.
 - Chunked request size limits and parser edge cases.
 - Host/query path sanitization and traversal attempts.
 - Auth malformed body handling.
-- ETag method semantics.
 - Manager/worker zombie reaping behavior.
 - Metrics scalability path (`SCAN` vs `KEYS`) and connection close behavior.
 
