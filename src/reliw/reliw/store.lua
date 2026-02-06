@@ -362,35 +362,69 @@ end
 local fetch_metrics = function(self)
 	local metrics_total = "# TYPE http_requests_total counter\n"
 	local metrics_by_method = "# TYPE http_requests_by_method counter\n"
-	local vhosts, _ = self.red:cmd("KEYS", self.prefix .. ":METRICS:*:total")
-	if vhosts then
-		for _, v in ipairs(vhosts) do
-			local vhost_name = v:match(self.prefix .. ":METRICS:(.-):total")
-			local values = self.red:cmd("HGETALL", v)
-			if values then
-				for i = 1, #values, 2 do
-					metrics_total = metrics_total
-						.. [[http_requests_total{host="]]
-						.. vhost_name
-						.. [[",code="]]
-						.. values[i]
-						.. [["} ]]
-						.. values[i + 1]
-						.. "\n"
+	local vhosts = {}
+	local seen_hosts = {}
+	local prefix = self.prefix .. ":METRICS:"
+	local suffix = ":total"
+	local match = self.prefix .. ":METRICS:*:total"
+	local scan_count = tostring(self.metrics_scan_count or 100)
+	local scan_limit = self.metrics_scan_limit or 2000
+	local scanned_keys = 0
+	local cursor = "0"
+	while true do
+		local resp = self.red:cmd("SCAN", cursor, "MATCH", match, "COUNT", scan_count)
+		if not resp then
+			break
+		end
+		cursor = tostring(resp[1] or "0")
+		local keys = resp[2]
+		if type(keys) == "table" then
+			for _, key in ipairs(keys) do
+				if scanned_keys >= scan_limit then
+					cursor = "0"
+					break
+				end
+				scanned_keys = scanned_keys + 1
+				if key:sub(1, #prefix) == prefix and key:sub(-#suffix) == suffix then
+					local host = key:sub(#prefix + 1, #key - #suffix)
+					if host ~= "" and not seen_hosts[host] then
+						seen_hosts[host] = true
+						table.insert(vhosts, host)
+					end
 				end
 			end
-			values = self.red:cmd("HGETALL", self.prefix .. ":METRICS:" .. vhost_name .. ":by_method")
-			if values then
-				for i = 1, #values, 2 do
-					metrics_by_method = metrics_by_method
-						.. [[http_requests_by_method{host="]]
-						.. vhost_name
-						.. [[",method="]]
-						.. values[i]
-						.. [["} ]]
-						.. values[i + 1]
-						.. "\n"
-				end
+		end
+		if cursor == "0" then
+			break
+		end
+	end
+	table.sort(vhosts)
+
+	for _, vhost_name in ipairs(vhosts) do
+		local values = self.red:cmd("HGETALL", self.prefix .. ":METRICS:" .. vhost_name .. ":total")
+		if values then
+			for i = 1, #values, 2 do
+				metrics_total = metrics_total
+					.. [[http_requests_total{host="]]
+					.. vhost_name
+					.. [[",code="]]
+					.. values[i]
+					.. [["} ]]
+					.. values[i + 1]
+					.. "\n"
+			end
+		end
+		values = self.red:cmd("HGETALL", self.prefix .. ":METRICS:" .. vhost_name .. ":by_method")
+		if values then
+			for i = 1, #values, 2 do
+				metrics_by_method = metrics_by_method
+					.. [[http_requests_by_method{host="]]
+					.. vhost_name
+					.. [[",method="]]
+					.. values[i]
+					.. [["} ]]
+					.. values[i + 1]
+					.. "\n"
 			end
 		end
 	end
@@ -417,10 +451,25 @@ local new = function(srv_cfg)
 	if err then
 		return nil, err
 	end
+	local metrics_cfg = srv_cfg.metrics or {}
+	local scan_count = tonumber(metrics_cfg.scan_count) or 100
+	if scan_count < 1 then
+		scan_count = 1
+	elseif scan_count > 1000 then
+		scan_count = 1000
+	end
+	local scan_limit = tonumber(metrics_cfg.scan_limit) or 2000
+	if scan_limit < 1 then
+		scan_limit = 1
+	elseif scan_limit > 10000 then
+		scan_limit = 10000
+	end
 	return {
 		prefix = srv_cfg.redis.prefix,
 		data_dir = srv_cfg.data_dir,
 		cache_max_size = srv_cfg.cache_max_size,
+		metrics_scan_count = scan_count,
+		metrics_scan_limit = scan_limit,
 		red = red,
 		close = function(self)
 			if self.red then

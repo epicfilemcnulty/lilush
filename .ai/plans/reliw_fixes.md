@@ -5,8 +5,8 @@ Author: Codex review pass
 
 ## Status
 
-- Current phase: `Phase 4` completed on `2026-02-06`.
-- Next phase: `Phase 5: Metrics Scalability`.
+- Current phase: `Phase 5` completed on `2026-02-06`.
+- Next phase: `Phase 6: RELIW Regression Test Suite`.
 - Open blockers: none currently.
 
 ## Scope and Baseline
@@ -80,8 +80,8 @@ Assumptions (confirmed):
     - Impact: valid chunked responses using extensions fail to parse.
     - Required fix: parse leading hex token only (`^%s*([0-9A-Fa-f]+)`).
 
-11. Metrics fetch uses Redis `KEYS`.
-    - Evidence: `src/reliw/reliw/store.lua:293`.
+11. Metrics fetch uses Redis `KEYS`. (Phase 5: fixed)
+    - Evidence: prior behavior used `KEYS <prefix>:METRICS:*:total` in metrics collection path.
     - Impact: blocking O(N) scan can degrade Redis under large keyspaces.
     - Required fix: replace with `SCAN`-based iteration or maintained index set.
 
@@ -106,7 +106,6 @@ Current state:
 Missing test categories:
 
 - Auth malformed body handling.
-- Metrics scalability path (`SCAN` vs `KEYS`) and connection close behavior.
 
 ## Implementation Plan (Phased)
 
@@ -278,12 +277,39 @@ Acceptance:
 
 Objective: remove Redis blocking operations from metrics path.
 
+Status: Completed on 2026-02-06.
+
 Changes:
 
 - `src/reliw/reliw/store.lua`
   - Replace `KEYS` with cursor-based `SCAN` iteration for metrics key discovery.
   - Keep output format unchanged (`http_requests_total`, `http_requests_by_method`).
   - Add sane scan batch size default and upper bound per request to avoid long scrapes.
+
+Implementation details (implemented):
+
+1. SCAN-based metrics host discovery (`src/reliw/reliw/store.lua`)
+   - Replaced `KEYS` lookup with cursor loop:
+     - `SCAN <cursor> MATCH <prefix>:METRICS:*:total COUNT <scan_count>`
+   - Added host deduplication and deterministic ordering before metrics emission.
+   - Preserved output families and label names:
+     - `http_requests_total{host=...,code=...}`
+     - `http_requests_by_method{host=...,method=...}`
+
+2. Bounded scrape controls (`src/reliw/reliw/store.lua`)
+   - Added optional metrics config knobs:
+     - `metrics.scan_count` (default `100`, clamped `1..1000`)
+     - `metrics.scan_limit` (default `2000`, clamped `1..10000`)
+   - Enforced per-scrape key upper bound to avoid unbounded Redis work.
+
+3. Regression coverage (`tests/reliw/test_metrics_scan.lua`)
+   - Added test to assert `SCAN` usage and verify no `KEYS` calls.
+   - Added test for count/limit bounds and limit-enforced host truncation behavior.
+
+4. Validation and rollout gate
+   - `./lilush tests/reliw/test_metrics_scan.lua`
+   - `./lilush tests/reliw/test_metrics_connection_close.lua`
+   - `./run_all_tests.bash`
 
 Acceptance:
 
@@ -417,6 +443,28 @@ Rollback guidance:
 - Prioritize runtime stability and predictable failure modes over legacy undefined behavior.
 
 ## Progress Log
+
+### 2026-02-06 — Phase 5 Implemented
+
+Status: Completed.
+
+Implemented fixes:
+
+- `src/reliw/reliw/store.lua`
+  - Replaced metrics key discovery from blocking `KEYS` to cursor-driven `SCAN`.
+  - Added bounded scrape controls via metrics config:
+    - `scan_count` default/clamp: `100` / `1..1000`
+    - `scan_limit` default/clamp: `2000` / `1..10000`
+  - Preserved metrics output contract (`http_requests_total`, `http_requests_by_method`).
+- `tests/reliw/test_metrics_scan.lua`
+  - Added SCAN-path coverage with multi-cursor discovery and output checks.
+  - Added bounds/limit behavior coverage and assertion that `KEYS` is no longer used.
+
+Validation completed:
+
+- `./lilush tests/reliw/test_metrics_scan.lua` passed.
+- `./lilush tests/reliw/test_metrics_connection_close.lua` passed.
+- `./run_all_tests.bash` passed.
 
 ### 2026-02-06 — Phase 4 Implemented
 
