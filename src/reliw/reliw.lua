@@ -46,6 +46,56 @@ local new_server = function(srv_cfg)
 	return srv
 end
 
+local track_child_pid = function(self, pid, name)
+	if not pid or pid <= 0 then
+		return
+	end
+	if not self.child_pids then
+		self.child_pids = {}
+	end
+	self.child_pids[pid] = name or "child"
+end
+
+local untrack_child_pid = function(self, pid)
+	if not self.child_pids or not pid or pid <= 0 then
+		return false
+	end
+	if not self.child_pids[pid] then
+		return false
+	end
+	self.child_pids[pid] = nil
+	return true
+end
+
+local drain_exited_children = function(self)
+	while true do
+		local pid = std.ps.waitpid(-1)
+		if not pid or pid <= 0 then
+			break
+		end
+		untrack_child_pid(self, pid)
+	end
+end
+
+local wait_for_primary_exit = function(self)
+	if not self.reliw_pid then
+		return
+	end
+	local primary_pid = self.reliw_pid
+	while true do
+		local pid = std.ps.wait(-1)
+		if not pid or pid <= 0 then
+			break
+		end
+		local is_primary = pid == primary_pid
+		untrack_child_pid(self, pid)
+		if is_primary then
+			break
+		end
+	end
+	drain_exited_children(self)
+end
+
 local spawn_metrics_server = function(self)
 	local cfg, err = get_server_config()
 	if not cfg then
@@ -74,6 +124,7 @@ local spawn_metrics_server = function(self)
 	end
 	self.logger:log({ msg = "metrics server spawned", process = "manager", pid = metrics_pid })
 	self.metrics_pid = metrics_pid
+	track_child_pid(self, metrics_pid, "metrics")
 	return true
 end
 
@@ -93,6 +144,7 @@ local spawn_server = function(self, srv_cfg)
 	end
 	self.logger:log({ msg = "IPv4 server spawned", process = "manager", pid = reliw_pid })
 	self.reliw_pid = reliw_pid
+	track_child_pid(self, reliw_pid, "server_ipv4")
 
 	if not srv_cfg.ipv6 then
 		return true
@@ -115,6 +167,7 @@ local spawn_server = function(self, srv_cfg)
 	end
 	self.logger:log({ msg = "IPv6 server spawned", process = "manager", pid = reliw6_pid })
 	self.reliw6_pid = reliw6_pid
+	track_child_pid(self, reliw6_pid, "server_ipv6")
 	return true
 end
 
@@ -126,9 +179,7 @@ local run = function(self)
 	if not self:spawn_server(cfg) then
 		os.exit(1)
 	end
-	if self.reliw_pid then
-		std.ps.wait(self.reliw_pid)
-	end
+	wait_for_primary_exit(self)
 end
 
 local new = function()
@@ -145,6 +196,7 @@ local new = function()
 		logger = std.logger.new(cfg.log_level),
 		cfg = cfg,
 		store = store,
+		child_pids = {},
 		run = run,
 		spawn_server = spawn_server,
 		spawn_metrics_server = spawn_metrics_server,

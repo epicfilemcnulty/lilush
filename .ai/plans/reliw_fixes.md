@@ -5,8 +5,8 @@ Author: Codex review pass
 
 ## Status
 
-- Current phase: `Phase 3` completed on `2026-02-06`.
-- Next phase: `Phase 4: Process Lifecycle Reliability`.
+- Current phase: `Phase 4` completed on `2026-02-06`.
+- Next phase: `Phase 5: Metrics Scalability`.
 - Open blockers: none currently.
 
 ## Scope and Baseline
@@ -60,8 +60,8 @@ Assumptions (confirmed):
 
 ### Medium Severity
 
-7. RELIW manager reaps only one child path by blocking on IPv4 PID.
-   - Evidence: `src/reliw/reliw.lua:129-131`.
+7. RELIW manager reaps only one child path by blocking on IPv4 PID. (Phase 4: fixed)
+   - Evidence: prior behavior blocked on `std.ps.wait(self.reliw_pid)` and did not reap non-primary exits.
    - Impact: non-IPv4 children (metrics/ipv6) can become zombies under restart/failure timing.
    - Required fix: reaping loop for all children until target shutdown condition is met.
 
@@ -99,12 +99,13 @@ Current state:
 - Phase 3 added hardening tests for:
   - chunked request body max-size enforcement
   - host/query validation and store path traversal blocking
+- Phase 4 added lifecycle test coverage for:
+  - manager any-child wait loop and sibling-drain reaping behavior
 - Full RELIW lifecycle/protocol/security coverage is still incomplete.
 
 Missing test categories:
 
 - Auth malformed body handling.
-- Manager/worker zombie reaping behavior.
 - Metrics scalability path (`SCAN` vs `KEYS`) and connection close behavior.
 
 ## Implementation Plan (Phased)
@@ -222,6 +223,8 @@ Acceptance:
 
 Objective: prevent zombie accumulation for non-primary child processes.
 
+Status: Completed on 2026-02-06.
+
 Changes:
 
 - `src/reliw/reliw.lua`
@@ -230,6 +233,42 @@ Changes:
   - Define manager exit policy:
     - Exit when primary server process exits.
     - Drain any already-exited children before termination.
+
+Implementation details (implemented):
+
+1. Test-first scaffolding
+   - Add `tests/reliw/test_manager_reaping.lua` with stubs for:
+     - `std.ps.fork`, `std.ps.wait`, `std.ps.waitpid`
+     - config/bootstrap dependencies (`std.fs`, `cjson.safe`, `web_server`, `reliw.store`)
+   - Validate manager behavior with deterministic PID/event sequences:
+     - non-primary child exits first (manager keeps running and continues waiting).
+     - primary child exits (manager transitions to shutdown path).
+     - drain step reaps remaining exited children via `waitpid(-1)` until no children are pending.
+   - Add assertions that manager uses any-child wait semantics (no longer blocks only on IPv4 PID).
+
+2. Manager child tracking (`src/reliw/reliw.lua`)
+   - Introduce small helpers for:
+     - collecting spawned child PIDs into a tracked table/set.
+     - reaping one child result and removing it from tracked state.
+     - non-blocking drain loop (`waitpid(-1)` until `<= 0`).
+   - Keep existing spawn order and process naming unchanged to avoid startup behavior regressions.
+
+3. Main reaping loop and exit policy (`src/reliw/reliw.lua`)
+   - Replace `std.ps.wait(self.reliw_pid)` with a loop that blocks on any child exit (`wait(-1)`):
+     - if exited PID is non-primary: mark reaped and continue loop.
+     - if exited PID is primary (`reliw_pid`): break to shutdown path.
+   - After primary exit, run drain loop to reap already-exited siblings (`reliw6_pid`, `metrics_pid`) before manager exits.
+   - Preserve current behavior that manager does not actively kill sibling children in Phase 4; this phase is strictly zombie-prevention/reaping reliability.
+
+4. Validation and rollout gate
+   - Run targeted test:
+     - `./lilush tests/reliw/test_manager_reaping.lua`
+   - Run existing RELIW regression tests that touch startup/proxy paths:
+     - `./lilush tests/reliw/test_proxy_upstream_failure.lua`
+     - `./lilush tests/reliw/test_proxy_https.lua`
+   - Run full suite:
+     - `./run_all_tests.bash`
+   - Ship Phase 4 as its own commit for low-risk rollback.
 
 Acceptance:
 
@@ -378,6 +417,27 @@ Rollback guidance:
 - Prioritize runtime stability and predictable failure modes over legacy undefined behavior.
 
 ## Progress Log
+
+### 2026-02-06 — Phase 4 Implemented
+
+Status: Completed.
+
+Implemented fixes:
+
+- `src/reliw/reliw.lua`
+  - Added manager-side child PID tracking for `metrics`, `server_ipv4`, and `server_ipv6`.
+  - Replaced single-PID blocking wait with any-child wait loop (`std.ps.wait(-1)`), continuing until primary IPv4 worker exits.
+  - Added non-blocking drain pass (`std.ps.waitpid(-1)`) after primary exit to reap already-exited sibling children.
+- `tests/reliw/test_manager_reaping.lua`
+  - Added deterministic manager lifecycle coverage with stubs for `std.ps.fork`, `std.ps.wait`, and `std.ps.waitpid`.
+  - Validated non-primary-first exit behavior, primary-exit shutdown transition, and sibling drain reaping.
+
+Validation completed:
+
+- `./lilush tests/reliw/test_manager_reaping.lua` passed.
+- `./lilush tests/reliw/test_proxy_upstream_failure.lua` passed.
+- `./lilush tests/reliw/test_proxy_https.lua` passed.
+- `./run_all_tests.bash` passed.
 
 ### 2026-02-06 — Phase 3 Implemented
 

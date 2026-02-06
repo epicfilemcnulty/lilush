@@ -6,7 +6,7 @@ local testimony = require("testimony")
 local style = require("term.tss")
 local std = require("std")
 
-local testify = testimony.new("== term.tss (Terminal Style Sheets) ==")
+local testify = testimony.new("== term.tss ==")
 
 -- Helper function to strip ANSI codes for easier testing
 local strip_ansi = function(str)
