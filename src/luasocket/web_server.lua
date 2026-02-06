@@ -17,6 +17,29 @@ local premature_error = function(client, status, msg)
 	client:send(resp)
 end
 
+local safe_close = function(sock)
+	if not sock then
+		return
+	end
+	pcall(function()
+		sock:close()
+	end)
+end
+
+local connection_has_token = function(value, token)
+	if type(value) ~= "string" then
+		return false
+	end
+	local wanted = token:lower()
+	for part in value:gmatch("[^,]+") do
+		local normalized = part:match("^%s*(.-)%s*$"):lower()
+		if normalized == wanted then
+			return true
+		end
+	end
+	return false
+end
+
 local read_chunked_body = function(client, max_body_size)
 	local body = {}
 	local total_size = 0
@@ -134,11 +157,12 @@ local server_process_request = function(self, client, client_ip, count)
 	end
 
 	local request = table.remove(lines, 1)
-	local method, query, args = request:match("([A-Z]+) ([^?]*)%?-(.-) HTTP/1%.[01]$")
+	local method, query, args, http_minor = request:match("([A-Z]+) ([^?]*)%?-(.-) HTTP/1%.([01])$")
 	if not method then
 		premature_error(client, 400, "Unsupported protocol\n")
 		return nil, "Unsupported protocol"
 	end
+	local http_version = "1." .. http_minor
 	local query = query or "/"
 	local body = nil
 	local content_length = 0
@@ -237,10 +261,16 @@ local server_process_request = function(self, client, client_ip, count)
 		end
 		response_headers["content-length"] = tostring(#content)
 	end
-	response_headers["connection"] = "keep-alive"
-	if (headers["connection"] and headers["connection"] == "close") or count == self.__config.requests_per_fork then
-		response_headers["connection"] = "close"
+	local close_connection = false
+	if http_version == "1.0" then
+		close_connection = not connection_has_token(headers["connection"], "keep-alive")
+	else
+		close_connection = connection_has_token(headers["connection"], "close")
 	end
+	if count >= self.__config.requests_per_fork then
+		close_connection = true
+	end
+	response_headers["connection"] = close_connection and "close" or "keep-alive"
 
 	local buf = buffer.new()
 	buf:put("HTTP/1.1 ", tostring(status), " \n")
@@ -291,6 +321,7 @@ end
 local server_serve = function(self)
 	local server_forks = {}
 	local server_fork_count = 0
+	local overload_log_ts = 0
 
 	local server = assert(socket.tcp())
 	server:setoption("reuseaddr", true)
@@ -325,88 +356,91 @@ local server_serve = function(self)
 		end
 		local _, _, timeout = socket.select({ server }, nil, 1)
 		if not timeout then
-			if server_fork_count < self.__config.fork_limit then
-				local client, err = server:accept()
-				if not client then
-					if err and err ~= "timeout" then
-						self.logger:log("accept failed: " .. tostring(err), "debug")
-					end
-				else
-					local pid = std.ps.fork()
-					if pid < 0 then
-						self.logger:log("failed to fork for request processing", "error")
-						client:close()
-					elseif pid > 0 then
-						server_forks[pid] = os.time()
-						server_fork_count = server_fork_count + 1
-						client:close()
-					else
-						server:close()
-						local client_ip = client:getpeername()
-						local count = 1
-						local ssl_client
-						local conn = client
-
-						if self.__config.ssl then
-							-- Use the pre-loaded default context
-							ssl_client, err = ssl.wrap(client, {
-								mode = "server",
-								ctx = self.__ssl_contexts.default,
-							})
-
-							if not ssl_client then
-								self.logger:log("failed to wrap client with SSL: " .. err, "error")
-								client:close()
-								os.exit(1)
-							end
-
-							-- Add pre-loaded SNI contexts
-							if self.__ssl_contexts.hosts then
-								for hostname, ctx in pairs(self.__ssl_contexts.hosts) do
-									ssl_client:add_sni_context(hostname, ctx)
-								end
-							end
-
-							ssl_client:settimeout(self.__config.tls_handshake_timeout)
-							local status, hs_err = ssl_client:dohandshake()
-							if not status then
-								if hs_err == "timeout" then
-									self.logger:log("TLS handshake timeout", "debug")
-								else
-									self.logger:log("SSL handshake failed: " .. hs_err, "debug")
-								end
-								ssl_client:close()
-								os.exit(1)
-							end
-							conn = ssl_client
-						end
-						repeat
-							local state, req_err = self:process_request(conn, client_ip, count)
-							if req_err then
-								if req_err == "closed" then
-									self.logger:log("client closed connection", "debug")
-								elseif req_err == "keepalive timeout" then
-									self.logger:log("client keep-alive timeout", "debug")
-								elseif req_err == "request header timeout" then
-									self.logger:log("request header timeout", "debug")
-								elseif req_err == "request body timeout" then
-									self.logger:log("request body timeout", "debug")
-								else
-									self.logger:log(req_err, "debug")
-								end
-								state = "close"
-							end
-							count = count + 1
-						until state == "close" or count > self.__config.requests_per_fork
-						if ssl_client then
-							ssl_client:close()
-						end
-						client:close()
-						os.exit(0)
-					end
+			local client, err = server:accept()
+			if not client then
+				if err and err ~= "timeout" then
+					self.logger:log("accept failed: " .. tostring(err), "debug")
 				end
+			elseif server_fork_count >= self.__config.fork_limit then
+				local now = os.time()
+				if now ~= overload_log_ts then
+					self.logger:log("fork limit reached", "error")
+					overload_log_ts = now
+				end
+				premature_error(client, 503, "Service Unavailable\n")
+				safe_close(client)
 			else
-				self.logger:log("fork limit reached", "error")
+				local pid = std.ps.fork()
+				if pid < 0 then
+					self.logger:log("failed to fork for request processing", "error")
+					safe_close(client)
+				elseif pid > 0 then
+					server_forks[pid] = os.time()
+					server_fork_count = server_fork_count + 1
+					safe_close(client)
+				else
+					safe_close(server)
+					local client_ip = client:getpeername()
+					local count = 1
+					local ssl_client
+					local conn = client
+
+					if self.__config.ssl then
+						-- Use the pre-loaded default context
+						ssl_client, err = ssl.wrap(client, {
+							mode = "server",
+							ctx = self.__ssl_contexts.default,
+						})
+
+						if not ssl_client then
+							self.logger:log("failed to wrap client with SSL: " .. err, "error")
+							safe_close(client)
+							os.exit(1)
+						end
+
+						-- Add pre-loaded SNI contexts
+						if self.__ssl_contexts.hosts then
+							for hostname, ctx in pairs(self.__ssl_contexts.hosts) do
+								ssl_client:add_sni_context(hostname, ctx)
+							end
+						end
+
+						ssl_client:settimeout(self.__config.tls_handshake_timeout)
+						local status, hs_err = ssl_client:dohandshake()
+						if not status then
+							if hs_err == "timeout" then
+								self.logger:log("TLS handshake timeout", "debug")
+							else
+								self.logger:log("SSL handshake failed: " .. hs_err, "debug")
+							end
+							safe_close(ssl_client)
+							safe_close(client)
+							os.exit(1)
+						end
+						conn = ssl_client
+					end
+					repeat
+						local state, req_err = self:process_request(conn, client_ip, count)
+						if req_err then
+							if req_err == "closed" then
+								self.logger:log("client closed connection", "debug")
+							elseif req_err == "keepalive timeout" then
+								self.logger:log("client keep-alive timeout", "debug")
+							elseif req_err == "request header timeout" then
+								self.logger:log("request header timeout", "debug")
+							elseif req_err == "request body timeout" then
+								self.logger:log("request body timeout", "debug")
+							else
+								self.logger:log(req_err, "debug")
+							end
+							state = "close"
+						end
+						count = count + 1
+					until state == "close" or count > self.__config.requests_per_fork
+					safe_close(ssl_client)
+					safe_close(client)
+					os.exit(0)
+				end
 			end
 		end
 	end
