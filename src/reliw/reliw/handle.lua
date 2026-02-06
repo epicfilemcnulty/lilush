@@ -4,8 +4,160 @@ local tmpls = require("reliw.templates")
 local metrics = require("reliw.metrics")
 local storage = require("reliw.store")
 
+local is_valid_port = function(port)
+	if not port then
+		return true
+	end
+	local port_num = tonumber(port)
+	return port_num and port_num > 0 and port_num <= 65535
+end
+
+local is_ipv4 = function(host)
+	local a, b, c, d = host:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
+	if not a then
+		return false
+	end
+	for _, part in ipairs({ a, b, c, d }) do
+		local n = tonumber(part)
+		if not n or n < 0 or n > 255 then
+			return false
+		end
+	end
+	return true
+end
+
+local is_dns_name = function(host)
+	if #host > 253 then
+		return false
+	end
+	if host:sub(-1) == "." then
+		host = host:sub(1, -2)
+	end
+	if host == "" or host:find("%.%.", 1, true) then
+		return false
+	end
+	for label in host:gmatch("[^.]+") do
+		if #label == 0 or #label > 63 then
+			return false
+		end
+		if not label:match("^[a-z0-9_][a-z0-9_-]*[a-z0-9_]$") and not label:match("^[a-z0-9_]$") then
+			return false
+		end
+	end
+	return true
+end
+
+local normalize_host = function(raw_host)
+	if type(raw_host) ~= "string" then
+		return nil, "missing/invalid host header"
+	end
+	local host = raw_host:match("^%s*(.-)%s*$")
+	if host == "" or host:find("[%z\1-\31\127]") then
+		return nil, "invalid host header"
+	end
+	if host:find(",", 1, true) then
+		return nil, "multiple host values are not allowed"
+	end
+
+	if host:sub(1, 1) == "[" then
+		local ipv6, port = host:match("^%[([0-9A-Fa-f:.]+)%]:(%d+)$")
+		if not ipv6 then
+			ipv6 = host:match("^%[([0-9A-Fa-f:.]+)%]$")
+		end
+		if not ipv6 or not ipv6:find(":", 1, true) then
+			return nil, "invalid ipv6 host header"
+		end
+		if port and not is_valid_port(port) then
+			return nil, "invalid host port"
+		end
+		return ipv6:lower()
+	end
+
+	local bare_host, port = host:match("^([^:]+):(%d+)$")
+	if bare_host then
+		host = bare_host
+		if not is_valid_port(port) then
+			return nil, "invalid host port"
+		end
+	elseif host:find(":", 1, true) then
+		return nil, "ipv6 host must be bracketed"
+	end
+
+	host = host:lower()
+	if host == "localhost" or is_ipv4(host) or is_dns_name(host) then
+		return host
+	end
+	return nil, "invalid host format"
+end
+
+local percent_decode = function(path)
+	local out = {}
+	local i = 1
+	while i <= #path do
+		local c = path:sub(i, i)
+		if c == "%" then
+			local hex = path:sub(i + 1, i + 2)
+			if #hex < 2 or not hex:match("^[0-9A-Fa-f][0-9A-Fa-f]$") then
+				return nil, "invalid percent encoding"
+			end
+			table.insert(out, string.char(tonumber(hex, 16)))
+			i = i + 3
+		else
+			table.insert(out, c)
+			i = i + 1
+		end
+	end
+	return table.concat(out)
+end
+
+local has_dotdot_segment = function(path)
+	for segment in path:gmatch("[^/]+") do
+		if segment == ".." then
+			return true
+		end
+	end
+	return false
+end
+
+local validate_query = function(query)
+	if type(query) ~= "string" or query == "" then
+		return nil, "missing/invalid query"
+	end
+	if query:sub(1, 1) ~= "/" then
+		return nil, "query must start with '/'"
+	end
+	if query:find("[%z\1-\31\127]") then
+		return nil, "control chars in query"
+	end
+	if query:find("\\", 1, true) then
+		return nil, "invalid path separator"
+	end
+
+	local lower_query = query:lower()
+	if lower_query:find("%%2e", 1, true) or lower_query:find("%%2f", 1, true) or lower_query:find("%%5c", 1, true) then
+		return nil, "encoded traversal/separator not allowed"
+	end
+
+	local decoded, decode_err = percent_decode(query)
+	if not decoded then
+		return nil, decode_err
+	end
+	if decoded:find("[%z\1-\31\127]") then
+		return nil, "control chars in decoded query"
+	end
+	if decoded:find("\\", 1, true) then
+		return nil, "invalid decoded path separator"
+	end
+	if has_dotdot_segment(decoded) then
+		return nil, "path traversal pattern in query"
+	end
+
+	return query
+end
+
 local handle = function(method, query, args, headers, body, ctx)
 	local host = headers.host or "localhost"
+	local raw_query = query
 	local ctx = ctx or {}
 	local client = ctx.client -- Get the client socket
 	local srv_cfg = ctx.cfg
@@ -24,13 +176,39 @@ local handle = function(method, query, args, headers, body, ctx)
 		return "Service Unavailable", 503, { ["content-type"] = "text/plain" }
 	end
 
-	-- Remove port from the host header
-	if not host:match("^%[") then
-		host = host:match("^([^:]+)")
-	else
-		-- IPv6 as the Host needs special treatment
-		host = host:match("^%[(.+)%]")
+	local normalized_host, host_err = normalize_host(host)
+	if not normalized_host then
+		if ctx.logger and ctx.logger.log then
+			ctx.logger:log({
+				msg = "invalid host header",
+				process = srv_cfg and srv_cfg.process or "server",
+				error = tostring(host_err),
+				method = method,
+				query = raw_query,
+				host_header = headers.host,
+			}, "error")
+		end
+		db:close()
+		return "Bad Request", 400, { ["content-type"] = "text/plain" }
 	end
+	host = normalized_host
+
+	local normalized_query, query_err = validate_query(raw_query)
+	if not normalized_query then
+		if ctx.logger and ctx.logger.log then
+			ctx.logger:log({
+				msg = "invalid query",
+				process = srv_cfg and srv_cfg.process or "server",
+				error = tostring(query_err),
+				method = method,
+				host = host,
+				query = raw_query,
+			}, "error")
+		end
+		db:close()
+		return "Bad Request", 400, { ["content-type"] = "text/plain" }
+	end
+	query = normalized_query
 
 	local blocked, rule, ip_header = api.check_waf(db, host, query, headers)
 	if blocked then

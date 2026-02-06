@@ -3,6 +3,59 @@ local redis = require("redis")
 local json = require("cjson.safe")
 local crypto = require("crypto")
 
+local normalize_virtual_path = function(path)
+	if type(path) ~= "string" or path == "" then
+		return nil, "invalid/empty file path"
+	end
+	if path:find("[%z\1-\31]") then
+		return nil, "control chars in file path"
+	end
+	local has_leading_slash = path:sub(1, 1) == "/"
+	path = path:gsub("\\", "/")
+	path = path:gsub("/+", "/")
+	local segments = {}
+	for segment in path:gmatch("[^/]+") do
+		if segment == ".." then
+			return nil, "path traversal detected"
+		end
+		if segment ~= "." then
+			table.insert(segments, segment)
+		end
+	end
+	if #segments == 0 then
+		return nil, "empty normalized file path"
+	end
+	local normalized = table.concat(segments, "/")
+	if has_leading_slash then
+		normalized = "/" .. normalized
+	end
+	return normalized
+end
+
+local build_safe_path = function(root_dir, normalized_path)
+	local relative = normalized_path:gsub("^/+", "")
+	if relative == "" then
+		return nil, "empty relative path"
+	end
+	return root_dir .. "/" .. relative
+end
+
+local resolve_storage_paths = function(data_dir, host, filename)
+	local normalized, path_err = normalize_virtual_path(filename)
+	if not normalized then
+		return nil, nil, nil, path_err
+	end
+	local host_path, host_path_err = build_safe_path(data_dir .. "/" .. host, normalized)
+	if not host_path then
+		return nil, nil, nil, host_path_err
+	end
+	local fallback_path, fallback_path_err = build_safe_path(data_dir .. "/__", normalized)
+	if not fallback_path then
+		return nil, nil, nil, fallback_path_err
+	end
+	return normalized, host_path, fallback_path, nil
+end
+
 local fetch_proxy_config = function(self, host)
 	if not host or type(host) ~= "string" then
 		return nil, "no host/invalid type provided"
@@ -76,26 +129,41 @@ local fetch_content = function(self, host, query, metadata)
 		return nil, "host/query not provided"
 	end
 	local filename = metadata.file
-	local prefix = self.data_dir .. "/" .. host
 	if not filename then
 		filename = query
 		if query:match("/$") and metadata.index then
 			filename = filename .. metadata.index
 		end
-		if not std.fs.file_exists(prefix .. filename) then
+		local normalized_filename, host_path, _, path_err = resolve_storage_paths(self.data_dir, host, filename)
+		if not normalized_filename then
+			return nil, "invalid file path: " .. tostring(path_err)
+		end
+		filename = normalized_filename
+		if not std.fs.file_exists(host_path) then
 			if metadata.try_extensions then
-				if std.fs.file_exists(prefix .. filename .. ".lua") then
-					filename = filename .. ".lua"
-				elseif std.fs.file_exists(prefix .. filename .. ".dj") then
-					filename = filename .. ".dj"
-				elseif std.fs.file_exists(prefix .. filename .. ".md") then
-					filename = filename .. ".md"
+				local extension_candidates = { ".lua", ".dj", ".md" }
+				for _, ext in ipairs(extension_candidates) do
+					local candidate, candidate_host_path = resolve_storage_paths(self.data_dir, host, filename .. ext)
+					if candidate and std.fs.file_exists(candidate_host_path) then
+						filename = candidate
+						break
+					end
 				end
 			elseif metadata.gsub then
 				local remapped_query = query:gsub(metadata.gsub.pattern, metadata.gsub.replacement)
-				filename = remapped_query
+				local remapped_filename, _, _, remap_err = resolve_storage_paths(self.data_dir, host, remapped_query)
+				if not remapped_filename then
+					return nil, "invalid file path: " .. tostring(remap_err)
+				end
+				filename = remapped_filename
 			end
 		end
+	else
+		local normalized_filename, _, _, path_err = resolve_storage_paths(self.data_dir, host, filename)
+		if not normalized_filename then
+			return nil, "invalid file path: " .. tostring(path_err)
+		end
+		filename = normalized_filename
 	end
 	local mime_type = std.mime.type(filename)
 	local count, _ = self.red:cmd("HEXISTS", self.prefix .. ":FILES:" .. host .. ":" .. filename, "content")
@@ -122,7 +190,11 @@ local fetch_content = function(self, host, query, metadata)
 		end
 		return nil, "something went wrong"
 	end
-	local content = std.fs.read_file(prefix .. filename) or std.fs.read_file(self.data_dir .. "/__" .. filename)
+	local _, primary_path, fallback_path, path_err = resolve_storage_paths(self.data_dir, host, filename)
+	if not primary_path then
+		return nil, "invalid file path: " .. tostring(path_err)
+	end
+	local content = std.fs.read_file(primary_path) or std.fs.read_file(fallback_path)
 	if not content then
 		return nil, filename .. " not found"
 	end

@@ -5,8 +5,8 @@ Author: Codex review pass
 
 ## Status
 
-- Current phase: `Phase 2` completed on `2026-02-06`.
-- Next phase: `Phase 3: Request-Body and Path Hardening`.
+- Current phase: `Phase 3` completed on `2026-02-06`.
+- Next phase: `Phase 4: Process Lifecycle Reliability`.
 - Open blockers: none currently.
 
 ## Scope and Baseline
@@ -48,13 +48,13 @@ Assumptions (confirmed):
    - Impact: plaintext sent to TLS backends, failed proxying, security mismatch.
    - Required fix: wrap upstream TCP socket using `ssl.wrap` and handshake when `target.scheme == "https"`.
 
-5. Chunked request bodies bypass configured max body size.
-   - Evidence: chunked path uses `read_chunked_body` in `src/luasocket/web_server.lua:20-58` and `src/luasocket/web_server.lua:147-156`; max size check only exists for `Content-Length` in `src/luasocket/web_server.lua:163-167`.
+5. Chunked request bodies bypass configured max body size. (Phase 3: fixed)
+   - Evidence: prior behavior enforced max size only for `Content-Length`, not cumulative chunked bodies.
    - Impact: memory exhaustion risk from unbounded chunked upload.
    - Required fix: enforce cumulative body-size limit while reading chunks; fail with `413`.
 
-6. Host/query values can reach filesystem resolution without strict sanitization.
-   - Evidence: host extraction in `src/reliw/reliw/handle.lua:15-20`; file resolution in `src/reliw/reliw/store.lua:79-125`.
+6. Host/query values can reach filesystem resolution without strict sanitization. (Phase 3: fixed)
+   - Evidence: prior behavior trusted host/query-derived file paths without strict normalization and confinement checks.
    - Impact: path traversal and tenant-breakout risk if malformed host/query passes through.
    - Required fix: strict host validation and safe path canonicalization/join checks before reads.
 
@@ -96,12 +96,13 @@ Current state:
 - Phase 2 added protocol-correctness tests for:
   - HTTPS upstream TLS proxy behavior and chunk-extension parsing
   - ETag method semantics (`GET`/`HEAD`/non-`GET`)
+- Phase 3 added hardening tests for:
+  - chunked request body max-size enforcement
+  - host/query validation and store path traversal blocking
 - Full RELIW lifecycle/protocol/security coverage is still incomplete.
 
 Missing test categories:
 
-- Chunked request size limits and parser edge cases.
-- Host/query path sanitization and traversal attempts.
 - Auth malformed body handling.
 - Manager/worker zombie reaping behavior.
 - Metrics scalability path (`SCAN` vs `KEYS`) and connection close behavior.
@@ -199,13 +200,15 @@ TLS policy decision (resolved):
 
 Objective: block easy resource abuse and path traversal vectors.
 
+Status: Completed on 2026-02-06.
+
 Changes:
 
 - `src/luasocket/web_server.lua`
   - Add cumulative byte counter to `read_chunked_body`.
   - Reject chunked payload once `max_body_size` is exceeded with `413`.
 - `src/reliw/reliw/handle.lua` and `src/reliw/reliw/store.lua`
-  - Add strict host normalization/validation (allow domain + IPv6 host forms only).
+  - Add strict host normalization/validation (compat-safe allowlist: domain, `localhost`, IPv4, bracketed IPv6).
   - Add safe path join/canonicalization check:
     - resolved path must remain under allowed roots (`data_dir/<host>` or fallback root).
   - Reject suspicious `query` forms early with 400.
@@ -376,6 +379,36 @@ Rollback guidance:
 
 ## Progress Log
 
+### 2026-02-06 — Phase 3 Implemented
+
+Status: Completed.
+
+Implemented fixes:
+
+- `src/luasocket/web_server.lua`
+  - Added cumulative chunked-body byte tracking in `read_chunked_body`.
+  - Enforced `max_body_size` for chunked requests and mapped violations to `413`.
+  - Kept timeout and non-size parse error behavior controlled.
+- `src/reliw/reliw/handle.lua`
+  - Added strict host normalization/validation with explicit `400` on malformed host headers.
+  - Added strict query validation (control chars, encoded traversal/separator forms, decoded `..` traversal) with explicit `400`.
+  - Validation now happens before WAF/proxy/content flow.
+- `src/reliw/reliw/store.lua`
+  - Added path normalization helpers for file resolution.
+  - Added safe storage path building for both `data_dir/<host>` and `data_dir/__` roots.
+  - Rejects traversal/suspicious paths before file reads.
+- `tests/reliw/test_chunked_body_limits.lua`
+  - Added coverage for chunked payload max-size rejection (`413`) and within-limit success.
+- `tests/reliw/test_path_sanitization.lua`
+  - Added coverage for malformed host rejection, suspicious query rejection, and store-level traversal blocking.
+
+Validation completed:
+
+- `./lilush tests/reliw/test_chunked_body_limits.lua` passed.
+- `./lilush tests/reliw/test_path_sanitization.lua` passed.
+- Existing RELIW regressions (`test_store_init_failure`, `test_metrics_connection_close`, `test_proxy_upstream_failure`, `test_proxy_https`, `test_etag_method_semantics`) all passed.
+- `./run_all_tests.bash` passed.
+
 ### 2026-02-06 — Phase 2 Implemented
 
 Status: Completed.
@@ -403,19 +436,6 @@ Validation completed:
 - `./lilush tests/reliw/test_proxy_https.lua` passed.
 - `./lilush tests/reliw/test_etag_method_semantics.lua` passed.
 - `./run_all_tests.bash` passed.
-
-### 2026-02-06 — Phase 2 Planned
-
-Status: Planned (implementation not started yet).
-
-Planning outcome:
-
-- Added a test-first execution plan for Phase 2.
-- Defined concrete file targets and acceptance checks for:
-  - upstream HTTPS TLS handling
-  - chunked extension parsing
-  - ETag method semantics
-- Captured a pending TLS verification policy decision to resolve before coding.
 
 ### 2026-02-06 — Phase 1 Implemented
 

@@ -17,8 +17,9 @@ local premature_error = function(client, status, msg)
 	client:send(resp)
 end
 
-local read_chunked_body = function(client)
+local read_chunked_body = function(client, max_body_size)
 	local body = {}
+	local total_size = 0
 	while true do
 		-- Read chunk size
 		local size_line, err = client:receive()
@@ -33,12 +34,22 @@ local read_chunked_body = function(client)
 
 		-- End of chunked data
 		if chunk_size == 0 then
-			-- Read final CRLF
-			local _, trailer_err = client:receive()
-			if trailer_err then
-				return nil, trailer_err
+			-- Read trailing headers until empty line.
+			while true do
+				local trailer_line, trailer_err = client:receive()
+				if not trailer_line then
+					return nil, trailer_err or "connection closed"
+				end
+				if trailer_line == "" then
+					break
+				end
 			end
 			break
+		end
+
+		total_size = total_size + chunk_size
+		if max_body_size and total_size > max_body_size then
+			return nil, "max_body_size limit violation: " .. tostring(total_size)
 		end
 
 		-- Read chunk data
@@ -72,7 +83,7 @@ end
 
         Till I find time for optimizations, the "naive" one is the one
         and only used in default builds.
-        
+
         As a consequence, it's highly advised to have a reverse-proxy in front of the server,
         handling all the dirty work of request validation.
 ]]
@@ -146,10 +157,14 @@ local server_process_request = function(self, client, client_ip, count)
 	end
 	if headers["transfer-encoding"] then
 		client:settimeout(self.__config.request_body_timeout)
-		body, err = read_chunked_body(client)
+		body, err = read_chunked_body(client, self.__config.max_body_size)
 		if err then
 			if err == "timeout" then
 				return nil, "request body timeout"
+			end
+			if err:match("^max_body_size limit violation") then
+				premature_error(client, 413, "A body too fat\n")
+				return nil, err
 			end
 			premature_error(client, 501, "handle transfer-encoding failed\n")
 			return nil, "failed to read chunked body: " .. err
