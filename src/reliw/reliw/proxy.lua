@@ -73,7 +73,10 @@ local function stream_response(upstream)
 end
 
 function proxy.handle(client, method, path, headers, body, target)
-	local upstream = assert(socket.tcp())
+	local upstream, sock_err = socket.tcp()
+	if not upstream then
+		return nil, "failed to create upstream socket: " .. tostring(sock_err)
+	end
 	upstream:settimeout(10)
 
 	local host = target.host
@@ -81,7 +84,11 @@ function proxy.handle(client, method, path, headers, body, target)
 	local original_host = headers.host -- Save the original host
 	local original_origin = headers.origin -- Save the original origin
 
-	assert(upstream:connect(host, port))
+	local ok, conn_err = upstream:connect(host, port)
+	if not ok then
+		upstream:close()
+		return nil, "failed to connect upstream: " .. tostring(conn_err)
+	end
 
 	-- Build request
 	local request = string.format("%s %s HTTP/1.1\r\n", method, path)

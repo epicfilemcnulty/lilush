@@ -1,12 +1,22 @@
 local show = function(method, query, args, headers, body, ctx)
 	local storage = require("reliw.store")
 	local store, err = storage.new(ctx.cfg)
-	if err then
-		return "db connection error", 501, { ["content-type"] = "text/plain" }
+	if not store then
+		if ctx and ctx.logger and ctx.logger.log then
+			ctx.logger:log({
+				msg = "metrics store init failed",
+				process = "metrics",
+				error = tostring(err),
+			}, "error")
+		end
+		return "db connection error", 503, { ["content-type"] = "text/plain" }
 	end
 	if query == "/metrics" and method == "GET" then
-		return store:fetch_metrics(), 200, { ["content-type"] = "text/plain" }
+		local result = store:fetch_metrics()
+		store:close()
+		return result, 200, { ["content-type"] = "text/plain" }
 	end
+	store:close()
 	return "Not Found", 404, { ["content-type"] = "text/plain" }
 end
 

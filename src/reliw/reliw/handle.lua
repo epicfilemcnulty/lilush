@@ -2,14 +2,27 @@ local api = require("reliw.api")
 local auth = require("reliw.auth")
 local tmpls = require("reliw.templates")
 local metrics = require("reliw.metrics")
-local store = require("reliw.store")
+local storage = require("reliw.store")
 
 local handle = function(method, query, args, headers, body, ctx)
 	local host = headers.host or "localhost"
 	local ctx = ctx or {}
 	local client = ctx.client -- Get the client socket
 	local srv_cfg = ctx.cfg
-	local store = store.new(srv_cfg)
+	local db, store_err = storage.new(srv_cfg)
+	if not db then
+		if ctx.logger and ctx.logger.log then
+			ctx.logger:log({
+				msg = "store init failed",
+				process = srv_cfg and srv_cfg.process or "server",
+				error = tostring(store_err),
+				host = host,
+				query = query,
+				method = method,
+			}, "error")
+		end
+		return "Service Unavailable", 503, { ["content-type"] = "text/plain" }
+	end
 
 	-- Remove port from the host header
 	if not host:match("^%[") then
@@ -19,18 +32,18 @@ local handle = function(method, query, args, headers, body, ctx)
 		host = host:match("^%[(.+)%]")
 	end
 
-	local blocked, rule, ip_header = api.check_waf(store, host, query, headers)
+	local blocked, rule, ip_header = api.check_waf(db, host, query, headers)
 	if blocked then
 		local ip = headers[ip_header]
-		api.add_waffer(store, ip)
+		api.add_waffer(db, ip)
 		ctx.logger:log({ msg = "blocked by WAF", waf_rule = rule, query = query, vhost = host, ip = ip }, 30)
-		store:close()
+		db:close()
 		return "Fuck Off", 301, {
 			["location"] = "http://127.0.0.1/Fuck_Off",
 			["content-type"] = "text/rude",
 		}
 	end
-	local proxy_config = api.proxy_config(store, host)
+	local proxy_config = api.proxy_config(db, host)
 	if proxy_config then
 		local proxy = require("reliw.proxy")
 		local target = {
@@ -50,7 +63,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		local content, status, headers = proxy.handle(client, method, query, headers, body, target)
 		if not content then
 			ctx.logger:log("proxy error: " .. tostring(status), "error")
-			store:close()
+			db:close()
 			return "proxy failed: " .. tostring(status), 502
 		end
 
@@ -68,24 +81,24 @@ local handle = function(method, query, args, headers, body, ctx)
 			content_length = #content,
 		}, "debug")
 
-		store:close()
+		db:close()
 		return content, status, headers
 	end
 	local response_headers = { ["content-type"] = "text/html" }
 	local status = 200
 	local default_css_file = "/css/default.css"
-	local user_tmpl = api.get_userdata(store, host, "template.lua")
-	local index = api.entry_index(store, host, query)
+	local user_tmpl = api.get_userdata(db, host, "template.lua")
+	local index = api.entry_index(db, host, query)
 	if not index then
-		local hit_count = metrics.update(store, "unknown", method, host .. query, 404)
-		store:close()
+		local hit_count = metrics.update(db, "unknown", method, host .. query, 404)
+		db:close()
 		return tmpls.error_page(404, hit_count, user_tmpl), 404, response_headers
 	end
-	local metadata = api.entry_metadata(store, host, index)
+	local metadata = api.entry_metadata(db, host, index)
 	if not metadata then
 		ctx.logger:log("no metadata found for query " .. query, 0)
-		local hit_count = metrics.update(store, host, method, query, 500)
-		store:close()
+		local hit_count = metrics.update(db, host, method, query, 500)
+		db:close()
 		return tmpls.error_page(500, hit_count, user_tmpl), 500, response_headers
 	end
 
@@ -93,8 +106,8 @@ local handle = function(method, query, args, headers, body, ctx)
 	-- Require valid auth first
 	if metadata.auth then
 		if metadata.auth.logout then
-			local content, status, headers = auth.logout(store, headers)
-			store:close()
+			local content, status, headers = auth.logout(db, headers)
+			db:close()
 			return content, status, headers
 		end
 		if metadata.auth.login then
@@ -104,25 +117,25 @@ local handle = function(method, query, args, headers, body, ctx)
 				title = "May we see your papers, please?",
 				class = "login",
 			}
-			local resp, status, r_headers = auth.login_page(store, method, query, args, headers, body)
+			local resp, status, r_headers = auth.login_page(db, method, query, args, headers, body)
 			if not r_headers then
 				resp = tmpls.render_page(resp, vars, user_tmpl)
 			else
 				response_headers = r_headers
 			end
-			local hit_count = metrics.update(store, host, method, query, status)
+			local hit_count = metrics.update(db, host, method, query, status)
 			if status >= 400 then
-				store:close()
+				db:close()
 				return tmpls.error_page(status, hit_count, user_tmpl, err_img[tostring(status)]),
 					status,
 					response_headers
 			end
-			store:close()
+			db:close()
 			return resp, status, response_headers
 		end
-		local authorized = auth.authorized(store, headers, metadata.auth)
+		local authorized = auth.authorized(db, headers, metadata.auth)
 		if not authorized then
-			store:close()
+			db:close()
 			return "Just a second, please",
 				302,
 				{
@@ -133,13 +146,13 @@ local handle = function(method, query, args, headers, body, ctx)
 	end
 	-- See if the method is allowed
 	if not metadata.methods[method] then
-		local hit_count = metrics.update(store, host, method, query, 405)
+		local hit_count = metrics.update(db, host, method, query, 405)
 		local allow = ""
 		for m, _ in pairs(metadata.methods) do
 			allow = allow .. m .. ", "
 		end
 		response_headers["allow"] = allow:sub(1, -3) -- remove last comma and space
-		store:close()
+		db:close()
 		return tmpls.error_page(405, hit_count, user_tmpl, err_img["405"]), 405, response_headers
 	end
 	-- Check rate limits
@@ -149,19 +162,19 @@ local handle = function(method, query, args, headers, body, ctx)
 		local whitelisted = metadata.rate_limit.whitelisted_ip or "127.0.66.6"
 		if remote_ip ~= whitelisted then
 			local count =
-				api.check_rate_limit(store, host, method, query, remote_ip, metadata.rate_limit[method].period)
+				api.check_rate_limit(db, host, method, query, remote_ip, metadata.rate_limit[method].period)
 			if count and count > metadata.rate_limit[method].limit then
-				local hit_count = metrics.update(store, host, method, query, 429)
-				store:close()
+				local hit_count = metrics.update(db, host, method, query, 429)
+				db:close()
 				return tmpls.error_page(429, hit_count, user_tmpl, err_img["429"]), 429, response_headers
 			end
 		end
 	end
 
-	local content, hash, size, mime, title = api.get_content(store, host, query, metadata)
+	local content, hash, size, mime, title = api.get_content(db, host, query, metadata)
 	if not content then
-		local hit_count = metrics.update(store, host, method, query, 404)
-		store:close()
+		local hit_count = metrics.update(db, host, method, query, 404)
+		db:close()
 		return tmpls.error_page(404, hit_count, user_tmpl, err_img["404"]), 404, response_headers
 	end
 	local ttl = metadata.cache_control or "max-age=86400"
@@ -177,8 +190,8 @@ local handle = function(method, query, args, headers, body, ctx)
 		end
 		response_headers["etag"] = hash
 		response_headers["cache-control"] = ttl
-		metrics.update(store, host, method, query, status)
-		store:close()
+		metrics.update(db, host, method, query, status)
+		db:close()
 		return "", status, response_headers
 	end
 
@@ -193,8 +206,8 @@ local handle = function(method, query, args, headers, body, ctx)
 		local r_headers
 		content, status, r_headers = content(method, query, args, headers, body)
 		if not status then
-			local hit_count = metrics.update(store, host, method, query, 500)
-			store:close()
+			local hit_count = metrics.update(db, host, method, query, 500)
+			db:close()
 			return tmpls.error_page(500, hit_count, user_tmpl, err_img["500"]), 500, response_headers
 		end
 		if r_headers then
@@ -215,8 +228,8 @@ local handle = function(method, query, args, headers, body, ctx)
 		response_headers["etag"] = hash
 		response_headers["cache-control"] = ttl
 	end
-	metrics.update(store, host, method, query, status)
-	store:close()
+	metrics.update(db, host, method, query, status)
+	db:close()
 	return content, status, response_headers
 end
 
