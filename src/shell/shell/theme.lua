@@ -63,14 +63,14 @@ local builtins_default = {
 	},
 	alias = {
 		name = { fg = 247, s = "bold", align = "right" },
-		value = { fg = 246, indent = 4 },
+		value = { fg = 246, text_indent = 4 },
 	},
 	cat = {
 		line_num = { fg = 246 },
 	},
 	envlist = {
 		var = { fg = 248, s = "bold", align = "left" },
-		value = { fg = 246, indent = 4 },
+		value = { fg = 246, text_indent = 4 },
 	},
 	dig = {
 		name = { fg = 144, s = "bold" },
@@ -108,9 +108,9 @@ local builtins_default = {
 			pub_key = { fg = 102, s = "italic" },
 		},
 		endpoint = {
-			indent = 4,
+			text_indent = 4,
 			name = { fg = 101, s = "bold", after = " " },
-			pub_key = { indent = 0, fg = 102, s = "italic" },
+			pub_key = { text_indent = 0, fg = 102, s = "italic" },
 			bytes = { fg = 104 },
 			seen = { fg = 103 },
 			nets = {
@@ -229,9 +229,9 @@ local completion_default = {
 	fs_exe = { fg = { 180, 142, 173 } },
 	bin = { fg = 247, s = "bold" },
 	env = { s = "bold" },
-	history = { indent = 4, fg = 65, s = "bold,italic" },
-	dir_history = { indent = 4, fg = 246, s = "bold,italic" },
-	snippet = { indent = 4, fg = 29, s = "bold" },
+	history = { text_indent = 4, fg = 65, s = "bold,italic" },
+	dir_history = { text_indent = 4, fg = 246, s = "bold,italic" },
+	snippet = { text_indent = 4, fg = 29, s = "bold" },
 }
 
 local load_user_theme = function()
