@@ -1,4 +1,5 @@
 local socket = require("socket")
+local ssl = require("ssl")
 
 local proxy = {}
 
@@ -8,15 +9,24 @@ local function read_chunk(upstream)
 		return nil, "failed to read chunk size"
 	end
 
-	-- Convert hex string to number
-	local size = tonumber(line, 16)
+	-- RFC 7230 allows chunk extensions after chunk-size.
+	local size_hex = line:match("^%s*([0-9A-Fa-f]+)")
+	local size = size_hex and tonumber(size_hex, 16)
 	if not size then
 		return nil, "invalid chunk size: " .. line
 	end
 
 	if size == 0 then
-		-- Read the trailing CRLF after the last chunk
-		upstream:receive("*l")
+		-- Read trailer-part until an empty line.
+		while true do
+			local trailer_line, trailer_err = upstream:receive("*l")
+			if not trailer_line then
+				return nil, "failed to read chunk trailer: " .. tostring(trailer_err)
+			end
+			if trailer_line == "" then
+				break
+			end
+		end
 		return 0
 	end
 
@@ -26,7 +36,10 @@ local function read_chunk(upstream)
 	end
 
 	-- Read the trailing CRLF
-	upstream:receive("*l")
+	local chunk_tail = upstream:receive("*l")
+	if not chunk_tail then
+		return nil, "failed to read chunk terminator"
+	end
 
 	return chunk
 end
@@ -72,22 +85,66 @@ local function stream_response(upstream)
 	return status, headers
 end
 
-function proxy.handle(client, method, path, headers, body, target)
+local function connect_upstream(target)
 	local upstream, sock_err = socket.tcp()
 	if not upstream then
 		return nil, "failed to create upstream socket: " .. tostring(sock_err)
 	end
-	upstream:settimeout(10)
+
+	local connect_timeout = target.connect_timeout or 10
+	upstream:settimeout(connect_timeout)
 
 	local host = target.host
 	local port = target.port or (target.scheme == "https" and 443 or 80)
-	local original_host = headers.host -- Save the original host
-	local original_origin = headers.origin -- Save the original origin
-
 	local ok, conn_err = upstream:connect(host, port)
 	if not ok then
 		upstream:close()
 		return nil, "failed to connect upstream: " .. tostring(conn_err)
+	end
+
+	if target.scheme ~= "https" then
+		return upstream, nil
+	end
+
+	local tls_cfg = {
+		mode = "client",
+		server_name = host,
+	}
+	if target.tls_cafile then
+		tls_cfg.cafile = target.tls_cafile
+	end
+	if target.tls_capath then
+		tls_cfg.capath = target.tls_capath
+	end
+	if target.tls_insecure or target.tls_no_verify or target.no_verify_mode then
+		tls_cfg.no_verify_mode = true
+	end
+
+	local tls_sock, tls_err = ssl.wrap(upstream, tls_cfg)
+	if not tls_sock then
+		upstream:close()
+		return nil, "failed to wrap upstream tls socket: " .. tostring(tls_err)
+	end
+
+	tls_sock:settimeout(target.tls_handshake_timeout or connect_timeout)
+	local ok_hs, hs_err = tls_sock:dohandshake()
+	if not ok_hs then
+		tls_sock:close()
+		return nil, "TLS handshake failed: " .. tostring(hs_err)
+	end
+	tls_sock:settimeout(connect_timeout)
+
+	return tls_sock, nil
+end
+
+function proxy.handle(client, method, path, headers, body, target)
+	local port = target.port or (target.scheme == "https" and 443 or 80)
+	local original_host = headers.host -- Save the original host
+	local original_origin = headers.origin -- Save the original origin
+
+	local upstream, upstream_err = connect_upstream(target)
+	if not upstream then
+		return nil, upstream_err
 	end
 
 	-- Build request
@@ -101,13 +158,11 @@ function proxy.handle(client, method, path, headers, body, target)
 			upstream_headers["cookie"] = value
 		elseif normalized_name == "origin" then
 			-- Rewrite origin to match upstream server
-			upstream_headers["origin"] = string.format("%s://%s:%s", target.scheme, target.host, target.port)
+			upstream_headers["origin"] = string.format("%s://%s:%s", target.scheme, target.host, port)
 		elseif normalized_name == "referer" then
 			-- Rewrite referer to match upstream server
-			local new_referer = value:gsub(
-				"https?://" .. original_host,
-				string.format("%s://%s:%s", target.scheme, target.host, target.port)
-			)
+			local new_referer =
+				value:gsub("https?://" .. original_host, string.format("%s://%s:%s", target.scheme, target.host, port))
 			upstream_headers["referer"] = new_referer
 		elseif normalized_name ~= "host" then
 			upstream_headers[normalized_name] = value

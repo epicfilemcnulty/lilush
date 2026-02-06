@@ -50,6 +50,12 @@ local handle = function(method, query, args, headers, body, ctx)
 			scheme = proxy_config.scheme or "http",
 			host = proxy_config.target,
 			port = proxy_config.port,
+			tls_cafile = proxy_config.tls_cafile,
+			tls_capath = proxy_config.tls_capath,
+			tls_handshake_timeout = proxy_config.tls_handshake_timeout,
+			tls_insecure = proxy_config.tls_insecure,
+			tls_no_verify = proxy_config.tls_no_verify,
+			no_verify_mode = proxy_config.no_verify_mode,
 		}
 
 		ctx.logger:log({
@@ -161,8 +167,7 @@ local handle = function(method, query, args, headers, body, ctx)
 		-- better move all this whitelist stuff into a dedicated func
 		local whitelisted = metadata.rate_limit.whitelisted_ip or "127.0.66.6"
 		if remote_ip ~= whitelisted then
-			local count =
-				api.check_rate_limit(db, host, method, query, remote_ip, metadata.rate_limit[method].period)
+			local count = api.check_rate_limit(db, host, method, query, remote_ip, metadata.rate_limit[method].period)
 			if count and count > metadata.rate_limit[method].limit then
 				local hit_count = metrics.update(db, host, method, query, 429)
 				db:close()
@@ -180,7 +185,7 @@ local handle = function(method, query, args, headers, body, ctx)
 	local ttl = metadata.cache_control or "max-age=86400"
 
 	local request_etag = headers["if-none-match"] or ""
-	if request_etag == hash or method == "HEAD" then
+	if method == "HEAD" or (method == "GET" and request_etag == hash) then
 		if method ~= "HEAD" then
 			status = 304
 		end

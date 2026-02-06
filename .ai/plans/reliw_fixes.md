@@ -151,6 +151,49 @@ Acceptance:
 - Chunked responses with extensions parse correctly.
 - Non-GET/HEAD requests never return 304 from ETag shortcut.
 
+Implementation details (planned):
+
+1. Test-first scaffolding
+   - Add `tests/reliw/test_proxy_https.lua` with stubs for `socket` and `ssl` to verify:
+     - HTTPS targets call `ssl.wrap(...)` with client mode and upstream SNI.
+     - Handshake failures return controlled errors and close sockets.
+     - HTTP targets do not invoke TLS wrapping.
+   - Extend proxy parser coverage (same file or split test) to validate chunk-size lines with extensions (for example `4;foo=bar`).
+   - Add `tests/reliw/test_etag_method_semantics.lua` to verify:
+     - `GET` + matching `If-None-Match` => `304`.
+     - `HEAD` path stays bodyless and does not emit `304`.
+     - non-`GET`/`HEAD` methods do not short-circuit to `304` when ETag matches.
+
+2. Proxy TLS correctness (`src/reliw/reliw/proxy.lua`)
+   - Require `ssl` and add a small helper for upstream connect flow:
+     - create TCP socket
+     - connect host/port
+     - if `target.scheme == "https"`, wrap with `ssl.wrap` and run `:dohandshake()`
+   - Preserve Phase 1 error behavior: return `nil, <message>` and close underlying sockets on every failure branch.
+   - Keep timeout handling explicit for connect + handshake stages.
+
+3. Chunked response parsing correctness (`src/reliw/reliw/proxy.lua`)
+   - Change chunk-size parsing to consume only the leading hex token (`^%s*([0-9A-Fa-f]+)`), ignoring chunk extensions.
+   - For zero-sized terminal chunk, consume trailer lines until the blank delimiter.
+   - Keep existing body assembly behavior and downstream header normalization.
+
+4. ETag semantics fix (`src/reliw/reliw/handle.lua`)
+   - Gate conditional `304` shortcut behind method checks so only `GET`/`HEAD` participate.
+   - Preserve current HEAD no-body behavior while ensuring unsafe methods (`POST`, `PUT`, etc.) continue normal processing even when ETag matches.
+
+5. Validation and rollout gate
+   - Run targeted tests:
+     - `./lilush tests/reliw/test_proxy_https.lua`
+     - `./lilush tests/reliw/test_etag_method_semantics.lua`
+     - existing `tests/reliw/test_proxy_upstream_failure.lua` regression
+   - Run full suite: `./run_all_tests.bash`.
+   - Ship Phase 2 in a dedicated commit to keep rollback scope narrow.
+
+TLS policy decision (resolved):
+
+- Selected option: allow self-signed upstreams via proxy config knob (`tls_insecure = true` / `tls_no_verify = true` / `no_verify_mode = true`).
+- Default remains verified TLS unless one of the explicit relax flags is set.
+
 ### Phase 3: Request-Body and Path Hardening
 
 Objective: block easy resource abuse and path traversal vectors.
@@ -227,6 +270,41 @@ Acceptance:
 - Tests fail on current buggy behaviors and pass after fixes.
 - CI/local run includes RELIW suite by default.
 
+### Phase 7: RELIW Documentation Completion
+
+Objective: provide complete operator/developer documentation after remediation phases are finished.
+
+Changes:
+
+- Create detailed RELIW docs covering:
+  - full configuration reference (core server, TLS, proxy, metrics, timeouts, and defaults).
+  - Redis data model/schema used by RELIW:
+    - key namespaces and value formats
+    - required vs optional fields
+    - proxy metadata schema
+    - metrics and rate-limit keys
+  - WAF behavior:
+    - request evaluation flow
+    - rule model and matching semantics
+    - block behavior and logging expectations
+  - request handling semantics:
+    - auth flow
+    - proxy routing behavior
+    - ETag/cache behavior by method
+    - failure-mode responses (4xx/5xx)
+  - operational guidance:
+    - rollout/rollback notes
+    - observability (logs/metrics)
+    - troubleshooting checklist for common failures.
+- Update `src/reliw/README.md` to point to the full docs and keep quickstart examples aligned.
+- Ensure docs reflect final behavior from Phases 1-6 and include tested examples.
+
+Acceptance:
+
+- RELIW has an end-to-end operator/developer guide with concrete examples.
+- Configuration and Redis schema documentation are sufficient to deploy/operate without source-diving.
+- WAF and proxy behavior are documented with expected outcomes and failure handling.
+
 ## API and Behavior Changes
 
 Expected behavior changes after remediation:
@@ -280,6 +358,7 @@ Recommended rollout order:
 3. Deploy Phase 3 and Phase 4 (hardening + lifecycle).
 4. Deploy Phase 5 metrics scaling improvement.
 5. Gate final rollout on Phase 6 regression tests in default test run.
+6. Complete Phase 7 documentation pass once behavior is stabilized.
 
 Rollback guidance:
 
@@ -295,6 +374,47 @@ Rollback guidance:
 - Prioritize runtime stability and predictable failure modes over legacy undefined behavior.
 
 ## Progress Log
+
+### 2026-02-06 — Phase 2 Implemented
+
+Status: Completed.
+
+Implemented fixes:
+
+- `src/reliw/reliw/proxy.lua`
+  - Added HTTPS upstream TLS mode via `ssl.wrap(...)` + handshake.
+  - Added support for relaxed verification flags for self-signed/internal upstreams (`tls_insecure`/`tls_no_verify`/`no_verify_mode`).
+  - Preserved controlled error returns and close-on-failure behavior.
+  - Updated chunk parser to accept chunk extensions and to consume trailer lines correctly.
+- `src/reliw/reliw/handle.lua`
+  - Restricted ETag `304` shortcut to `GET` only; kept HEAD bodyless behavior without returning `304`.
+  - Passed proxy TLS options from proxy metadata into proxy target.
+- `tests/reliw/test_proxy_https.lua`
+  - Added coverage for HTTPS TLS flow, handshake failure handling, plain HTTP no-wrap behavior, and chunk extension parsing.
+- `tests/reliw/test_etag_method_semantics.lua`
+  - Added coverage for `GET`/`HEAD`/`POST` ETag semantics.
+- `tests/reliw/test_proxy_upstream_failure.lua`
+  - Added `ssl` stub for isolation after TLS support changes.
+
+Validation completed:
+
+- `./lilush tests/reliw/test_proxy_upstream_failure.lua` passed.
+- `./lilush tests/reliw/test_proxy_https.lua` passed.
+- `./lilush tests/reliw/test_etag_method_semantics.lua` passed.
+- `./run_all_tests.bash` passed.
+
+### 2026-02-06 — Phase 2 Planned
+
+Status: Planned (implementation not started yet).
+
+Planning outcome:
+
+- Added a test-first execution plan for Phase 2.
+- Defined concrete file targets and acceptance checks for:
+  - upstream HTTPS TLS handling
+  - chunked extension parsing
+  - ETag method semantics
+- Captured a pending TLS verification policy decision to resolve before coding.
 
 ### 2026-02-06 — Phase 1 Implemented
 

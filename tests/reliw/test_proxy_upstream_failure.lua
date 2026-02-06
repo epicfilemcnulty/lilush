@@ -10,7 +10,7 @@ local testify = testimony.new("== reliw.proxy upstream failures ==")
 local mode = "tcp_fail"
 local close_count = 0
 
-helpers.clear_modules({ "socket", "reliw.proxy" })
+helpers.clear_modules({ "socket", "ssl", "reliw.proxy" })
 helpers.stub_module("socket", {
 	tcp = function()
 		if mode == "tcp_fail" then
@@ -29,6 +29,11 @@ helpers.stub_module("socket", {
 			return true
 		end
 		return sock
+	end,
+})
+helpers.stub_module("ssl", {
+	wrap = function()
+		return nil, "not used"
 	end,
 })
 
