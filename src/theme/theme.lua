@@ -3,9 +3,9 @@
 -- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 local std = require("std")
-local storage = require("shell.store")
+local json = require("cjson.safe")
 
-local widgets_default = {
+local widget_default = {
 	aws = {
 		title = { fg = 94, bg = 184 },
 		option = { fg = 100 },
@@ -31,19 +31,16 @@ local widgets_default = {
 	},
 }
 
-local renderer_default = {
-	-- builtin_error is used for error messages in shell builtins
-	-- NOTE: The markdown module has its own default TSS. User theme support
-	-- for markdown rendering needs to be added to the markdown module itself.
-	-- For now, we rely on markdown module's built-in defaults.
-	builtin_error = {
+local errors_default = {
+	-- builtin_markdown is used for markdown-formatted error messages in shell
+	builtin_markdown = {
 		fg = 245,
 		code = { fg = 95, bg = 233, s = "bold" },
 		strong = { s = "inverted,bold" },
 	},
 }
 
-local builtins_default = {
+local builtin_default = {
 	err = { fg = 245 },
 	ls = {
 		offset = { fg = 243 },
@@ -146,7 +143,7 @@ local builtins_default = {
 	},
 }
 
-local prompts_default = {
+local prompt_default = {
 	llm = {
 		chat = { fg = 67 },
 		backend = { fg = 37, s = "bold" },
@@ -215,13 +212,9 @@ local prompts_default = {
 	},
 }
 
-local modes_default = {
-	shell = {
-		completion = { fg = 247 },
-	},
-	llm = {},
+local repl_default = {
 	lua = {
-		sep = { fg = 67, s = "bold", content = "-", fill = true, w = 0.4 },
+		separator = { fg = 67, s = "bold", content = "-", fill = true, w = 0.4 },
 	},
 }
 
@@ -238,42 +231,124 @@ local completion_default = {
 	snippet = { text_indent = 4, fg = 29, s = "bold" },
 }
 
-local load_user_theme = function()
-	local store = storage.new()
-	local widgets = store:get_json_file("theme/widgets.json")
-	if widgets then
-		std.tbl.merge(widgets_default, widgets)
-	end
-	local renderer = store:get_json_file("theme/renderer.json")
-	if renderer then
-		std.tbl.merge(renderer_default, renderer)
-	end
-	local builtins = store:get_json_file("theme/builtins.json")
-	if builtins then
-		std.tbl.merge(builtins_default, builtins)
-	end
-	local prompts = store:get_json_file("theme/prompts.json")
-	if prompts then
-		std.tbl.merge(prompts_default, prompts)
-	end
-	local modes = store:get_json_file("theme/modes.json")
-	if modes then
-		std.tbl.merge(modes_default, modes)
-	end
-	local completion = store:get_json_file("theme/completion.json")
-	if completion then
-		std.tbl.merge(completion_default, completion)
-	end
-	store:close(true)
-	local theme = {
-		widgets = widgets_default,
-		renderer = renderer_default,
-		builtins = builtins_default,
-		prompts = prompts_default,
-		modes = modes_default,
+local agent_default = {
+	agent = {
+		error = { fg = 167 },
+		info = { fg = 245 },
+
+		tool = {
+			bracket = { fg = 214 },
+			name = { fg = 214 },
+			args = { fg = 245 },
+			result_prefix = { fg = 245, content = "  -> " },
+			result = { fg = 245 },
+		},
+
+		debug = {
+			bracket = { fg = 37 },
+			label = { fg = 37 },
+			text = { fg = 245 },
+		},
+
+		approval = {
+			bracket = { fg = 214 },
+			name = { fg = 214 },
+			options = { fg = 245 },
+		},
+
+		code = {
+			bar = { fg = 58, content = "│ " },
+			lang = { fg = 109, s = "italic" },
+			text = { fg = 247 },
+		},
+	},
+	prompts = {
+		agent = {
+			sep = { fg = 243 },
+			mode = {
+				prefix = { fg = 99, content = "[" },
+				suffix = { fg = 99, content = "]" },
+				label = { fg = 147, s = "bold", content = "agent" },
+				backend = { fg = 103 },
+				model = { fg = 183 },
+			},
+			dir = { fg = 251, w = 30, clip = 3 },
+			tokens = {
+				prefix = { fg = 243, content = "(" },
+				suffix = { fg = 243, content = ")" },
+				count = { fg = 109 },
+				unit = { fg = 243, content = " tok" },
+				warning = { fg = 214 },
+				critical = { fg = 196 },
+			},
+			cost = {
+				prefix = { fg = 243, content = " " },
+				amount = { fg = 113 },
+			},
+			status = {
+				streaming = { fg = 220, content = "..." },
+				thinking = { fg = 147, content = "..." },
+				error = { fg = 196, content = "!" },
+			},
+			cursor = { fg = 147, content = "> " },
+		},
+	},
+}
+
+local defaults = {
+	shell = {
+		widget = widget_default,
+		errors = errors_default,
+		builtin = builtin_default,
+		prompt = prompt_default,
 		completion = completion_default,
-	}
-	return theme
+		repl = repl_default,
+	},
+	markdown = {},
+	agent = agent_default,
+}
+
+local load_json_file = function(path)
+	local content, err = std.fs.read_file(path)
+	if not content then
+		return nil, err
+	end
+	local decoded, decode_err = json.decode(content)
+	if not decoded then
+		io.stderr:write("warning: failed to parse theme override `" .. path .. "`: " .. tostring(decode_err) .. "\n")
+		return nil, decode_err
+	end
+	if type(decoded) ~= "table" then
+		io.stderr:write("warning: invalid theme override `" .. path .. "`: root value must be an object\n")
+		return nil, "invalid root"
+	end
+	return decoded
 end
 
-return load_user_theme()
+local load_user_overrides = function()
+	local home = os.getenv("HOME") or "/tmp"
+	local theme_dir = home .. "/.config/lilush/theme"
+	local shell = load_json_file(theme_dir .. "/shell.json") or {}
+
+	local markdown = load_json_file(theme_dir .. "/markdown.json") or {}
+	local agent = load_json_file(theme_dir .. "/agent.json") or {}
+	return {
+		shell = shell,
+		markdown = markdown,
+		agent = agent,
+	}
+end
+
+local user_overrides = load_user_overrides()
+
+local get = function(section, extra_overrides)
+	local key = section or ""
+	local merged = std.tbl.copy(defaults[key] or {})
+	merged = std.tbl.merge(merged, std.tbl.copy(user_overrides[key] or {}))
+	if type(extra_overrides) == "table" then
+		merged = std.tbl.merge(merged, extra_overrides)
+	end
+	return merged
+end
+
+return { get = get }

@@ -5,6 +5,7 @@ return {
 		"web",
 		"std",
 		"crypto",
+		"theme",
 		"markdown",
 		"redis",
 		"reliw",

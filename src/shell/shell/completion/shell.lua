@@ -5,7 +5,7 @@
 local std = require("std")
 local style = require("term.tss")
 local utils = require("shell.utils")
-local theme = require("shell.theme")
+local theme = require("theme").get("shell")
 
 local tss = style.new(theme.completion)
 

@@ -37,7 +37,7 @@ local setup_pager = function(options)
 		"markdown.renderer.theme",
 		"crypto",
 		"term",
-		"shell.theme",
+		"theme",
 		"term.tss",
 		"term.input",
 		"term.input.history",
@@ -139,16 +139,27 @@ local setup_pager = function(options)
 			}
 		end,
 	})
-	helpers.stub_module("shell.theme", {
-		builtins = {
-			pager = {
-				status_line = {
-					search = {
-						input = {},
+	helpers.stub_module("theme", {
+		get = function(a, b)
+			local section = b or a
+			if section == "shell" then
+				return {
+					builtin = {
+						pager = {
+							status_line = {
+								search = {
+									input = {},
+								},
+							},
+						},
 					},
-				},
-			},
-		},
+				}
+			end
+			if section == "markdown" then
+				return {}
+			end
+			return {}
+		end,
 	})
 	helpers.stub_module("term.tss", {
 		new = function()

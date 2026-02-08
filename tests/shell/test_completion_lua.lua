@@ -19,14 +19,22 @@ local setup_modules = function()
 	helpers.clear_modules({
 		"std",
 		"term.tss",
-		"shell.theme",
+		"theme",
 		"shell.completion.lua",
 		"shell.completion.source.lua_keywords",
 		"shell.completion.source.lua_symbols",
 	})
 
 	helpers.stub_module("std", make_std_stub())
-	helpers.stub_module("shell.theme", { completion = {} })
+	helpers.stub_module("theme", {
+		get = function(a, b)
+			local section = b or a
+			if section == "shell" then
+				return { completion = {} }
+			end
+			return {}
+		end,
+	})
 	helpers.stub_module("term.tss", {
 		new = function()
 			return {

@@ -32,6 +32,7 @@ local std = require("std")
 local buffer = require("string.buffer")
 local tss_mod = require("term.tss")
 local term = require("term")
+local theme_mod = require("theme")
 local theme = require("markdown.renderer.theme")
 local table_layout = require("markdown.renderer.table_layout")
 
@@ -1179,7 +1180,7 @@ local new = function(options)
 	options = options or {}
 
 	-- Create TSS instance
-	local rss = options.rss or DEFAULT_RSS
+	local rss = theme_mod.get("markdown", options.rss)
 	local width = options.width or 80
 	local output_fn = options.output_fn or io.write
 	local tss = tss_mod.merge(DEFAULT_RSS, rss, { supports_ts = options.supports_ts })

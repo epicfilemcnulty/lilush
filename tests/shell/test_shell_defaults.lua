@@ -59,7 +59,7 @@ local setup_shell = function(options)
 		"agent.mode.agent",
 		"shell.builtins",
 		"shell.utils.pipeline",
-		"shell.theme",
+		"theme",
 		"shell",
 	})
 
@@ -182,8 +182,14 @@ local setup_shell = function(options)
 			return 0
 		end,
 	})
-	helpers.stub_module("shell.theme", {
-		renderer = { builtin_error = {} },
+	helpers.stub_module("theme", {
+		get = function(a, b)
+			local section = b or a
+			if section == "shell" then
+				return { errors = { builtin_markdown = {} } }
+			end
+			return {}
+		end,
 	})
 
 	local shell_mod = helpers.load_module_from_src("shell", "src/shell/shell.lua")

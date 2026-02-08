@@ -66,9 +66,9 @@ local luamods = {
 		"reliw.templates",
 	},
 	botls = { "botls", "botls.config", "botls.manager", "botls.orders", "botls.providers", "botls.scheduler" },
+	theme = { "theme" },
 	shell = {
 		"shell",
-		"shell.theme",
 		"shell.store",
 		"shell.utils",
 		"shell.utils.pager",
@@ -97,7 +97,6 @@ local luamods = {
 		"agent.conversation",
 		"agent.system_prompt",
 		"agent.tools",
-		"agent.theme",
 		"agent.stream",
 		"agent.mode.agent",
 		"agent.mode.agent.prompt",

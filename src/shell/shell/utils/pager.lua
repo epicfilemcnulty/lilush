@@ -5,10 +5,11 @@
 local std = require("std")
 local json = require("cjson.safe")
 local markdown = require("markdown")
-local md_theme = require("markdown.renderer.theme")
 local crypto = require("crypto")
 local term = require("term")
-local theme = require("shell.theme")
+local theme_mod = require("theme")
+local theme = theme_mod.get("shell")
+local markdown_theme = theme_mod.get("markdown")
 local style = require("term.tss")
 local input = require("term.input")
 local history = require("term.input.history")
@@ -120,7 +121,7 @@ local pager_set_render_mode = function(self, mode)
 		-- 2. TSS wrap value
 		-- 3. Dynamic (85% of terminal width)
 		local terminal_width = self.__state.window.x
-		local tss_wrap = md_theme.DEFAULT_RSS.wrap
+		local tss_wrap = markdown_theme.wrap
 		local content_width
 
 		if self.cfg.wrap and self.cfg.wrap > 0 then
@@ -135,8 +136,6 @@ local pager_set_render_mode = function(self, mode)
 			content_width = math.max(40, content_width)
 		end
 
-		-- Use markdown renderer with default TSS
-		-- TODO: Add user theme support to markdown module
 		local result = markdown.render(self.content.raw, {
 			width = content_width,
 			return_metadata = true,
@@ -349,7 +348,7 @@ local pager_display_line_nums = function(self)
 	for i = 1, lines_to_display do
 		term.go(2 + i - 1, 1)
 		local line_num = self.__state.top_line + i - 1
-		local tss = style.new(theme.builtins.pager)
+		local tss = style.new(theme.builtin.pager)
 		if line_num == self.__state.cursor_line then
 			term.write(tss:apply("line_num.selected", line_num).text)
 		else
@@ -389,7 +388,7 @@ local pager_display = function(self)
 
 		-- Apply search highlighting
 		if idx == self.__state.cursor_line and self.__state.search.pattern ~= "" and line then
-			local tss = style.new(theme.builtins.pager)
+			local tss = style.new(theme.builtin.pager)
 			line = line:gsub(self.__state.search.pattern, tss:apply("search_match", "%1").text)
 		end
 
@@ -399,7 +398,7 @@ local pager_display = function(self)
 			local el_end = focused.end_line or focused.line
 			if idx >= el_start and idx <= el_end then
 				-- Mark focused element with a left indicator
-				local tss = style.new(theme.builtins.pager)
+				local tss = style.new(theme.builtin.pager)
 				local marker = tss:apply("element.focused", "▌").text
 				line = marker .. line
 			end
@@ -426,7 +425,7 @@ local pager_display_status_line = function(self)
 	if position_pct > 100 then
 		position_pct = 100.00
 	end
-	local tss = style.new(theme.builtins.pager)
+	local tss = style.new(theme.builtin.pager)
 	local position = string.format("%.2f", position_pct) .. "%"
 
 	-- Top bar: file info + focused element hints + notifications
@@ -637,10 +636,10 @@ local pager_search = function(self, combo)
 			l = self.__state.window.y,
 			c = 9,
 			width = self.__state.window.x - 9,
-			rss = theme.builtins.pager.status_line.search,
+			rss = theme.builtin.pager.status_line.search,
 		})
 		term.go(self.__state.window.y, 1)
-		local tss = style.new(theme.builtins.pager)
+		local tss = style.new(theme.builtin.pager)
 		term.write(tss:apply("status_line.search", "SEARCH: ").text)
 		buf:display()
 		term.show_cursor()

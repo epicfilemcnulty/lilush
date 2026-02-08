@@ -17,7 +17,7 @@ local term = require("term")
 local json = require("cjson.safe")
 local llm = require("llm")
 local style = require("term.tss")
-local theme = require("agent.theme")
+local theme = require("theme").get("agent")
 
 local config_mod = require("agent.config")
 local conversation_mod = require("agent.conversation")

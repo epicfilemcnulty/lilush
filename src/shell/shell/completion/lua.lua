@@ -3,7 +3,7 @@
 -- Licensed under the Open Weights License v1.0. See LICENSE for details.
 
 local style = require("term.tss")
-local theme = require("shell.theme")
+local theme = require("theme").get("shell")
 
 local tss = style.new(theme.completion)
 

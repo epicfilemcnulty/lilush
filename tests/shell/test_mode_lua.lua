@@ -40,11 +40,15 @@ local setup_mode = function()
 		"std",
 		"term",
 		"term.tss",
-		"shell.theme",
+		"theme",
 		"shell.mode.lua",
 	})
 	helpers.stub_module("std", make_std_stub())
-	helpers.stub_module("shell.theme", {})
+	helpers.stub_module("theme", {
+		get = function()
+			return {}
+		end,
+	})
 	helpers.stub_module("term.tss", {
 		new = function()
 			return {

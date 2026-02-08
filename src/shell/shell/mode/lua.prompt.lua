@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
 -- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
-local theme = require("shell.theme")
+local theme = require("theme").get("shell")
 local tss_gen = require("term.tss")
 local tss = tss_gen.new(theme)
 local buffer = require("string.buffer")
@@ -13,14 +13,14 @@ end
 local get = function(self)
 	local prompt = buffer.new()
 	prompt:put(
-		style_text(tss, "prompts.shell.sep", "("),
-		style_text(tss, "prompts.lua.logo"),
-		style_text(tss, "prompts.shell.sep", ")")
+		style_text(tss, "prompt.shell.sep", "("),
+		style_text(tss, "prompt.lua.logo"),
+		style_text(tss, "prompt.shell.sep", ")")
 	)
 	if self.__state.lines and self.__state.lines > 1 then
-		prompt:put(style_text(tss, "prompts.shell.sep", "["))
-		prompt:put(style_text(tss, "prompts.shell.sep", tostring(self.__state.line)))
-		prompt:put(style_text(tss, "prompts.shell.sep", "]"))
+		prompt:put(style_text(tss, "prompt.shell.sep", "["))
+		prompt:put(style_text(tss, "prompt.shell.sep", tostring(self.__state.line)))
+		prompt:put(style_text(tss, "prompt.shell.sep", "]"))
 	end
 	prompt:put(" ")
 	return prompt:get()

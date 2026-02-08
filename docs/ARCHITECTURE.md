@@ -59,7 +59,9 @@ The shell (`src/shell/shell.lua`) is a **mode-based** system:
 
    - Sources: binaries, builtins, commands, environment vars, filesystem
 
-5. **Theme** (`shell.theme.lua`) - TSS-based styling
+5. **Theme** (`theme.lua`) - central TSS-based styling for shell, markdown, and agent
+   - User overrides are loaded from `~/.config/lilush/theme/`
+   - Shell uses `shell.json`; markdown and agent use `markdown.json` / `agent.json`
 
 **Shell execution flow:**
 

@@ -30,7 +30,7 @@ local setup_mode = function(options)
 		"term.widgets",
 		"shell.utils.pipeline",
 		"shell.builtins",
-		"shell.theme",
+		"theme",
 		"term.tss",
 		"shell.store",
 		"vault",
@@ -143,11 +143,19 @@ local setup_mode = function(options)
 			return nil
 		end,
 	})
-	helpers.stub_module("shell.theme", {
-		widgets = {
-			shell = {},
-			python = {},
-		},
+	helpers.stub_module("theme", {
+		get = function(a, b)
+			local section = b or a
+			if section == "shell" then
+				return {
+					widget = {
+						shell = {},
+						python = {},
+					},
+				}
+			end
+			return {}
+		end,
 	})
 	helpers.stub_module("term.tss", {
 		new = function()

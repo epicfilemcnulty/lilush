@@ -7,7 +7,7 @@ local term = require("term")
 local widgets = require("term.widgets")
 local pipeline = require("shell.utils.pipeline")
 local builtins = require("shell.builtins")
-local theme = require("shell.theme")
+local theme = require("theme").get("shell")
 local style = require("term.tss")
 local tss = style.new(theme)
 local storage = require("shell.store")
@@ -101,10 +101,10 @@ local alias = function(self, cmd, args)
 		if #cmd_args == 0 then
 			local sorted = std.tbl.sort_keys(aliases)
 			local out = ""
-			tss:set_property("builtins.alias.name", "w", std.tbl.longest(sorted))
+			tss:set_property("builtin.alias.name", "w", std.tbl.longest(sorted))
 			for _, entry in ipairs(sorted) do
-				out = out .. tss:apply("builtins.alias.name", entry).text
-				out = out .. tss:apply("builtins.alias.value", aliases[entry]).text .. "\n"
+				out = out .. tss:apply("builtin.alias.name", entry).text
+				out = out .. tss:apply("builtin.alias.value", aliases[entry]).text .. "\n"
 			end
 			term.write(out)
 		elseif #cmd_args > 1 then
@@ -145,7 +145,7 @@ local python_env = function(self, cmd, args)
 			table.insert(venvs, f)
 		end
 		venvs = std.tbl.alphanumsort(venvs)
-		local choice = widgets.chooser(venvs, { rss = theme.widgets.python, title = "Choose a python venv" })
+		local choice = widgets.chooser(venvs, { rss = theme.widget.python, title = "Choose a python venv" })
 		if not choice then
 			return 0
 		end
@@ -176,7 +176,7 @@ local vault_login = function()
 	if not token then
 		local login_form = widgets.form(
 			{ "username", "password" },
-			{ title = "Login to Vault", rss = theme.widgets.shell, meta = { password = { w = 32, secret = true } } }
+			{ title = "Login to Vault", rss = theme.widget.shell, meta = { password = { w = 32, secret = true } } }
 		) or {}
 		local vc = vault.new()
 		local ok, err = vc:login(login_form.username, login_form.password)
@@ -255,7 +255,7 @@ local env_secrets_combo = function(self, combo)
 	end
 	local results = widgets.chooser(
 		std.tbl.sort_keys(vault_vars),
-		{ multiple_choice = true, rss = theme.widgets.shell, title = "Choose secrets to be fetched" }
+		{ multiple_choice = true, rss = theme.widget.shell, title = "Choose secrets to be fetched" }
 	)
 	if results and #results > 0 then
 		local selected_envs = {}
@@ -333,7 +333,7 @@ local toggle_blocks_combo = function(self, combo)
 	local results = widgets.chooser({ "user", "dir", "ssh", "kube", "aws", "git", "vault" }, {
 		multiple_choice = true,
 		selected = selected,
-		rss = theme.widgets.shell,
+		rss = theme.widget.shell,
 		title = "Choose prompt blocks to be enabled",
 	})
 	if results and #results > 0 then

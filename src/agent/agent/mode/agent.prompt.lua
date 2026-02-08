@@ -15,7 +15,7 @@ Displays:
 local std = require("std")
 local buffer = require("string.buffer")
 local style = require("term.tss")
-local theme = require("agent.theme")
+local theme = require("theme").get("agent")
 
 local tss = style.new(theme)
 local style_text = function(ctx, ...)

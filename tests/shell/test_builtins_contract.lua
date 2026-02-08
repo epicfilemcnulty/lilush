@@ -15,7 +15,7 @@ local setup_builtins = function()
 		"cjson.safe",
 		"shell.utils",
 		"dns.dig",
-		"shell.theme",
+		"theme",
 		"shell.store",
 		"markdown",
 		"argparser",
@@ -90,10 +90,18 @@ local setup_builtins = function()
 		end,
 	})
 	helpers.stub_module("dns.dig", { config = {} })
-	helpers.stub_module("shell.theme", {
-		renderer = {
-			builtin_error = {},
-		},
+	helpers.stub_module("theme", {
+		get = function(a, b)
+			local section = b or a
+			if section == "shell" then
+				return {
+					errors = {
+						builtin_markdown = {},
+					},
+				}
+			end
+			return {}
+		end,
 	})
 	helpers.stub_module("shell.store", {
 		new = function()

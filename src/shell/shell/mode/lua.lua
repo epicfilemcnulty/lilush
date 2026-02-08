@@ -4,7 +4,7 @@
 
 local std = require("std")
 local term = require("term")
-local theme = require("shell.theme")
+local theme = require("theme").get("shell")
 local style = require("term.tss")
 local tss = style.new(theme)
 local style_text = function(ctx, ...)
@@ -42,7 +42,7 @@ local is_incomplete_error = function(err)
 end
 
 local write_separator = function()
-	term.write(style_text(tss, "modes.lua.sep") .. "\n")
+	term.write(style_text(tss, "repl.lua.separator") .. "\n")
 end
 
 local format_value = function(self, value, visited, depth)

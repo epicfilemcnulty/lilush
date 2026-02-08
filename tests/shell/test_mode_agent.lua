@@ -16,7 +16,7 @@ local setup_mode = function(options)
 		"cjson.safe",
 		"llm",
 		"term.tss",
-		"agent.theme",
+		"theme",
 		"agent.config",
 		"agent.conversation",
 		"agent.system_prompt",
@@ -84,7 +84,15 @@ local setup_mode = function(options)
 			}
 		end,
 	})
-	helpers.stub_module("agent.theme", {})
+	helpers.stub_module("theme", {
+		get = function(a, b)
+			local section = b or a
+			if section == "agent" then
+				return {}
+			end
+			return {}
+		end,
+	})
 	helpers.stub_module("agent.config", {
 		new = function()
 			return {

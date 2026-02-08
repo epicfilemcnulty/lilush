@@ -4,7 +4,7 @@
 
 local std = require("std")
 local buffer = require("string.buffer")
-local theme = require("shell.theme")
+local theme = require("theme").get("shell")
 local style = require("term.tss")
 local tss = style.new(theme)
 local style_text = function(ctx, ...)
@@ -58,39 +58,39 @@ local git_prompt = function(self)
 	status.behind = tonumber(branch_line:match("%[behind ([%d%w]+)%]")) or 0
 
 	local buf = buffer.new()
-	buf:put(style_text(tss, "prompts.shell.sep", "("), style_text(tss, "prompts.shell.git.logo"))
+	buf:put(style_text(tss, "prompt.shell.sep", "("), style_text(tss, "prompt.shell.git.logo"))
 	if status.clean then
-		buf:put(style_text(tss, "prompts.shell.git.branch.clean", status.branch))
+		buf:put(style_text(tss, "prompt.shell.git.branch.clean", status.branch))
 	else
-		buf:put(style_text(tss, "prompts.shell.git.branch.dirty", status.branch))
+		buf:put(style_text(tss, "prompt.shell.git.branch.dirty", status.branch))
 	end
 
 	if status.modified > 0 then
-		buf:put(style_text(tss, "prompts.shell.git.modified", status.modified))
+		buf:put(style_text(tss, "prompt.shell.git.modified", status.modified))
 	end
 	if status.staged > 0 then
-		buf:put(style_text(tss, "prompts.shell.git.staged", status.staged))
+		buf:put(style_text(tss, "prompt.shell.git.staged", status.staged))
 	end
 	if status.untracked > 0 then
-		buf:put(style_text(tss, "prompts.shell.git.untracked", status.untracked))
+		buf:put(style_text(tss, "prompt.shell.git.untracked", status.untracked))
 	end
 
 	if status.ahead > 0 or status.behind > 0 then
 		buf:put(
-			style_text(tss, "prompts.shell.sep", ""),
-			style_text(tss, "prompts.shell.git.remote", status.remote_branch)
+			style_text(tss, "prompt.shell.sep", ""),
+			style_text(tss, "prompt.shell.git.remote", status.remote_branch)
 		)
 	end
 	if status.ahead > 0 then
-		buf:put(style_text(tss, "prompts.shell.git.ahead", status.ahead))
+		buf:put(style_text(tss, "prompt.shell.git.ahead", status.ahead))
 	end
 	if status.behind > 0 then
-		buf:put(style_text(tss, "prompts.shell.git.behind", status.behind))
+		buf:put(style_text(tss, "prompt.shell.git.behind", status.behind))
 	end
 	if status.tag ~= "" then
-		buf:put(style_text(tss, "prompts.shell.git.tag_sep"), style_text(tss, "prompts.shell.git.tag", status.tag))
+		buf:put(style_text(tss, "prompt.shell.git.tag_sep"), style_text(tss, "prompt.shell.git.tag", status.tag))
 	end
-	buf:put(style_text(tss, "prompts.shell.sep", ")"))
+	buf:put(style_text(tss, "prompt.shell.sep", ")"))
 	return buf:get()
 end
 
@@ -101,11 +101,11 @@ local aws_prompt = function(self)
 	if aws_profile and aws_region then
 		local buf = buffer.new()
 		buf:put(
-			style_text(tss, "prompts.shell.sep", "("),
-			style_text(tss, "prompts.shell.aws.logo"),
-			style_text(tss, "prompts.shell.aws.profile", aws_profile),
-			style_text(tss, "prompts.shell.aws.region", aws_region),
-			style_text(tss, "prompts.shell.sep", ")")
+			style_text(tss, "prompt.shell.sep", "("),
+			style_text(tss, "prompt.shell.aws.logo"),
+			style_text(tss, "prompt.shell.aws.profile", aws_profile),
+			style_text(tss, "prompt.shell.aws.region", aws_region),
+			style_text(tss, "prompt.shell.sep", ")")
 		)
 		return buf:get()
 	end
@@ -114,7 +114,7 @@ end
 
 local vault_prompt = function(self)
 	if self.__state.vault_status then
-		return style_text(tss, "prompts.shell.vault." .. self.__state.vault_status)
+		return style_text(tss, "prompt.shell.vault." .. self.__state.vault_status)
 	end
 	return nil
 end
@@ -122,11 +122,11 @@ end
 local user_prompt = function(self)
 	local buf = buffer.new()
 	if self.__state.user ~= "root" then
-		buf:put(style_text(tss, "prompts.shell.user.user", self.__state.user))
+		buf:put(style_text(tss, "prompt.shell.user.user", self.__state.user))
 	else
-		buf:put(style_text(tss, "prompts.shell.user.root", self.__state.user))
+		buf:put(style_text(tss, "prompt.shell.user.root", self.__state.user))
 	end
-	buf:put("@", style_text(tss, "prompts.shell.user.hostname", self.__state.hostname))
+	buf:put("@", style_text(tss, "prompt.shell.user.hostname", self.__state.hostname))
 	return buf:get()
 end
 
@@ -139,30 +139,30 @@ local kube_prompt = function(self)
 	local ns = os.getenv("KTL_NAMESPACE") or "kube-system"
 	local buf = buffer.new()
 	buf:put(
-		style_text(tss, "prompts.shell.sep", "("),
-		style_text(tss, "prompts.shell.kube.logo"),
-		style_text(tss, "prompts.shell.kube.profile", profile),
-		style_text(tss, "prompts.shell.kube.ns", ns),
-		style_text(tss, "prompts.shell.sep", ")")
+		style_text(tss, "prompt.shell.sep", "("),
+		style_text(tss, "prompt.shell.kube.logo"),
+		style_text(tss, "prompt.shell.kube.profile", profile),
+		style_text(tss, "prompt.shell.kube.ns", ns),
+		style_text(tss, "prompt.shell.sep", ")")
 	)
 	return buf:get()
 end
 
 local dir_prompt = function(self)
 	local current_dir = std.fs.cwd():gsub(self.__state.home, "~")
-	return style_text(tss, "prompts.shell.sep", "(")
-		.. style_text(tss, "prompts.shell.dir", current_dir)
-		.. style_text(tss, "prompts.shell.sep", ")")
+	return style_text(tss, "prompt.shell.sep", "(")
+		.. style_text(tss, "prompt.shell.dir", current_dir)
+		.. style_text(tss, "prompt.shell.sep", ")")
 end
 
 local python_prompt = function(self)
 	local virtual_env = os.getenv("VIRTUAL_ENV") or "NONE"
 	virtual_env = virtual_env:gsub("/$", "")
 	virtual_env = virtual_env:match("[^/]+$")
-	return style_text(tss, "prompts.shell.sep", "(")
-		.. style_text(tss, "prompts.shell.python.logo")
-		.. style_text(tss, "prompts.shell.python.env", virtual_env)
-		.. style_text(tss, "prompts.shell.sep", ")")
+	return style_text(tss, "prompt.shell.sep", "(")
+		.. style_text(tss, "prompt.shell.python.logo")
+		.. style_text(tss, "prompt.shell.python.env", virtual_env)
+		.. style_text(tss, "prompt.shell.sep", ")")
 end
 
 local ssh_prompt = function(self)
@@ -171,10 +171,10 @@ local ssh_prompt = function(self)
 	if target then
 		local profile = target:match("profiles/([^/]+)/config")
 		if profile then
-			return style_text(tss, "prompts.shell.sep", "(")
-				.. style_text(tss, "prompts.shell.ssh.logo")
-				.. style_text(tss, "prompts.shell.ssh.profile", profile)
-				.. style_text(tss, "prompts.shell.sep", ")")
+			return style_text(tss, "prompt.shell.sep", "(")
+				.. style_text(tss, "prompt.shell.ssh.logo")
+				.. style_text(tss, "prompt.shell.ssh.profile", profile)
+				.. style_text(tss, "prompt.shell.sep", ")")
 		end
 	end
 end
@@ -218,9 +218,9 @@ local get = function(self)
 		end
 	end
 	if self.__state.lines and self.__state.lines > 1 then
-		prompt:put(style_text(tss, "prompts.shell.sep", "["))
-		prompt:put(style_text(tss, "prompts.shell.sep", tostring(self.__state.line)))
-		prompt:put(style_text(tss, "prompts.shell.sep", "]"))
+		prompt:put(style_text(tss, "prompt.shell.sep", "["))
+		prompt:put(style_text(tss, "prompt.shell.sep", tostring(self.__state.line)))
+		prompt:put(style_text(tss, "prompt.shell.sep", "]"))
 	end
 	prompt:put("$ ")
 	return prompt:get()

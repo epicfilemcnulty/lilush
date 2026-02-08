@@ -8,7 +8,7 @@ local widgets = require("term.widgets")
 local json = require("cjson.safe")
 local utils = require("shell.utils")
 local dig = require("dns.dig")
-local theme = require("shell.theme")
+local theme = require("theme").get("shell")
 local storage = require("shell.store")
 local markdown = require("markdown")
 local argparser = require("argparser")
@@ -30,7 +30,7 @@ end
     Throw errors to STDERR
 ]]
 local errmsg = function(msg)
-	local out = markdown.render(tostring(msg), { rss = theme.renderer.builtin_error })
+	local out = markdown.render(tostring(msg), { rss = theme.errors.builtin_markdown })
 	io.stderr:write(out)
 	io.stderr:flush()
 end
@@ -122,11 +122,11 @@ render_dir = function(path, pattern, indent, args)
 			local user = sys_users[all_files[dir].uid].login
 			local group = sys_users[all_files[dir].gid].login
 			ext_attr:put(
-				style_text(tss, "builtins.ls.user", user),
+				style_text(tss, "builtin.ls.user", user),
 				":",
-				style_text(tss, "builtins.ls.group", group),
+				style_text(tss, "builtin.ls.group", group),
 				" ",
-				style_text(tss, "builtins.ls.atime", atime),
+				style_text(tss, "builtin.ls.atime", atime),
 				" "
 			)
 		end
@@ -139,18 +139,18 @@ render_dir = function(path, pattern, indent, args)
 			ind = ind
 				.. style_text(
 					tss,
-					"builtins.ls.offset",
+					"builtin.ls.offset",
 					string.rep(" ", spaces) .. "" .. string.rep("", arrows - 1)
 				)
 		end
-		buf:put(ind, style_text(tss, "builtins.ls.dir", dir), string.rep(" ", alignment + 2))
+		buf:put(ind, style_text(tss, "builtin.ls.dir", dir), string.rep(" ", alignment + 2))
 		if not args.tree then
 			buf:put(
 				" ",
 				ext_attr:get(),
-				style_text(tss, "builtins.ls.perms", perms),
+				style_text(tss, "builtin.ls.perms", perms),
 				" ",
-				style_text(tss, "builtins.ls.size", std.conv.bytes_human(size))
+				style_text(tss, "builtin.ls.size", std.conv.bytes_human(size))
 			)
 		end
 		buf:put("\n")
@@ -163,13 +163,13 @@ render_dir = function(path, pattern, indent, args)
 	end
 
 	local prefixes = {
-		f = "builtins.ls.file",
-		l = "builtins.ls.link",
-		s = "builtins.ls.socket",
-		b = "builtins.ls.block",
-		p = "builtins.ls.pipe",
-		c = "builtins.ls.char",
-		u = "builtins.ls.unknown",
+		f = "builtin.ls.file",
+		l = "builtin.ls.link",
+		s = "builtin.ls.socket",
+		b = "builtin.ls.block",
+		p = "builtin.ls.pipe",
+		c = "builtin.ls.char",
+		u = "builtin.ls.unknown",
 	}
 	for _, file in ipairs(files) do
 		local mode = all_files[file].mode
@@ -183,16 +183,16 @@ render_dir = function(path, pattern, indent, args)
 			local user = sys_users[all_files[file].uid].login
 			local group = sys_users[all_files[file].gid].login
 			ext_attr:put(
-				style_text(tss, "builtins.ls.user", user),
+				style_text(tss, "builtin.ls.user", user),
 				":",
-				style_text(tss, "builtins.ls.group", group),
+				style_text(tss, "builtin.ls.group", group),
 				" ",
-				style_text(tss, "builtins.ls.atime", atime),
+				style_text(tss, "builtin.ls.atime", atime),
 				" "
 			)
 			if targets[file] then
 				link_target = " -> "
-				link_target = link_target .. style_text(tss, "builtins.ls.target", targets[file])
+				link_target = link_target .. style_text(tss, "builtin.ls.target", targets[file])
 				alignment = alignment - std.utf.len(targets[file]) - 4
 			end
 		end
@@ -203,22 +203,22 @@ render_dir = function(path, pattern, indent, args)
 			ind = ind
 				.. style_text(
 					tss,
-					"builtins.ls.offset",
+					"builtin.ls.offset",
 					string.rep(" ", spaces) .. "⦁" .. string.rep("", arrows - 1)
 				)
 		end
 		local prefix_and_name = style_text(tss, prefixes[mode], file)
 		if mode == "f" and perms:match("[75]") then
-			prefix_and_name = style_text(tss, "builtins.ls.exec", file)
+			prefix_and_name = style_text(tss, "builtin.ls.exec", file)
 		end
 		buf:put(ind, prefix_and_name, link_target, string.rep(" ", alignment + 2))
 		if not args.tree then
 			buf:put(
 				" ",
 				ext_attr:get(),
-				style_text(tss, "builtins.ls.perms", perms),
+				style_text(tss, "builtin.ls.perms", perms),
 				" ",
-				style_text(tss, "builtins.ls.size", std.conv.bytes_human(size))
+				style_text(tss, "builtin.ls.size", std.conv.bytes_human(size))
 			)
 		end
 		buf:put("\n")
@@ -631,14 +631,14 @@ local list_env = function(cmd, args)
 	local env = std.environ()
 	local tss = style.new(theme)
 	local matched = std.tbl.include_keys(std.tbl.sort_keys(env), arg)
-	tss:set_property("builtins.envlist.var", "w", std.tbl.longest(matched))
+	tss:set_property("builtin.envlist.var", "w", std.tbl.longest(matched))
 
 	local out = buffer.new()
 	for _, entry in ipairs(matched) do
 		out:put(
-			style_text(tss, "builtins.envlist.var", entry),
+			style_text(tss, "builtin.envlist.var", entry),
 			" ",
-			style_text(tss, "builtins.envlist.value", env[entry]),
+			style_text(tss, "builtin.envlist.value", env[entry]),
 			"\n"
 		)
 	end
@@ -691,14 +691,14 @@ local render_dns_record = function(records)
 			end
 		end
 		out:put(
-			style_text(tss, "builtins.dig.name", rec[1]),
+			style_text(tss, "builtin.dig.name", rec[1]),
 			" ",
-			style_text(tss, "builtins.dig._in", "IN "),
-			style_text(tss, "builtins.dig._type", rec[4]),
+			style_text(tss, "builtin.dig._in", "IN "),
+			style_text(tss, "builtin.dig._type", rec[4]),
 			" ",
-			style_text(tss, "builtins.dig.content", content),
+			style_text(tss, "builtin.dig.content", content),
 			" ",
-			style_text(tss, "builtins.dig.ttl", rec[3]),
+			style_text(tss, "builtin.dig.ttl", rec[3]),
 			"\n"
 		)
 	end
@@ -736,8 +736,8 @@ local dig = function(cmd, args)
 		elseif dig.config.fallback == ns then
 			ns_type = "fallback"
 		end
-		local out = style_text(tss, "builtins.dig.ns", "NS: " .. ns)
-			.. style_text(tss, "builtins.dig.ns_type", " " .. ns_type)
+		local out = style_text(tss, "builtin.dig.ns", "NS: " .. ns)
+			.. style_text(tss, "builtin.dig.ns_type", " " .. ns_type)
 			.. "\n"
 			.. render_dns_record(records)
 		term.write(out)
@@ -750,24 +750,24 @@ local dig = function(cmd, args)
 			return 255
 		end
 		local out = "\n"
-			.. style_text(tss, "builtins.dig.query", "Asking ")
-			.. style_text(tss, "builtins.dig.root_ns", response.root_ns_name)
-			.. style_text(tss, "builtins.dig.answer", " who is in charge of ")
-			.. style_text(tss, "builtins.dig.tld", response.tld)
+			.. style_text(tss, "builtin.dig.query", "Asking ")
+			.. style_text(tss, "builtin.dig.root_ns", response.root_ns_name)
+			.. style_text(tss, "builtin.dig.answer", " who is in charge of ")
+			.. style_text(tss, "builtin.dig.tld", response.tld)
 			.. "\n\n"
-			.. style_text(tss, "builtins.dig.answer", "Got ")
-			.. style_text(tss, "builtins.dig.tld_ns", #response.tld_ns)
-			.. style_text(tss, "builtins.dig.answer", " servers, using ")
-			.. style_text(tss, "builtins.dig.tld_ns", response.tld_ns_name)
-			.. style_text(tss, "builtins.dig.answer", " to get NS for ")
-			.. style_text(tss, "builtins.dig.domain", domain)
+			.. style_text(tss, "builtin.dig.answer", "Got ")
+			.. style_text(tss, "builtin.dig.tld_ns", #response.tld_ns)
+			.. style_text(tss, "builtin.dig.answer", " servers, using ")
+			.. style_text(tss, "builtin.dig.tld_ns", response.tld_ns_name)
+			.. style_text(tss, "builtin.dig.answer", " to get NS for ")
+			.. style_text(tss, "builtin.dig.domain", domain)
 			.. "\n"
-			.. style_text(tss, "builtins.dig.answer", "Got ")
-			.. style_text(tss, "builtins.dig.domain_ns", #response.domain_ns)
-			.. style_text(tss, "builtins.dig.answer", " servers, asking ")
-			.. style_text(tss, "builtins.dig.domain_ns", response.domain_ns_name)
-			.. style_text(tss, "builtins.dig.answer", " for ")
-			.. style_text(tss, "builtins.dig.rtype", rtype)
+			.. style_text(tss, "builtin.dig.answer", "Got ")
+			.. style_text(tss, "builtin.dig.domain_ns", #response.domain_ns)
+			.. style_text(tss, "builtin.dig.answer", " servers, asking ")
+			.. style_text(tss, "builtin.dig.domain_ns", response.domain_ns_name)
+			.. style_text(tss, "builtin.dig.answer", " for ")
+			.. style_text(tss, "builtin.dig.rtype", rtype)
 			.. "\n\n"
 			.. render_dns_record(response.recs)
 		term.write(out)
@@ -892,7 +892,7 @@ local aws_profile = function(cmd, args)
 		for p in aws_config:gmatch("%[profile ([^%]]+)%]") do
 			table.insert(content, p)
 		end
-		local profile = widgets.chooser(content, { rss = theme.widgets.aws, title = "Choose   profile" })
+		local profile = widgets.chooser(content, { rss = theme.widget.aws, title = "Choose   profile" })
 		if profile ~= "" then
 			std.ps.setenv("AWS_PROFILE", profile)
 		end
@@ -907,7 +907,7 @@ local aws_region = function(cmd, args)
 		for region in regions:gmatch("([%w-]+),?") do
 			table.insert(content, region)
 		end
-		local region = widgets.chooser(content, { rss = theme.widgets.aws, title = "Choose   region" })
+		local region = widgets.chooser(content, { rss = theme.widget.aws, title = "Choose   region" })
 		if region ~= "" then
 			std.ps.setenv("AWS_REGION", region)
 		end
@@ -1095,13 +1095,13 @@ local render_netstat = function(cmd, args)
 			out = out
 				.. style_text(
 					tss,
-					"builtins.netstat.src",
+					"builtin.netstat.src",
 					conn.src .. string.rep(" ", 2 + longest.src - #conn.src) .. direction
 				)
-				.. style_text(tss, "builtins.netstat.dst", conn.dst .. string.rep(" ", 2 + longest.dst - #conn.dst))
-				.. style_text(tss, "builtins.netstat.state", "ESTABLISHED" .. string.rep(" ", 2 + longest.state - 11))
-				.. style_text(tss, "builtins.netstat.user", conn.user .. string.rep(" ", 2 + longest.user - #conn.user))
-				.. style_text(tss, "builtins.netstat.user", process)
+				.. style_text(tss, "builtin.netstat.dst", conn.dst .. string.rep(" ", 2 + longest.dst - #conn.dst))
+				.. style_text(tss, "builtin.netstat.state", "ESTABLISHED" .. string.rep(" ", 2 + longest.state - 11))
+				.. style_text(tss, "builtin.netstat.user", conn.user .. string.rep(" ", 2 + longest.user - #conn.user))
+				.. style_text(tss, "builtin.netstat.user", process)
 				.. "\n"
 		end
 	end
@@ -1110,20 +1110,20 @@ local render_netstat = function(cmd, args)
 		out = out
 			.. style_text(
 				tss,
-				"builtins.netstat.src",
+				"builtin.netstat.src",
 				conn.src .. string.rep(" ", 2 + longest.src - #conn.src) .. direction
 			)
-			.. style_text(tss, "builtins.netstat.dst", conn.dst .. string.rep(" ", 2 + longest.dst - #conn.dst))
-			.. style_text(tss, "builtins.netstat.state", conn.state .. string.rep(" ", 2 + longest.state - #conn.state))
-			.. style_text(tss, "builtins.netstat.user", conn.user .. string.rep(" ", 2 + longest.user - #conn.user))
-			.. style_text(tss, "builtins.netstat.user", conn.process)
+			.. style_text(tss, "builtin.netstat.dst", conn.dst .. string.rep(" ", 2 + longest.dst - #conn.dst))
+			.. style_text(tss, "builtin.netstat.state", conn.state .. string.rep(" ", 2 + longest.state - #conn.state))
+			.. style_text(tss, "builtin.netstat.user", conn.user .. string.rep(" ", 2 + longest.user - #conn.user))
+			.. style_text(tss, "builtin.netstat.user", conn.process)
 			.. "\n"
 	end
 	for src, conn in pairs(listen) do
 		out = out
-			.. style_text(tss, "builtins.netstat.src", src .. string.rep(" ", 2 + longest.src - #src + longest.dst + 6))
-			.. style_text(tss, "builtins.netstat.state", "LISTEN" .. string.rep(" ", 2 + longest.state - 6))
-			.. style_text(tss, "builtins.netstat.user", conn)
+			.. style_text(tss, "builtin.netstat.src", src .. string.rep(" ", 2 + longest.src - #src + longest.dst + 6))
+			.. style_text(tss, "builtin.netstat.state", "LISTEN" .. string.rep(" ", 2 + longest.state - 6))
+			.. style_text(tss, "builtin.netstat.user", conn)
 			.. "\n"
 	end
 	term.write(out)
@@ -1152,13 +1152,13 @@ local history = function(cmd, args)
 	end
 	local buf = buffer.new()
 	for _, entry in ipairs(entries) do
-		local date = style_text(tss, "builtins.history.date", os.date("%Y-%m-%d", entry.ts))
-		local time = style_text(tss, "builtins.history.time", os.date("%H:%M:%S", entry.ts))
+		local date = style_text(tss, "builtin.history.date", os.date("%Y-%m-%d", entry.ts))
+		local time = style_text(tss, "builtin.history.time", os.date("%H:%M:%S", entry.ts))
 		local duration = entry.d
 		local status = entry.exit
-		local cmd = style_text(tss, "builtins.history.cmd.ok", entry.cmd)
+		local cmd = style_text(tss, "builtin.history.cmd.ok", entry.cmd)
 		if status > 0 then
-			cmd = style_text(tss, "builtins.history.cmd.fail", entry.cmd)
+			cmd = style_text(tss, "builtin.history.cmd.fail", entry.cmd)
 		end
 		if parsed.compact then
 			buf:put(cmd, "\n")
@@ -1168,7 +1168,7 @@ local history = function(cmd, args)
 			buf:put(date, time, cmd, "\n")
 		end
 	end
-	local indent = tss:get_property("builtins.history", "global_indent") or 0
+	local indent = tss:get_property("builtin.history", "global_indent") or 0
 	term.write(std.txt.indent(buf:get(), indent) .. "\n")
 	return 0
 end
@@ -1199,8 +1199,8 @@ local wgcli = function(cmd, args)
 	local wg_info = utils.wg_info()
 	for net, info in pairs(wg_info) do
 		term.write(
-			style_text(tss, "builtins.wg.net.name", net)
-				.. style_text(tss, "builtins.wg.net.pub_key", info.pub_key)
+			style_text(tss, "builtin.wg.net.name", net)
+				.. style_text(tss, "builtin.wg.net.pub_key", info.pub_key)
 				.. "\n\n"
 		)
 		for pub_key, peer in pairs(info.peers) do
@@ -1209,8 +1209,8 @@ local wgcli = function(cmd, args)
 				endpoint = peer.endpoint.ip .. ":" .. peer.endpoint.port
 			end
 			term.write(
-				style_text(tss, "builtins.wg.endpoint.name", endpoint)
-					.. style_text(tss, "builtins.wg.endpoint.pub_key", pub_key)
+				style_text(tss, "builtin.wg.endpoint.name", endpoint)
+					.. style_text(tss, "builtin.wg.endpoint.pub_key", pub_key)
 					.. "\n"
 			)
 			local last_handshake = "never"
@@ -1218,18 +1218,16 @@ local wgcli = function(cmd, args)
 				last_handshake = std.conv.time_diff_human(peer.last_handshake) .. " ago"
 			end
 			term.write(
-				style_text(tss, "builtins.wg.endpoint.seen", "Last handshake: " .. last_handshake)
+				style_text(tss, "builtin.wg.endpoint.seen", "Last handshake: " .. last_handshake)
 					.. "\n"
 					.. style_text(
 						tss,
-						"builtins.wg.endpoint.bytes",
+						"builtin.wg.endpoint.bytes",
 						"↓ " .. std.conv.bytes_human(peer.bytes.rx) .. " ↑ " .. std.conv.bytes_human(peer.bytes.tx)
 					)
 					.. "\n"
 			)
-			term.write(
-				style_text(tss, "builtins.wg.endpoint.nets", "NETS: " .. table.concat(peer.nets, ", ")) .. "\n\n"
-			)
+			term.write(style_text(tss, "builtin.wg.endpoint.nets", "NETS: " .. table.concat(peer.nets, ", ")) .. "\n\n")
 		end
 		term.write("\n")
 	end
@@ -1538,7 +1536,7 @@ local zx = function(cmd, args)
 				if arg.kind == "options" then
 					local chosen_option = widgets.chooser(
 						arg.values,
-						{ rss = theme.widgets.shell, title = "Choose " .. arg.name .. " value" }
+						{ rss = theme.widget.shell, title = "Choose " .. arg.name .. " value" }
 					)
 					snippet_args[arg.name] = chosen_option
 				end
@@ -1550,7 +1548,7 @@ local zx = function(cmd, args)
 			term.write("\n" .. markdown.render(txt) .. "\n")
 
 			if snippet_meta.confirm then
-				local confirmed = widgets.simple_confirm("Are you sure? y/n\n", theme.widgets.shell)
+				local confirmed = widgets.simple_confirm("Are you sure? y/n\n", theme.widget.shell)
 				if not confirmed then
 					errmsg("Aborted.")
 					return 66

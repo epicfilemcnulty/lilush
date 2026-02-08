@@ -7,6 +7,7 @@ return {
 		"crypto",
 		"term",
 		"redis",
+		"theme",
 		"shell",
 		"vault",
 		"llm",

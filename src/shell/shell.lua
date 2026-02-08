@@ -15,11 +15,11 @@ local storage = require("shell.store")
 local shell_mode = require("shell.mode.shell")
 local builtins = require("shell.builtins")
 local pipeline = require("shell.utils.pipeline")
-local theme = require("shell.theme")
+local theme = require("theme").get("shell")
 
 local show_error_msg = function(status, err)
 	local msg = tostring(err) .. " **(" .. tostring(status) .. ")**"
-	local out = markdown.render(msg, { rss = theme.renderer.builtin_error })
+	local out = markdown.render(msg, { rss = theme.errors.builtin_markdown })
 	io.stderr:write(out)
 end
 
