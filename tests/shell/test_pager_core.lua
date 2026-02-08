@@ -18,7 +18,18 @@ local split_lines = function(text)
 	return lines
 end
 
-local setup_pager = function(input_content)
+local setup_pager = function(options)
+	if type(options) ~= "table" then
+		options = { input_content = options }
+	end
+
+	local input_content = options.input_content
+	local markdown_render = options.markdown_render
+	local fs_read_file = options.fs_read_file
+	local fs_file_exists = options.fs_file_exists
+	local pager_config = options.pager_config
+		or { wrap = 5, wrap_in_raw = true, status_line = false, exit_on_one_page = false }
+
 	helpers.clear_modules({
 		"std",
 		"cjson.safe",
@@ -62,7 +73,16 @@ local setup_pager = function(input_content)
 		},
 		fs = {
 			read_file = function(path)
+				if fs_read_file then
+					return fs_read_file(path)
+				end
 				return ""
+			end,
+			file_exists = function(path, mode)
+				if fs_file_exists then
+					return fs_file_exists(path, mode)
+				end
+				return false
 			end,
 		},
 		utf = {
@@ -74,7 +94,10 @@ local setup_pager = function(input_content)
 	helpers.stub_module("cjson.safe", {})
 	helpers.stub_module("markdown", {
 		render = function(text, opts)
-			return { rendered = tostring(text or ""), elements = {} }
+			if markdown_render then
+				return markdown_render(text, opts)
+			end
+			return { rendered = tostring(text or ""), elements = options.markdown_elements or {} }
 		end,
 	})
 	helpers.stub_module("markdown.renderer.theme", {
@@ -163,7 +186,7 @@ local setup_pager = function(input_content)
 	})
 
 	local pager_mod = helpers.load_module_from_src("shell.utils.pager", "src/shell/shell/utils/pager.lua")
-	return pager_mod.new({ wrap = 5, wrap_in_raw = true, status_line = false, exit_on_one_page = false })
+	return pager_mod.new(pager_config)
 end
 
 testify:that("raw render mode uses cfg and updates rendered content", function()
@@ -199,6 +222,129 @@ testify:that("search input does not leak global event variable", function()
 	pager:search("/")
 	testimony.assert_equal("sentinel", _G.event)
 	_G.event = previous
+end)
+
+testify:that("build_focusable_elements keeps container range for links", function()
+	local pager = setup_pager({
+		markdown_elements = {
+			links = {
+				{
+					line = 3,
+					url = "./doc.md",
+					container = { start_line = 2, end_line = 6 },
+				},
+			},
+		},
+	})
+
+	pager:set_content("table text", "docs/a.md")
+	pager:set_render_mode("markdown")
+
+	testimony.assert_equal(1, #pager.__state.navigation.elements)
+	testimony.assert_equal(2, pager.__state.navigation.elements[1].start_line)
+	testimony.assert_equal(6, pager.__state.navigation.elements[1].end_line)
+end)
+
+testify:that("activate_element follows focused local markdown link", function()
+	local files = {
+		["docs/a.md"] = "Doc A",
+		["docs/b.md"] = "Doc B",
+	}
+	local pager = setup_pager({
+		fs_read_file = function(path)
+			if files[path] then
+				return files[path]
+			end
+			return nil, "missing"
+		end,
+		fs_file_exists = function(path)
+			return files[path] ~= nil
+		end,
+		markdown_render = function(text)
+			if text == "Doc A" then
+				return {
+					rendered = "Doc A",
+					elements = { links = { { line = 1, url = "./b.md", title = nil } } },
+				}
+			end
+			return {
+				rendered = tostring(text or ""),
+				elements = { links = {} },
+			}
+		end,
+	})
+
+	pager:load_content("docs/a.md")
+	pager:set_render_mode("markdown")
+	pager.__state.navigation.focused_idx = 1
+
+	local ok = pager:activate_element()
+	testimony.assert_true(ok)
+	testimony.assert_equal("docs/b.md", pager.__state.history[#pager.__state.history])
+	testimony.assert_equal("Doc B", pager.content.raw)
+	testimony.assert_equal(1, #pager.__state.navigation.doc_back_stack)
+end)
+
+testify:that("backspace action returns from footnote before document history", function()
+	local pager = setup_pager()
+	pager:set_content("current", "docs/current.md")
+	pager:set_render_mode("raw")
+	pager.__state.top_line = 5
+	pager.__state.navigation.return_position = 2
+	pager.__state.navigation.doc_back_stack = {
+		{
+			raw = "previous",
+			name = "docs/prev.md",
+			render_mode = "raw",
+			top_line = 1,
+			focused_idx = 0,
+		},
+	}
+
+	local ok = pager:return_from_footnote()
+	testimony.assert_true(ok)
+	testimony.assert_equal(2, pager.__state.top_line)
+	testimony.assert_nil(pager.__state.navigation.return_position)
+	testimony.assert_equal(1, #pager.__state.navigation.doc_back_stack)
+end)
+
+testify:that("backspace action restores previous document when footnote return is empty", function()
+	local pager = setup_pager()
+	pager:set_content("current", "docs/current.md")
+	pager:set_render_mode("raw")
+	pager.__state.navigation.doc_back_stack = {
+		{
+			raw = "previous",
+			name = "docs/prev.md",
+			render_mode = "raw",
+			top_line = 1,
+			focused_idx = 0,
+		},
+	}
+
+	local ok = pager:return_from_footnote()
+	testimony.assert_true(ok)
+	testimony.assert_equal("previous", pager.content.raw)
+	testimony.assert_equal("docs/prev.md", pager.__state.history[#pager.__state.history])
+	testimony.assert_equal(0, #pager.__state.navigation.doc_back_stack)
+end)
+
+testify:that("activate_element does not follow non-local link", function()
+	local pager = setup_pager({
+		markdown_elements = {
+			links = {
+				{ line = 1, url = "https://example.com" },
+			},
+		},
+	})
+	pager:set_content("doc", "docs/a.md")
+	pager:set_render_mode("markdown")
+	pager.__state.navigation.focused_idx = 1
+
+	local ok = pager:activate_element()
+	testimony.assert_false(ok)
+	testimony.assert_equal(0, #pager.__state.navigation.doc_back_stack)
+	testimony.assert_equal("docs/a.md", pager.__state.history[#pager.__state.history])
 end)
 
 testify:conclude()

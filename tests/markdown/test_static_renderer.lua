@@ -414,6 +414,54 @@ testify:that("table overflow clip mode keeps truncation behavior", function()
 	testimony.assert_true(has_ellipsis)
 end)
 
+testify:that("table links expose container metadata for pager focus range", function()
+	local input = [[| Doc |
+|---|
+| [Read me](./readme.md) |
+]]
+	local result = markdown.render(input, {
+		return_metadata = true,
+		hide_link_urls = true,
+	})
+
+	testimony.assert_equal("table", type(result))
+	testimony.assert_equal("table", type(result.elements))
+	testimony.assert_true(#(result.elements.links or {}) >= 1)
+
+	local link = result.elements.links[1]
+	testimony.assert_not_nil(link.container)
+	testimony.assert_not_nil(link.container.start_line)
+	testimony.assert_not_nil(link.container.end_line)
+	testimony.assert_true(link.container.end_line >= link.container.start_line)
+	testimony.assert_true(link.line >= link.container.start_line)
+	testimony.assert_true(link.line <= link.container.end_line)
+end)
+
+testify:that("table footnote refs expose container metadata for pager focus range", function()
+	local input = [[| Note |
+|---|
+| ref [^x] |
+
+[^x]: footnote text
+]]
+	local result = markdown.render(input, {
+		return_metadata = true,
+		hide_link_urls = true,
+	})
+
+	testimony.assert_equal("table", type(result))
+	testimony.assert_equal("table", type(result.elements))
+	testimony.assert_true(#(result.elements.footnote_refs or {}) >= 1)
+
+	local ref = result.elements.footnote_refs[1]
+	testimony.assert_not_nil(ref.container)
+	testimony.assert_not_nil(ref.container.start_line)
+	testimony.assert_not_nil(ref.container.end_line)
+	testimony.assert_true(ref.container.end_line >= ref.container.start_line)
+	testimony.assert_true(ref.line >= ref.container.start_line)
+	testimony.assert_true(ref.line <= ref.container.end_line)
+end)
+
 -- ============================================
 -- Global Indent Tests
 -- ============================================

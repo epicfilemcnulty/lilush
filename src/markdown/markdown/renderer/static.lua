@@ -669,6 +669,7 @@ local render_table = function(self)
 	if not tbl or not tbl.rows or #tbl.rows == 0 then
 		return
 	end
+	local table_start_line = tbl.start_line or self.__state.current_line
 	local table_block_indent = get_block_indent(self.__state.tss, "table")
 	local table_indent_str = string.rep(" ", table_block_indent)
 	local table_available_width = math.max(1, self.__state.width - table_block_indent)
@@ -915,6 +916,32 @@ local render_table = function(self)
 	self.__state.output:put(table_indent_str, bottom_line, "\n\n")
 	lines_count = lines_count + 1 -- bottom border
 	lines_count = lines_count + 1 -- trailing empty line
+
+	local table_end_line = table_start_line + lines_count - 1
+
+	if self.__state.pending_links then
+		for _, link_info in ipairs(self.__state.pending_links) do
+			self.__state.elements.links[#self.__state.elements.links + 1] = {
+				line = table_start_line,
+				url = link_info.url,
+				title = link_info.title,
+				container = { start_line = table_start_line, end_line = table_end_line },
+			}
+		end
+		self.__state.pending_links = nil
+	end
+
+	if self.__state.pending_footnote_refs then
+		for _, fn_info in ipairs(self.__state.pending_footnote_refs) do
+			self.__state.elements.footnote_refs[#self.__state.elements.footnote_refs + 1] = {
+				line = table_start_line,
+				label = fn_info.label,
+				container = { start_line = table_start_line, end_line = table_end_line },
+			}
+		end
+		self.__state.pending_footnote_refs = nil
+	end
+
 	self.__state.current_line = self.__state.current_line + lines_count
 end
 
@@ -963,6 +990,7 @@ local handle_block_start = function(self, tag, attrs)
 			columns = attrs.columns or 0,
 			alignments = {},
 			rows = {},
+			start_line = self.__state.current_line,
 		}
 	elseif tag == "table_head" then
 		self.__state.in_table_head = true
@@ -1589,7 +1617,7 @@ local new = function(options)
 
 			-- Table state (GFM)
 			in_table = false,
-			table_data = nil, -- { columns, alignments, rows }
+			table_data = nil, -- { columns, alignments, rows, start_line }
 			in_table_head = false,
 			in_table_body = false,
 			in_table_row = false,

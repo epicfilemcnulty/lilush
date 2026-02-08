@@ -13,6 +13,72 @@ local style = require("term.tss")
 local input = require("term.input")
 local history = require("term.input.history")
 
+local pager_is_local_markdown_link = function(url)
+	if type(url) ~= "string" or url == "" then
+		return false
+	end
+	if url:sub(1, 1) == "/" then
+		return false
+	end
+	if url:find("#", 1, true) or url:find("?", 1, true) then
+		return false
+	end
+	if url:match("^[A-Za-z][A-Za-z0-9+.-]*:") then
+		return false
+	end
+
+	local lower = url:lower()
+	if lower:match("%.md$") or lower:match("%.markdown$") then
+		return true
+	end
+	return false
+end
+
+local pager_normalize_path = function(path)
+	local absolute = path:sub(1, 1) == "/"
+	local parts = {}
+
+	for segment in path:gmatch("[^/]+") do
+		if segment == "." then
+			-- skip
+		elseif segment == ".." then
+			if #parts > 0 and parts[#parts] ~= ".." then
+				table.remove(parts, #parts)
+			elseif not absolute then
+				parts[#parts + 1] = segment
+			end
+		elseif segment ~= "" then
+			parts[#parts + 1] = segment
+		end
+	end
+
+	local normalized = table.concat(parts, "/")
+	if absolute then
+		normalized = "/" .. normalized
+	end
+
+	if normalized == "" then
+		return absolute and "/" or "."
+	end
+	return normalized
+end
+
+local pager_resolve_relative_path = function(base_doc_path, rel_path)
+	if type(base_doc_path) ~= "string" or base_doc_path == "" then
+		return nil, "Cannot resolve link without source document path"
+	end
+	if type(rel_path) ~= "string" or rel_path == "" then
+		return nil, "Link path is empty"
+	end
+
+	local base_dir = base_doc_path:match("^(.*)/[^/]*$")
+	if not base_dir or base_dir == "" then
+		base_dir = "."
+	end
+
+	return pager_normalize_path(base_dir .. "/" .. rel_path)
+end
+
 local pager_next_render_mode = function(self)
 	local modes = { "raw", "markdown" }
 	local idx = 0
@@ -387,7 +453,11 @@ local pager_display_status_line = function(self)
 				top_status = top_status .. tss:apply("status_line.hint", hint).text
 			elseif focused.type == "link" then
 				top_status = top_status .. tss:apply("status_line.url", focused.url).text
-				top_status = top_status .. tss:apply("status_line.hint", hint).text
+				if pager_is_local_markdown_link(focused.url or "") then
+					top_status = top_status .. tss:apply("status_line.hint", "'Enter' to follow, " .. hint).text
+				else
+					top_status = top_status .. tss:apply("status_line.hint", hint).text
+				end
 			elseif focused.type == "footnote_ref" then
 				top_status = top_status
 					.. tss:apply("status_line.hint", "'Enter' to jump to [" .. focused.label .. "]").text
@@ -835,6 +905,54 @@ local pager_copy_element = function(self)
 	return false, "Nothing to copy"
 end
 
+local pager_follow_focused_link = function(self)
+	local focused = self.__state.navigation.focused_idx > 0
+		and self.__state.navigation.elements[self.__state.navigation.focused_idx]
+
+	if not focused or focused.type ~= "link" then
+		return false, "No link focused"
+	end
+
+	local url = focused.url or ""
+	if not pager_is_local_markdown_link(url) then
+		return false, "Link is not a local markdown path"
+	end
+
+	local current_doc = self.__state.history[#self.__state.history]
+	local target_path, path_err = pager_resolve_relative_path(current_doc, url)
+	if not target_path then
+		return false, path_err
+	end
+
+	if not std.fs.file_exists(target_path, "f") then
+		return false, "File not found: " .. target_path
+	end
+
+	local next_raw, read_err = std.fs.read_file(target_path)
+	if read_err then
+		return false, "Failed to open " .. target_path
+	end
+
+	self.__state.navigation.doc_back_stack[#self.__state.navigation.doc_back_stack + 1] = {
+		raw = self.content.raw or "",
+		name = current_doc or "stdin",
+		render_mode = self.cfg.render_mode,
+		top_line = self.__state.top_line,
+		focused_idx = self.__state.navigation.focused_idx,
+	}
+
+	self.content = { raw = next_raw or "" }
+	table.insert(self.__state.history, target_path)
+	self.__state.top_line = 1
+	self.__state.cursor_line = 0
+	self.__state.search.idx = 0
+	self.__state.navigation.focused_idx = 0
+	self:set_render_mode("markdown")
+	self.__state.notification = "Opened " .. target_path
+	self:display()
+	return true
+end
+
 -- Jump to footnote definition
 local pager_jump_to_footnote = function(self)
 	local focused = self.__state.navigation.focused_idx > 0
@@ -864,6 +982,30 @@ local pager_return_from_footnote = function(self)
 		self:display()
 		return true
 	end
+
+	local stack = self.__state.navigation.doc_back_stack or {}
+	local previous = stack[#stack]
+	if previous then
+		stack[#stack] = nil
+		self.content = { raw = previous.raw or "" }
+		table.insert(self.__state.history, previous.name or "stdin")
+		self.__state.top_line = 1
+		self.__state.cursor_line = 0
+		self:set_render_mode(previous.render_mode or "markdown")
+		self.__state.top_line = math.max(1, previous.top_line or 1)
+		if self.__state.top_line > #self.content.lines then
+			self.__state.top_line = math.max(1, #self.content.lines - self.__state.window.capacity + 1)
+		end
+		local focused_idx = previous.focused_idx or 0
+		if focused_idx < 0 or focused_idx > #self.__state.navigation.elements then
+			focused_idx = 0
+		end
+		self.__state.navigation.focused_idx = focused_idx
+		self.__state.notification = "Returned to " .. (previous.name or "stdin")
+		self:display()
+		return true
+	end
+
 	return false
 end
 
@@ -874,6 +1016,15 @@ local pager_activate_element = function(self)
 
 	if focused and focused.type == "footnote_ref" then
 		return self:jump_to_footnote()
+	end
+
+	if focused and focused.type == "link" then
+		local ok, err = self:follow_focused_link()
+		if not ok and err then
+			self.__state.notification = err
+			self:display()
+		end
+		return ok
 	end
 
 	return false
@@ -986,6 +1137,7 @@ local pager_new = function(config)
 				elements = {},
 				focused_idx = 0,
 				return_position = nil,
+				doc_back_stack = {},
 			},
 			notification = nil,
 			screen = nil,
@@ -1020,6 +1172,7 @@ local pager_new = function(config)
 		focus_prev = pager_focus_prev,
 		header_next = pager_header_next,
 		header_prev = pager_header_prev,
+		follow_focused_link = pager_follow_focused_link,
 		jump_to_footnote = pager_jump_to_footnote,
 		return_from_footnote = pager_return_from_footnote,
 		activate_element = pager_activate_element,
