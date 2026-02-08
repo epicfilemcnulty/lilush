@@ -167,6 +167,124 @@ testify:that("oaic stream extracts text/tool_calls and propagates sse errors", f
 	testimony.assert_equal("http status: 401", stream_err)
 end)
 
+testify:that("oaic responses stream extracts deltas/tool_calls and reports failed events", function()
+	helpers.clear_modules({
+		"std",
+		"web",
+		"llm.oaic",
+	})
+	helpers.stub_module("std", make_std_stub())
+	helpers.stub_module("web", {
+		request = function()
+			return nil, "not used"
+		end,
+		sse_client = function(url, req, callbacks)
+			return make_sse_client({
+				{
+					kind = "message",
+					value = {
+						type = "response.output_item.added",
+						item = { type = "function_call", call_id = "call_1", name = "read_file", arguments = "" },
+					},
+				},
+				{
+					kind = "message",
+					value = {
+						type = "response.function_call_arguments.delta",
+						item_id = "call_1",
+						name = "read_file",
+						delta = '{"filepath":"README.md"}',
+					},
+				},
+				{
+					kind = "message",
+					value = {
+						type = "response.output_text.delta",
+						delta = "Hello ",
+					},
+				},
+				{
+					kind = "message",
+					value = {
+						type = "response.output_text.delta",
+						delta = "world",
+					},
+				},
+				{
+					kind = "message",
+					value = {
+						type = "response.completed",
+						response = {
+							id = "resp_stream_1",
+							model = "gpt-5",
+							status = "completed",
+							usage = { input_tokens = 5, output_tokens = 3 },
+							output = {
+								{
+									type = "function_call",
+									call_id = "call_1",
+									name = "read_file",
+									arguments = '{"filepath":"README.md"}',
+								},
+							},
+						},
+					},
+				},
+			}, callbacks)
+		end,
+	})
+
+	local oaic = helpers.load_module_from_src("llm.oaic", "src/llm/llm/oaic.lua")
+	local client = oaic.new("http://oaic.local/v1", "token")
+
+	local resp, err = client:stream("gpt-5", { { role = "user", content = "hello" } }, { max_new_tokens = 32 }, {}, {
+		endpoint = "/responses",
+	})
+	testimony.assert_nil(err)
+	testimony.assert_equal("Hello world", resp.text)
+	testimony.assert_equal("resp_stream_1", resp.response_id)
+	testimony.assert_equal("completed", resp.finish_reason)
+	testimony.assert_equal("gpt-5", resp.model)
+	testimony.assert_equal(3, resp.tokens)
+	testimony.assert_equal(8, resp.ctx)
+	testimony.assert_equal(1, #resp.tool_calls)
+	testimony.assert_equal("read_file", resp.tool_calls[1].name)
+	testimony.assert_equal('{"filepath":"README.md"}', resp.tool_calls[1].arguments)
+
+	helpers.clear_modules({ "std", "web", "llm.oaic" })
+	helpers.stub_module("std", make_std_stub())
+	helpers.stub_module("web", {
+		request = function()
+			return nil, "not used"
+		end,
+		sse_client = function(url, req, callbacks)
+			return make_sse_client({
+				{
+					kind = "message",
+					value = {
+						type = "response.failed",
+						error = { message = "responses stream failed" },
+					},
+				},
+			}, callbacks)
+		end,
+	})
+	oaic = helpers.load_module_from_src("llm.oaic", "src/llm/llm/oaic.lua")
+	client = oaic.new("http://oaic.local/v1", "token")
+
+	local failed, stream_err = client:stream(
+		"gpt-5",
+		{ { role = "user", content = "hello" } },
+		{ max_new_tokens = 32 },
+		{},
+		{
+			endpoint = "/responses",
+		}
+	)
+	testimony.assert_nil(failed)
+	testimony.assert_equal("responses stream failed", stream_err)
+end)
+
 testify:that("anthropic stream extracts text/tool_calls and tracks usage", function()
 	helpers.clear_modules({
 		"std",

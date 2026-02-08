@@ -105,6 +105,7 @@ testify:that("runs OAIC tool loop, callbacks, and message append flow", function
 			if call_no == 1 then
 				return {
 					text = "planning",
+					response_id = "resp_1",
 					tool_calls = {
 						{ id = "call_1", name = "sum", arguments = '{"a":2,"b":3}' },
 					},
@@ -147,6 +148,7 @@ testify:that("runs OAIC tool loop, callbacks, and message append flow", function
 
 	testimony.assert_equal(3, #second_call_messages)
 	testimony.assert_equal("assistant", second_call_messages[2].role)
+	testimony.assert_equal("resp_1", second_call_messages[2].response_id)
 	testimony.assert_equal("tool", second_call_messages[3].role)
 	testimony.assert_equal("call_1", second_call_messages[3].tool_call_id)
 

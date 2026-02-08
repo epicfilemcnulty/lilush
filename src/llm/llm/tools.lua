@@ -162,7 +162,11 @@ local append_oaic_tool_results = function(messages, resp, on_tool_call, on_tool_
 			["function"] = { name = call.name, arguments = args },
 		})
 	end
-	table.insert(messages, { role = "assistant", content = resp.text or "", tool_calls = assistant_tool_calls })
+	local assistant_msg = { role = "assistant", content = resp.text or "", tool_calls = assistant_tool_calls }
+	if resp.response_id then
+		assistant_msg.response_id = resp.response_id
+	end
+	table.insert(messages, assistant_msg)
 
 	for i, call in ipairs(tool_calls) do
 		local action, decision = get_call_decision(call, i, resp, on_tool_call)
