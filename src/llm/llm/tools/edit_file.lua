@@ -3,7 +3,7 @@
 -- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 local std = require("std")
-local TOOL_NAME = "edit_file"
+local TOOL_NAME = "edit"
 
 -- Count occurrences of a pattern in a string
 local function count_occurrences(str, pattern)

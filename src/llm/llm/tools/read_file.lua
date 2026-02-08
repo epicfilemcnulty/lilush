@@ -4,11 +4,9 @@
 
 local std = require("std")
 
--- Default max lines to prevent overwhelming context
-local DEFAULT_MAX_LINES = 1000
-local TOOL_NAME = "read_file"
+local DEFAULT_LIMIT = 1000
+local TOOL_NAME = "read"
 
--- TODO: Refactor to use `offset` and `limit` instead of start_line/end_line/max_lines
 return {
 	name = TOOL_NAME,
 	description = {
@@ -16,29 +14,22 @@ return {
 		["function"] = {
 			name = TOOL_NAME,
 			description = "Reads the local file at `filepath` and returns its content. "
-				.. "Supports optional line range selection with start_line/end_line. "
+				.. "Supports optional line pagination with offset/limit. "
 				.. string.format(
-					"Output is truncated to max_lines (default %d) to prevent context overflow.",
-					DEFAULT_MAX_LINES
+					"Output is truncated to limit (default %d) to prevent context overflow.",
+					DEFAULT_LIMIT
 				),
 			parameters = {
 				type = "object",
 				properties = {
 					filepath = { type = "string", description = "Absolute or relative path to the file to read" },
-					start_line = {
+					offset = {
 						type = "integer",
-						description = "First line to read (1-indexed). If omitted, starts from line 1.",
+						description = "Number of lines to skip from the start of file (0-indexed, default: 0).",
 					},
-					end_line = {
+					limit = {
 						type = "integer",
-						description = "Last line to read (inclusive). If omitted, reads to end of file or max_lines.",
-					},
-					max_lines = {
-						type = "integer",
-						description = string.format(
-							"Maximum number of lines to return (default: %d). Applied after range selection.",
-							DEFAULT_MAX_LINES
-						),
+						description = string.format("Maximum number of lines to return (default: %d).", DEFAULT_LIMIT),
 					},
 				},
 				required = { "filepath" },
@@ -69,66 +60,61 @@ return {
 		end
 
 		local total_lines = #lines
-		local start_line = arguments.start_line or 1
-		local end_line = arguments.end_line or total_lines
-		local max_lines = arguments.max_lines or DEFAULT_MAX_LINES
+		local offset = tonumber(arguments.offset) or 0
+		local requested_limit = tonumber(arguments.limit) or DEFAULT_LIMIT
 
-		-- Validate range
-		if start_line < 1 then
-			start_line = 1
+		if offset < 0 then
+			offset = 0
 		end
-		if end_line > total_lines then
-			end_line = total_lines
+		if requested_limit < 1 then
+			requested_limit = 1
 		end
+
+		local start_line = offset + 1
 		if start_line > total_lines then
 			return {
 				name = TOOL_NAME,
-				ok = false,
+				ok = true,
 				filepath = filepath,
 				content = "",
-				lines = { start = start_line, ["end"] = start_line - 1 },
+				lines = { start = start_line, ["end"] = total_lines },
 				total_lines = total_lines,
 				truncated = false,
-				error = "start_line " .. start_line .. " is beyond file length (" .. total_lines .. " lines)",
+				offset = offset,
+				limit = requested_limit,
 			}
 		end
 
-		-- Extract requested range
+		local limit = requested_limit
+		if limit > DEFAULT_LIMIT then
+			limit = DEFAULT_LIMIT
+		end
+
+		local end_line = math.min(total_lines, start_line + limit - 1)
 		local selected = {}
 		for i = start_line, end_line do
 			table.insert(selected, lines[i])
 		end
 
-		-- Apply max_lines truncation
-		local truncated = false
-		local actual_end = end_line
-		if #selected > max_lines then
-			truncated = true
-			actual_end = start_line + max_lines - 1
-			local truncated_lines = {}
-			for i = 1, max_lines do
-				truncated_lines[i] = selected[i]
-			end
-			selected = truncated_lines
-		end
+		local truncated = end_line < total_lines
 
-		-- Build result
 		local result = {
 			name = TOOL_NAME,
 			ok = true,
 			filepath = filepath,
 			content = table.concat(selected, "\n"),
-			lines = { start = start_line, ["end"] = actual_end },
+			lines = { start = start_line, ["end"] = end_line },
 			total_lines = total_lines,
 			truncated = truncated,
+			offset = offset,
+			limit = requested_limit,
 		}
 
-		-- Add hint if truncated
 		if truncated then
 			result.hint = "Output truncated at "
-				.. max_lines
-				.. " lines. Use start_line="
-				.. (actual_end + 1)
+				.. #selected
+				.. " lines. Use offset="
+				.. end_line
 				.. " to continue reading."
 		end
 

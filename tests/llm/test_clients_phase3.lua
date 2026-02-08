@@ -84,7 +84,7 @@ testify:that("oaic stream extracts text/tool_calls and propagates sse errors", f
 									index = 0,
 									id = "call_1",
 									type = "function",
-									["function"] = { name = "read_file", arguments = '{"filepath":"RE' },
+									["function"] = { name = "read", arguments = '{"filepath":"RE' },
 								},
 							},
 						},
@@ -134,7 +134,7 @@ testify:that("oaic stream extracts text/tool_calls and propagates sse errors", f
 	testimony.assert_nil(err)
 	testimony.assert_equal("Hi there", resp.text)
 	testimony.assert_equal(1, #resp.tool_calls)
-	testimony.assert_equal("read_file", resp.tool_calls[1].name)
+	testimony.assert_equal("read", resp.tool_calls[1].name)
 	testimony.assert_equal('{"filepath":"README.md"}', resp.tool_calls[1].arguments)
 	testimony.assert_equal(3, resp.tokens)
 	testimony.assert_equal(9, resp.ctx)
@@ -184,7 +184,7 @@ testify:that("oaic responses stream extracts deltas/tool_calls and reports faile
 					kind = "message",
 					value = {
 						type = "response.output_item.added",
-						item = { type = "function_call", call_id = "call_1", name = "read_file", arguments = "" },
+						item = { type = "function_call", call_id = "call_1", name = "read", arguments = "" },
 					},
 				},
 				{
@@ -192,7 +192,7 @@ testify:that("oaic responses stream extracts deltas/tool_calls and reports faile
 					value = {
 						type = "response.function_call_arguments.delta",
 						item_id = "call_1",
-						name = "read_file",
+						name = "read",
 						delta = '{"filepath":"README.md"}',
 					},
 				},
@@ -223,7 +223,7 @@ testify:that("oaic responses stream extracts deltas/tool_calls and reports faile
 								{
 									type = "function_call",
 									call_id = "call_1",
-									name = "read_file",
+									name = "read",
 									arguments = '{"filepath":"README.md"}',
 								},
 							},
@@ -248,7 +248,7 @@ testify:that("oaic responses stream extracts deltas/tool_calls and reports faile
 	testimony.assert_equal(3, resp.tokens)
 	testimony.assert_equal(8, resp.ctx)
 	testimony.assert_equal(1, #resp.tool_calls)
-	testimony.assert_equal("read_file", resp.tool_calls[1].name)
+	testimony.assert_equal("read", resp.tool_calls[1].name)
 	testimony.assert_equal('{"filepath":"README.md"}', resp.tool_calls[1].arguments)
 
 	helpers.clear_modules({ "std", "web", "llm.oaic" })
@@ -325,7 +325,7 @@ testify:that("anthropic stream extracts text/tool_calls and tracks usage", funct
 						data = {
 							type = "content_block_start",
 							index = 1,
-							content_block = { type = "tool_use", id = "tool_1", name = "read_file" },
+							content_block = { type = "tool_use", id = "tool_1", name = "read" },
 						},
 					},
 				},
@@ -370,7 +370,7 @@ testify:that("anthropic stream extracts text/tool_calls and tracks usage", funct
 	testimony.assert_equal(2, resp.tokens)
 	testimony.assert_equal(10, resp.ctx)
 	testimony.assert_equal(1, #resp.tool_calls)
-	testimony.assert_equal("read_file", resp.tool_calls[1].name)
+	testimony.assert_equal("read", resp.tool_calls[1].name)
 	testimony.assert_true(resp.tool_calls[1].arguments:match("README%.md") ~= nil)
 end)
 

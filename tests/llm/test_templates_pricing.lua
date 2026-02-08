@@ -53,12 +53,12 @@ testify:that("templates apply stringifies non-string content and tool blocks", f
 		{ role = "system", content = { policy = "strict" } },
 		{ role = "user", content = 42 },
 		{ role = "assistant", content = { summary = "ok" } },
-	}, { { type = "function", ["function"] = { name = "read_file" } } }, false)
+	}, { { type = "function", ["function"] = { name = "read" } } }, false)
 
 	testimony.assert_match("<S>", output)
 	testimony.assert_match('"policy"', output)
 	testimony.assert_match("<tools>", output)
-	testimony.assert_match("read_file", output)
+	testimony.assert_match("read", output)
 	testimony.assert_match("<U>42</U>", output)
 	testimony.assert_match('"summary"', output)
 	testimony.assert_match("<A>$", output)

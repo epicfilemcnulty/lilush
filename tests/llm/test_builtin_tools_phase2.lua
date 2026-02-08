@@ -49,11 +49,11 @@ testify:that("built-ins return consistent envelope for missing required args", f
 	local r5 = web_search.execute({})
 	local r6 = fetch_webpage.execute({})
 
-	testimony.assert_equal("read_file", r1.name)
+	testimony.assert_equal("read", r1.name)
 	testimony.assert_false(r1.ok)
-	testimony.assert_equal("write_file", r2.name)
+	testimony.assert_equal("write", r2.name)
 	testimony.assert_false(r2.ok)
-	testimony.assert_equal("edit_file", r3.name)
+	testimony.assert_equal("edit", r3.name)
 	testimony.assert_false(r3.ok)
 	testimony.assert_equal("bash", r4.name)
 	testimony.assert_false(r4.ok)
@@ -63,7 +63,7 @@ testify:that("built-ins return consistent envelope for missing required args", f
 	testimony.assert_false(r6.ok)
 end)
 
-testify:that("read_file and write_file success envelopes include ok=true", function()
+testify:that("read and write success envelopes include ok=true", function()
 	local read_file = load_tool("llm.tools.read_file", "src/llm/llm/tools/read_file.lua", {
 		std = {
 			fs = {
@@ -86,14 +86,16 @@ testify:that("read_file and write_file success envelopes include ok=true", funct
 		},
 	})
 
-	local read_result = read_file.execute({ filepath = "README.md" })
+	local read_result = read_file.execute({ filepath = "README.md", offset = 1, limit = 1 })
 	local write_result = write_file.execute({ filepath = "a.txt", content = "" })
 
 	testimony.assert_true(read_result.ok)
-	testimony.assert_equal("read_file", read_result.name)
-	testimony.assert_equal("line1\nline2", read_result.content)
+	testimony.assert_equal("read", read_result.name)
+	testimony.assert_equal("line2", read_result.content)
+	testimony.assert_equal(2, read_result.lines.start)
+	testimony.assert_equal(2, read_result.lines["end"])
 	testimony.assert_true(write_result.ok)
-	testimony.assert_equal("write_file", write_result.name)
+	testimony.assert_equal("write", write_result.name)
 	testimony.assert_equal(0, write_result.bytes_written)
 end)
 
@@ -130,7 +132,7 @@ testify:that("web_search reports request failures in consistent envelope", funct
 	testimony.assert_match("network unavailable", result.error or "")
 end)
 
-testify:that("edit_file reports success with line and ok envelope", function()
+testify:that("edit reports success with line and ok envelope", function()
 	local written_content = nil
 	local edit_file = load_tool("llm.tools.edit_file", "src/llm/llm/tools/edit_file.lua", {
 		std = {
@@ -153,7 +155,7 @@ testify:that("edit_file reports success with line and ok envelope", function()
 	})
 
 	testimony.assert_true(result.ok)
-	testimony.assert_equal("edit_file", result.name)
+	testimony.assert_equal("edit", result.name)
 	testimony.assert_equal(2, result.line)
 	testimony.assert_match("delta", written_content or "")
 end)

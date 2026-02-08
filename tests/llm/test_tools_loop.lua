@@ -8,21 +8,28 @@ local helpers = require("tests.shell._helpers")
 
 local testify = testimony.new("== llm.tools.loop ==")
 
-local BUILTIN_TOOLS = { "read_file", "write_file", "edit_file", "bash", "web_search", "fetch_webpage" }
+local BUILTIN_MODULES = {
+	{ module = "read_file", tool = "read" },
+	{ module = "write_file", tool = "write" },
+	{ module = "edit_file", tool = "edit" },
+	{ module = "bash", tool = "bash" },
+	{ module = "web_search", tool = "web_search" },
+	{ module = "fetch_webpage", tool = "fetch_webpage" },
+}
 
 local setup_tools_module = function()
 	local mods = { "llm.tools" }
-	for _, name in ipairs(BUILTIN_TOOLS) do
-		table.insert(mods, "llm.tools." .. name)
+	for _, builtin in ipairs(BUILTIN_MODULES) do
+		table.insert(mods, "llm.tools." .. builtin.module)
 	end
 	helpers.clear_modules(mods)
 
-	for _, name in ipairs(BUILTIN_TOOLS) do
-		helpers.stub_module("llm.tools." .. name, {
-			name = name,
-			description = { type = "function", ["function"] = { name = name } },
+	for _, builtin in ipairs(BUILTIN_MODULES) do
+		helpers.stub_module("llm.tools." .. builtin.module, {
+			name = builtin.tool,
+			description = { type = "function", ["function"] = { name = builtin.tool } },
 			execute = function(arguments)
-				return { name = name, arguments = arguments or {} }
+				return { name = builtin.tool, arguments = arguments or {} }
 			end,
 		})
 	end
@@ -167,7 +174,7 @@ testify:that("uses Anthropic style append flow and deny path semantics", functio
 				return {
 					text = "checking",
 					tool_calls = {
-						{ id = "tool_1", name = "read_file", arguments = '{"filepath":"README.md"}' },
+						{ id = "tool_1", name = "read", arguments = '{"filepath":"README.md"}' },
 					},
 				}
 			end
@@ -184,7 +191,7 @@ testify:that("uses Anthropic style append flow and deny path semantics", functio
 			return { action = "deny", error = "blocked by user" }
 		end,
 		on_tool_result = function(call, result, is_error)
-			callback_is_error = (call.name == "read_file") and is_error and (result.error == "blocked by user")
+			callback_is_error = (call.name == "read") and is_error and (result.error == "blocked by user")
 		end,
 	})
 

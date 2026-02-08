@@ -34,7 +34,7 @@ local setup_oaic = function()
 				return {
 					status = 200,
 					body = '{"id":"resp_1","model":"gpt-5","status":"completed","usage":{"input_tokens":7,"output_tokens":4},'
-						.. '"output":[{"type":"function_call","call_id":"call_1","name":"read_file","arguments":"{\\"filepath\\":\\"README.md\\"}"},'
+						.. '"output":[{"type":"function_call","call_id":"call_1","name":"read","arguments":"{\\"filepath\\":\\"README.md\\"}"},'
 						.. '{"type":"message","content":[{"type":"output_text","text":"Using tool"}]}]}',
 				}
 			end
@@ -139,7 +139,7 @@ testify:that("oaic client supports responses endpoint and followup chaining payl
 	testimony.assert_equal("Using tool", first_resp.text)
 	testimony.assert_equal("resp_1", first_resp.response_id)
 	testimony.assert_equal(1, #first_resp.tool_calls)
-	testimony.assert_equal("read_file", first_resp.tool_calls[1].name)
+	testimony.assert_equal("read", first_resp.tool_calls[1].name)
 	testimony.assert_equal('{"filepath":"README.md"}', first_resp.tool_calls[1].arguments)
 
 	local followup_messages = {
