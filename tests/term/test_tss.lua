@@ -549,6 +549,7 @@ testify:that("apply with ts preset string generates escape sequence", function()
 	-- Should contain OSC 66 with s=2
 	testimony.assert_true(result.text:match("\027%]66;"))
 	testimony.assert_true(result.text:match("s=2"))
+	testimony.assert_true(result.text:match("h=0"))
 end)
 
 testify:that("apply ignores ts when supports_ts is false", function()

@@ -218,9 +218,9 @@ end
 
 -- Preset configurations for common text sizing scenarios
 local TS_PRESETS = {
-	double = { s = 2 },
-	triple = { s = 3 },
-	quadruple = { s = 4 },
+	double = { s = 2, h = 0 },
+	triple = { s = 3, h = 0 },
+	quadruple = { s = 4, h = 0 },
 	superscript = { n = 1, d = 2, v = 0, w = 1 }, -- Half-size, top-aligned, 2 chars/cell
 	subscript = { n = 1, d = 2, v = 1, w = 1 }, -- Half-size, bottom-aligned, 2 chars/cell
 	half = { n = 1, d = 2, w = 1 }, -- Half-size, 2 chars/cell

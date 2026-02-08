@@ -59,6 +59,24 @@ testify:that("non-fractional scaling does not chunk", function()
 	testimony.assert_equal(1, count_escape_sequences(result))
 end)
 
+testify:that("double preset emits explicit left horizontal alignment", function()
+	local result = term.text_size("hello", term.TS_PRESETS.double)
+	testimony.assert_true(result:match("s=2"))
+	testimony.assert_true(result:match("h=0"))
+end)
+
+testify:that("triple preset emits explicit left horizontal alignment", function()
+	local result = term.text_size("hello", term.TS_PRESETS.triple)
+	testimony.assert_true(result:match("s=3"))
+	testimony.assert_true(result:match("h=0"))
+end)
+
+testify:that("quadruple preset emits explicit left horizontal alignment", function()
+	local result = term.text_size("hello", term.TS_PRESETS.quadruple)
+	testimony.assert_true(result:match("s=4"))
+	testimony.assert_true(result:match("h=0"))
+end)
+
 testify:that("scale+w without fractional does not chunk", function()
 	-- Even with w specified, no fractional = no chunking
 	local opts = { s = 2, w = 1 }
@@ -101,14 +119,17 @@ end)
 
 testify:that("ts_presets double does not have w", function()
 	testimony.assert_nil(term.TS_PRESETS.double.w)
+	testimony.assert_equal(0, term.TS_PRESETS.double.h)
 end)
 
 testify:that("ts_presets triple does not have w", function()
 	testimony.assert_nil(term.TS_PRESETS.triple.w)
+	testimony.assert_equal(0, term.TS_PRESETS.triple.h)
 end)
 
 testify:that("ts_presets quadruple does not have w", function()
 	testimony.assert_nil(term.TS_PRESETS.quadruple.w)
+	testimony.assert_equal(0, term.TS_PRESETS.quadruple.h)
 end)
 
 testify:that("wide characters are handled correctly (single emoji)", function()
