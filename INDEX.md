@@ -2,15 +2,15 @@
 
 All file names in the documentation are relative to the root of the repo.
 
-* `docs/ARCHITECTURE.md`: Detailed architecture overview
-* `docs/CONVENTIONS.md`: Coding and naming conventions used in the project
-* `docs/BUILDING.md`: Building instructions and building system architecture
-* `docs/TESTING.md`: Testing system, running tests
-* `docs/TSS.md`: TSS (Terminal Style Sheets) semantics, properties, cascading, and API contract
-* `docs/RELIW.md`: RELIW operator/developer guide (config, Redis schema, WAF, request semantics, operations)
-* `docs/REDIS.md`: Redis client API and connection config contract
-* `docs/ARGPARSER.md`: Argparser v2 API, grammar, errors, and migration guide
-* `docs/CREDITS.md`: Credits, acknowledgements, licensing info
+* [ARCHITECTURE](docs/ARCHITECTURE.md): Detailed architecture overview
+* [CONVENTIONS](docs/CONVENTIONS.md): Coding and naming conventions used in the project
+* [BUILDING](docs/BUILDING.md): Building instructions and building system architecture
+* [TESTING](docs/TESTING.md): Testing system, running tests
+* [TSS](docs/TSS.md): TSS (Terminal Style Sheets) semantics, properties, cascading, and API contract
+* [RELIW](docs/RELIW.md): RELIW operator/developer guide (config, Redis schema, WAF, request semantics, operations)
+* [REDIS](docs/REDIS.md): Redis client API and connection config contract
+* [ARGPARSER](docs/ARGPARSER.md): Argparser v2 API, grammar, errors, and migration guide
+* [CREDITS](docs/CREDITS.md): Credits, acknowledgements, licensing info
 
 # High level overview
 
