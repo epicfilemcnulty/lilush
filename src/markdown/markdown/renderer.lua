@@ -5,9 +5,10 @@
 --[[
 Renderer registry and factory for markdown module.
 
-Provides a pluggable renderer system with two main implementations:
+Provides a pluggable renderer system with three main implementations:
 - static: Full document rendering for pager/static display
-- streaming: Live cursor-based rendering for LLM output (Phase 4)
+- streaming: Live cursor-based rendering for LLM output
+- html: For converting markdown document into HTML5
 
 Usage:
     local renderer = require("markdown.renderer")

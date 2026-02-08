@@ -973,7 +973,6 @@ local new = function(options)
 			table = nil,
 			pending_table_row = nil,
 			inline_buffer = inline_buffer,
-			-- Phase 6: Document-level state (same table refs as passed to buffer)
 			link_refs = link_refs, -- {label -> {url, title}}
 			footnotes = {}, -- {label -> {content, lines}}
 			footnote_tracker = footnote_tracker, -- {used = {label -> true}}

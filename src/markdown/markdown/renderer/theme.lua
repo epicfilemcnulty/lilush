@@ -154,7 +154,6 @@ local DEFAULT_RSS = {
 		cell = { fg = 250 },
 	},
 
-	-- Footnote styles (Phase 6)
 	footnote_ref = { ts = "superscript", s = "bold", fg = 67 },
 	footnotes = {
 		separator = { fg = 59 },

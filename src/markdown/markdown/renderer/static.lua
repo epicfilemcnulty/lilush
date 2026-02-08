@@ -1535,7 +1535,6 @@ local reset = function(self)
 	self.__state.table_cell_content = { plain = "", ranges = {} }
 	self.__state.table_cell_align = "left"
 	self.__state.previous_block = nil
-	-- Phase 6 state
 	self.__state.div_stack = {}
 	self.__state.blockquote_stack = {}
 	self.__state.in_footnotes = false
@@ -1630,13 +1629,11 @@ local new = function(options)
 			-- Block spacing state (tracks last completed block for newline insertion)
 			previous_block = nil,
 
-			-- Phase 6: Div state
 			div_stack = {},
 
 			-- Blockquote state
 			blockquote_stack = {},
 
-			-- Phase 6: Footnote state
 			in_footnotes = false,
 			in_footnote = false,
 			footnote_label = nil,
