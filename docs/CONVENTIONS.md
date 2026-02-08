@@ -14,7 +14,7 @@ as it's a third-party module that was integrated into the project.
 This convention must be used consistently throughout the codebase.
 
 - Configuration of a class always lives in `self.cfg` table
-- Everything related to state tracking lives in `self.state` table
+- Everything related to state tracking lives in `self.__state` table
 - Private/internal fields are prefixed with double underscore: `self.__private_field`
 
 **Method Definition:**
@@ -37,7 +37,7 @@ end
 ```
 
 **Constructor Pattern:**
-Use a simple `new` function that returns a table with methods assigned directly (no metatables):
+Use a simple `new` function that returns a table with methods assigned directly (no metatables by default):
 
 ```lua
 local new = function(config, opts)
@@ -49,7 +49,7 @@ local new = function(config, opts)
             size = opts.window_size,
         },    
         __value = opts.value,
-        _cache = {},
+        __cache = {},
 
         -- Methods assigned directly
         get_value = get_value,
@@ -73,6 +73,12 @@ return {
 3. Methods are defined as local functions, then assigned in the constructor
 4. Helper functions that don't need `self` remain standalone local functions
 5. Module exports only what's needed (typically just `new`)
+
+**Metatables Policy:**
+
+- Metatables are allowed when they provide clear value and keep code simpler (for example resource lifecycle hooks like `__gc`, or default lookup behavior).
+- For constructor-style OOP modules, avoid metatables by default; prefer explicit methods and plain tables unless a metatable is clearly justified.
+- When a metatable is used in project code, keep the usage minimal and intentional.
 
 
 ## Module namespacing

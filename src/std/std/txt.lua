@@ -1,5 +1,7 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local buffer = require("string.buffer")
 local utf = require("std.utf")
 local core = require("std.core")
@@ -68,11 +70,6 @@ local indent_lines = function(input, ind, exclude)
 	input = input or {}
 	ind = ind or 0
 	exclude = exclude or {}
-	setmetatable(exclude, {
-		__index = function(t, k)
-			return false
-		end,
-	})
 	local indent_content = ""
 	if type(ind) == "number" then
 		indent_content = "\027[0m" .. string.rep(" ", ind)
@@ -125,7 +122,7 @@ end
 
     When `force_split` is true, all splits will be exactly of `width` length,
     and the `input` string is split on any character.
-    
+
     When `remove_extra_spaces` is true (default is false), all
     occurences of consecutive spaces will be replaced by a single space.
 
@@ -134,7 +131,7 @@ end
 local lines_of = function(input, width, force_split, remove_extra_spaces)
 	input = input or ""
 	width = tonumber(width) or 80
-	margin = math.ceil(width * 0.05)
+	local margin = math.ceil(width * 0.05)
 	local buf = buffer.new()
 	local state = {
 		count = 0,

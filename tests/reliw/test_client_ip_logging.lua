@@ -5,7 +5,7 @@
 local testimony = require("testimony")
 local helpers = require("tests.reliw._helpers")
 
-local testify = testimony.new("== web_server client ip logging ==")
+local testify = testimony.new("== web.server client ip logging ==")
 
 local new_client = function(receive_queue)
 	local client = {
@@ -39,8 +39,8 @@ local new_client = function(receive_queue)
 end
 
 local new_server = function(config, handle_fn)
-	helpers.clear_modules({ "web_server" })
-	local web_server = helpers.load_module_from_src("web_server", "src/luasocket/web_server.lua")
+	helpers.clear_modules({ "web.server" })
+	local web_server = helpers.load_module_from_src("web.server", "src/web/server.lua")
 	local srv, err = web_server.new(config or {}, handle_fn)
 	testimony.assert_not_nil(srv, err)
 	return srv
@@ -54,7 +54,7 @@ testify:that("always logs client_ip and keeps forwarded context separate", funct
 	}, function()
 		return "ok", 200, { ["content-type"] = "text/plain" }
 	end)
-	srv.__config.log_headers = {}
+	srv.cfg.log_headers = {}
 	srv.logger = {
 		level = function(self)
 			return 10

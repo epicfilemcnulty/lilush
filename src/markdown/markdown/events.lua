@@ -1,6 +1,6 @@
--- SPDX-FileCopyrightText: © 2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 --[[
 Event emitter for the markdown parser.
@@ -33,8 +33,8 @@ Inline element attrs:
 
 -- Emit an event to the callback
 local emit = function(self, event)
-	if self._callback then
-		self._callback(event)
+	if self.__state.callback then
+		self.__state.callback(event)
 	end
 end
 
@@ -72,13 +72,20 @@ end
 
 -- Change the callback function
 local set_callback = function(self, fn)
-	self._callback = fn
+	self.__state.callback = fn
 end
 
 -- Create a new event emitter
 local new = function(on_event)
+	local cfg = {
+		on_event = on_event,
+	}
+
 	return {
-		_callback = on_event,
+		cfg = cfg,
+		__state = {
+			callback = cfg.on_event,
+		},
 		emit = emit,
 		emit_block_start = emit_block_start,
 		emit_block_end = emit_block_end,

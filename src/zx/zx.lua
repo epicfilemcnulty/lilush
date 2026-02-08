@@ -1,6 +1,6 @@
--- SPDX-FileCopyrightText: © 2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 --[[
     ZX Spectrum Emulator for Lilush
@@ -307,7 +307,16 @@ local run = function(self, filepath)
 
 				if show_border_stripes then
 					-- Pass row/col directly to render function (keeps positioning inside sync block)
-					scr:render_with_border(scr_data, border_lines, cfg.scale, true, frame_row, frame_col, frame_offset_x, frame_offset_y)
+					scr:render_with_border(
+						scr_data,
+						border_lines,
+						cfg.scale,
+						true,
+						frame_row,
+						frame_col,
+						frame_offset_x,
+						frame_offset_y
+					)
 				else
 					-- Pass row/col directly to render function (keeps positioning inside sync block)
 					scr:render_fast(scr_data, cfg.scale, main_row, main_col, main_offset_x, main_offset_y)

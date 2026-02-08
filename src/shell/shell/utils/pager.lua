@@ -1,5 +1,6 @@
 -- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 local std = require("std")
 local json = require("cjson.safe")
@@ -16,7 +17,7 @@ local pager_next_render_mode = function(self)
 	local modes = { "raw", "markdown" }
 	local idx = 0
 	for i, mode in ipairs(modes) do
-		if mode == self.__config.render_mode then
+		if mode == self.cfg.render_mode then
 			idx = i + 1
 			break
 		end
@@ -29,8 +30,8 @@ local pager_next_render_mode = function(self)
 end
 
 local pager_set_render_mode = function(self, mode)
-	local mode = mode or self.__config.render_mode
-	self.__config.render_mode = mode
+	local mode = mode or self.cfg.render_mode
+	self.cfg.render_mode = mode
 
 	if mode == "markdown" then
 		-- Align OSC66 width accounting with terminal behavior.
@@ -52,13 +53,13 @@ local pager_set_render_mode = function(self, mode)
 		-- 1. Pager config wrap override
 		-- 2. TSS wrap value
 		-- 3. Dynamic (85% of terminal width)
-		local terminal_width = self.__window.x
+		local terminal_width = self.__state.window.x
 		local tss_wrap = md_theme.DEFAULT_RSS.wrap
 		local content_width
 
-		if self.__config.wrap and self.__config.wrap > 0 then
+		if self.cfg.wrap and self.cfg.wrap > 0 then
 			-- Priority 1: Pager override
-			content_width = math.min(self.__config.wrap, terminal_width - 4)
+			content_width = math.min(self.cfg.wrap, terminal_width - 4)
 		elseif tss_wrap and tss_wrap > 0 then
 			-- Priority 2: TSS wrap
 			content_width = math.min(tss_wrap, terminal_width - 4)
@@ -79,22 +80,22 @@ local pager_set_render_mode = function(self, mode)
 
 		self.content.rendered = result.rendered
 		self.content.elements = result.elements
-		self.__config.content_width = content_width
+		self.cfg.content_width = content_width
 
 		-- Build focusable elements list for navigation
 		self:build_focusable_elements()
 	else
 		-- Raw mode: plain text with optional wrapping
 		local raw = self.content.raw or ""
-		if self.__config.wrap_in_raw and self.__config.wrap > 0 then
-			local wrapped_lines = std.txt.lines_of(raw, self.__config.wrap)
+		if self.cfg.wrap_in_raw and self.cfg.wrap > 0 then
+			local wrapped_lines = std.txt.lines_of(raw, self.cfg.wrap)
 			self.content.rendered = table.concat(wrapped_lines, "\n")
 		else
 			self.content.rendered = raw
 		end
 		self.content.elements = nil
-		self.__navigation.elements = {}
-		self.__navigation.focused_idx = 0
+		self.__state.navigation.elements = {}
+		self.__state.navigation.focused_idx = 0
 	end
 
 	self.content.lines = std.txt.lines(self.content.rendered)
@@ -102,8 +103,8 @@ end
 
 -- Build list of focusable elements from markdown metadata
 local pager_build_focusable_elements = function(self)
-	self.__navigation.elements = {}
-	self.__navigation.focused_idx = 0
+	self.__state.navigation.elements = {}
+	self.__state.navigation.focused_idx = 0
 
 	if not self.content.elements then
 		return
@@ -178,7 +179,7 @@ local pager_build_focusable_elements = function(self)
 		return (a._order or 0) < (b._order or 0)
 	end)
 
-	self.__navigation.elements = list
+	self.__state.navigation.elements = list
 end
 
 -- Extract code block positions and raw content for OSC52 clipboard copy
@@ -244,7 +245,7 @@ local pager_copy_code_block = function(self)
 		-- Check if current view overlaps with this block
 		local block_start = block.start_raw
 		local block_end = block.end_raw
-		local view_end = target_raw_line + self.__window.capacity
+		local view_end = target_raw_line + self.__state.window.capacity
 
 		-- Block is visible or closest to view
 		if target_raw_line <= block_end and view_end >= block_start then
@@ -276,8 +277,8 @@ end
 local pager_display_line_nums = function(self)
 	local total_lines = #self.content.lines
 	local lines_to_display = total_lines - self.__state.top_line + 1
-	if lines_to_display > self.__window.capacity then
-		lines_to_display = self.__window.capacity
+	if lines_to_display > self.__state.window.capacity then
+		lines_to_display = self.__state.window.capacity
 	end
 	for i = 1, lines_to_display do
 		term.go(2 + i - 1, 1)
@@ -297,33 +298,33 @@ local pager_display = function(self)
 
 	-- Calculate centering margin
 	local margin = 0
-	if self.__config.render_mode == "markdown" and self.__config.content_width then
-		margin = math.floor((self.__window.x - self.__config.content_width) / 2)
+	if self.cfg.render_mode == "markdown" and self.cfg.content_width then
+		margin = math.floor((self.__state.window.x - self.cfg.content_width) / 2)
 		if margin < 0 then
 			margin = 0
 		end
 	end
 
-	local indent = self.__config.indent + 1 + margin
-	if self.__config.line_nums then
+	local indent = self.cfg.indent + 1 + margin
+	if self.cfg.line_nums then
 		indent = indent + 6
 	end
 
 	-- Get focused element for highlighting
 	local focused = nil
-	if self.__navigation.focused_idx > 0 then
-		focused = self.__navigation.elements[self.__navigation.focused_idx]
+	if self.__state.navigation.focused_idx > 0 then
+		focused = self.__state.navigation.elements[self.__state.navigation.focused_idx]
 	end
 
-	while count < self.__window.capacity do
+	while count < self.__state.window.capacity do
 		term.go(2 + count, indent)
 		local idx = self.__state.top_line + count
 		local line = self.content.lines[idx]
 
 		-- Apply search highlighting
-		if idx == self.__state.cursor_line and self.__search.pattern ~= "" and line then
+		if idx == self.__state.cursor_line and self.__state.search.pattern ~= "" and line then
 			local tss = style.new(theme.builtins.pager)
-			line = line:gsub(self.__search.pattern, tss:apply("search_match", "%1").text)
+			line = line:gsub(self.__state.search.pattern, tss:apply("search_match", "%1").text)
 		end
 
 		-- Apply focus highlighting (skip headers)
@@ -343,10 +344,10 @@ local pager_display = function(self)
 		end
 		count = count + 1
 	end
-	if self.__config.line_nums then
+	if self.cfg.line_nums then
 		self:display_line_nums()
 	end
-	if self.__config.status_line then
+	if self.cfg.status_line then
 		self:display_status_line()
 	end
 end
@@ -355,7 +356,7 @@ local pager_display_status_line = function(self)
 	local file = self.__state.history[#self.__state.history]
 	local total_lines = #self.content.lines
 	local kb_size = string.format("%.2f KB", #self.content.raw / 1024)
-	local position_pct = ((self.__state.top_line + self.__window.capacity) / total_lines) * 100
+	local position_pct = ((self.__state.top_line + self.__state.window.capacity) / total_lines) * 100
 	if position_pct > 100 then
 		position_pct = 100.00
 	end
@@ -368,12 +369,12 @@ local pager_display_status_line = function(self)
 		.. tss:apply("status_line.size", kb_size).text
 
 	-- Add notification or focused element hints to top bar (mutually exclusive)
-	if self.__notification then
-		top_status = top_status .. tss:apply("status_line.hint", self.__notification).text
+	if self.__state.notification then
+		top_status = top_status .. tss:apply("status_line.hint", self.__state.notification).text
 	else
 		local focused = nil
-		if self.__navigation.focused_idx > 0 then
-			focused = self.__navigation.elements[self.__navigation.focused_idx]
+		if self.__state.navigation.focused_idx > 0 then
+			focused = self.__state.navigation.elements[self.__state.navigation.focused_idx]
 		end
 
 		if focused then
@@ -396,10 +397,10 @@ local pager_display_status_line = function(self)
 
 	-- Bottom bar: position, render mode, search
 	local bottom_status = tss:apply("status_line.position", position).text
-		.. tss:apply("status_line.render_mode", self.__config.render_mode).text
+		.. tss:apply("status_line.render_mode", self.cfg.render_mode).text
 
-	if self.__search.pattern ~= "" then
-		bottom_status = bottom_status .. tss:apply("status_line.search.pattern", self.__search.pattern).text
+	if self.__state.search.pattern ~= "" then
+		bottom_status = bottom_status .. tss:apply("status_line.search.pattern", self.__state.search.pattern).text
 	end
 
 	local y, _ = term.window_size()
@@ -435,14 +436,14 @@ local pager_set_content = function(self, content, name)
 end
 
 local pager_exit = function(self)
-	self.__config.status_line = false
-	if self.__screen then
-		self.__screen:done()
+	self.cfg.status_line = false
+	if self.__state.screen then
+		self.__state.screen:done()
 	end
-	term.go(self.__window.l, 1)
-	local till = self.__window.capacity
+	term.go(self.__state.window.l, 1)
+	local till = self.__state.window.capacity
 	if self.__state.top_line > 1 then
-		till = self.__state.top_line + self.__window.capacity
+		till = self.__state.top_line + self.__state.window.capacity
 	end
 	if till > #self.content.lines then
 		till = #self.content.lines
@@ -455,73 +456,73 @@ local pager_exit = function(self)
 end
 
 local pager_toggle_line_nums = function(self)
-	self.__config.line_nums = not self.__config.line_nums
+	self.cfg.line_nums = not self.cfg.line_nums
 	self:display()
 end
 
 local pager_toggle_status_line = function(self)
-	self.__config.status_line = not self.__config.status_line
+	self.cfg.status_line = not self.cfg.status_line
 	self:display()
 end
 
 local pager_line_up = function(self)
 	if self.__state.top_line > 1 then
 		self.__state.top_line = self.__state.top_line - 1
-		self.__navigation.focused_idx = 0
+		self.__state.navigation.focused_idx = 0
 		self:display()
 	end
 end
 
 local pager_line_down = function(self)
-	if self.__state.top_line + self.__window.capacity < #self.content.lines then
+	if self.__state.top_line + self.__state.window.capacity < #self.content.lines then
 		self.__state.top_line = self.__state.top_line + 1
-		self.__navigation.focused_idx = 0
+		self.__state.navigation.focused_idx = 0
 		self:display()
 	end
 end
 
 local pager_page_up = function(self)
-	self.__state.top_line = self.__state.top_line - self.__window.capacity
+	self.__state.top_line = self.__state.top_line - self.__state.window.capacity
 	if self.__state.top_line < 1 then
 		self.__state.top_line = 1
 	end
-	self.__navigation.focused_idx = 0
+	self.__state.navigation.focused_idx = 0
 	self:display()
 end
 
 local pager_page_down = function(self)
-	self.__state.top_line = self.__state.top_line + self.__window.capacity
-	if self.__state.top_line > #self.content.lines - self.__window.capacity then
-		self.__state.top_line = #self.content.lines - self.__window.capacity
+	self.__state.top_line = self.__state.top_line + self.__state.window.capacity
+	if self.__state.top_line > #self.content.lines - self.__state.window.capacity then
+		self.__state.top_line = #self.content.lines - self.__state.window.capacity
 	end
-	self.__navigation.focused_idx = 0
+	self.__state.navigation.focused_idx = 0
 	self:display()
 end
 
 local pager_top_line = function(self)
 	self.__state.top_line = 1
-	self.__navigation.focused_idx = 0
+	self.__state.navigation.focused_idx = 0
 	self:display()
 end
 
 local pager_bottom_line = function(self)
 	local position = 1
-	if #self.content.lines > self.__window.capacity then
-		position = #self.content.lines - self.__window.capacity
+	if #self.content.lines > self.__state.window.capacity then
+		position = #self.content.lines - self.__state.window.capacity
 	end
 	self.__state.top_line = position
-	self.__navigation.focused_idx = 0
+	self.__state.navigation.focused_idx = 0
 	self:display()
 end
 
 local pager_change_indent = function(self, combo)
 	if combo == "CTRL+RIGHT" then
-		self.__config.indent = self.__config.indent + 1
+		self.cfg.indent = self.cfg.indent + 1
 		self:display()
 	end
 	if combo == "CTRL+LEFT" then
-		if self.__config.indent > 0 then
-			self.__config.indent = self.__config.indent - 1
+		if self.cfg.indent > 0 then
+			self.cfg.indent = self.cfg.indent - 1
 			self:display()
 		end
 	end
@@ -529,19 +530,19 @@ end
 
 local pager_change_wrap = function(self, combo)
 	if combo == "ALT+RIGHT" then
-		self.__config.wrap = self.__config.wrap + 5
-		if self.__config.wrap > self.__window.x - 10 then
-			self.__config.wrap = self.__window.x - 10
+		self.cfg.wrap = self.cfg.wrap + 5
+		if self.cfg.wrap > self.__state.window.x - 10 then
+			self.cfg.wrap = self.__state.window.x - 10
 		end
-		self:set_render_mode(self.__config.render_mode)
+		self:set_render_mode(self.cfg.render_mode)
 		self:display()
 	end
 	if combo == "ALT+LEFT" then
-		self.__config.wrap = self.__config.wrap - 5
-		if self.__config.wrap <= 40 then
-			self.__config.wrap = 40
+		self.cfg.wrap = self.cfg.wrap - 5
+		if self.cfg.wrap <= 40 then
+			self.cfg.wrap = 40
 		end
-		self:set_render_mode(self.__config.render_mode)
+		self:set_render_mode(self.cfg.render_mode)
 		self:display()
 	end
 end
@@ -562,71 +563,71 @@ local pager_search = function(self, combo)
 	local pattern = ""
 	if combo == "/" then
 		local buf = input.new({
-			history = self.__search.history,
-			l = self.__window.y,
+			history = self.__state.search.history,
+			l = self.__state.window.y,
 			c = 9,
-			width = self.__window.x - 9,
+			width = self.__state.window.x - 9,
 			rss = theme.builtins.pager.status_line.search,
 		})
-		term.go(self.__window.y, 1)
+		term.go(self.__state.window.y, 1)
 		local tss = style.new(theme.builtins.pager)
 		term.write(tss:apply("status_line.search", "SEARCH: ").text)
 		buf:display()
 		term.show_cursor()
-		event = buf:run()
+		local event = buf:run()
 		term.hide_cursor()
 		pattern = buf:get_content()
 		if pattern == "" then
-			self.__search.idx = 0
+			self.__state.search.idx = 0
 			self.__state.cursor_line = 0
-			self.__search.pattern = ""
+			self.__state.search.pattern = ""
 			return true
 		end
-		self.__search.history:add(pattern)
+		self.__state.search.history:add(pattern)
 	elseif combo:match("[nb]") then
-		if self.__search.pattern == "" then
+		if self.__state.search.pattern == "" then
 			return true
 		end
-		pattern = self.__search.pattern
+		pattern = self.__state.search.pattern
 	end
-	self.__search.pattern = pattern
+	self.__state.search.pattern = pattern
 	if combo == "n" or combo == "/" then
 		local start = self.__state.top_line
 		if combo == "n" then
-			start = self.__search.idx + 1
+			start = self.__state.search.idx + 1
 		end
 		for idx = start, #self.content.lines do
 			if self.content.lines[idx]:match(pattern) then
-				self.__search.idx = idx
+				self.__state.search.idx = idx
 				self.__state.cursor_line = idx
 				break
 			end
 		end
 	elseif combo == "b" then
-		for idx = self.__search.idx - 1, 1, -1 do
+		for idx = self.__state.search.idx - 1, 1, -1 do
 			if self.content.lines[idx]:match(pattern) then
-				self.__search.idx = idx
+				self.__state.search.idx = idx
 				self.__state.cursor_line = idx
 				break
 			end
 		end
 	end
-	if self.__search.idx > 0 then
-		self.__state.top_line = self.__search.idx
+	if self.__state.search.idx > 0 then
+		self.__state.top_line = self.__state.search.idx
 		if self.__state.top_line > 2 then
 			self.__state.top_line = self.__state.top_line - 2
 		end
 		self:display()
 		return true
 	end
-	self.__search.idx = 0
+	self.__state.search.idx = 0
 end
 
 -- Ensure a line is visible in the viewport
 local pager_ensure_visible = function(self, line)
 	if line < self.__state.top_line then
 		self.__state.top_line = math.max(1, line - 2)
-	elseif line > self.__state.top_line + self.__window.capacity - 1 then
+	elseif line > self.__state.top_line + self.__state.window.capacity - 1 then
 		self.__state.top_line = line - 2
 		if self.__state.top_line < 1 then
 			self.__state.top_line = 1
@@ -636,12 +637,12 @@ end
 
 -- Focus next element (Tab) - skips headers
 local pager_focus_next = function(self)
-	local elements = self.__navigation.elements
+	local elements = self.__state.navigation.elements
 	if #elements == 0 then
 		return
 	end
 
-	local start_idx = self.__navigation.focused_idx
+	local start_idx = self.__state.navigation.focused_idx
 
 	-- When unfocused, find first non-header element at or after current viewport
 	if start_idx == 0 then
@@ -650,7 +651,7 @@ local pager_focus_next = function(self)
 			if el.type ~= "header" then
 				local el_line = el.start_line or el.line
 				if el_line >= top then
-					self.__navigation.focused_idx = i
+					self.__state.navigation.focused_idx = i
 					self:ensure_visible(el_line)
 					self:display()
 					return
@@ -660,7 +661,7 @@ local pager_focus_next = function(self)
 		-- No element found after viewport, wrap to first non-header
 		for i, el in ipairs(elements) do
 			if el.type ~= "header" then
-				self.__navigation.focused_idx = i
+				self.__state.navigation.focused_idx = i
 				local line = el.start_line or el.line
 				self:ensure_visible(line)
 				self:display()
@@ -682,7 +683,7 @@ local pager_focus_next = function(self)
 		return -- no non-header elements found
 	end
 
-	self.__navigation.focused_idx = idx
+	self.__state.navigation.focused_idx = idx
 	local el = elements[idx]
 	local line = el.start_line or el.line
 	self:ensure_visible(line)
@@ -691,16 +692,16 @@ end
 
 -- Focus previous element (Shift+Tab) - skips headers
 local pager_focus_prev = function(self)
-	local elements = self.__navigation.elements
+	local elements = self.__state.navigation.elements
 	if #elements == 0 then
 		return
 	end
 
-	local start_idx = self.__navigation.focused_idx
+	local start_idx = self.__state.navigation.focused_idx
 
 	-- When unfocused, find last non-header element at or before viewport bottom
 	if start_idx == 0 then
-		local bottom = self.__state.top_line + self.__window.capacity
+		local bottom = self.__state.top_line + self.__state.window.capacity
 		local last_before = nil
 		for i, el in ipairs(elements) do
 			if el.type ~= "header" then
@@ -711,7 +712,7 @@ local pager_focus_prev = function(self)
 			end
 		end
 		if last_before then
-			self.__navigation.focused_idx = last_before
+			self.__state.navigation.focused_idx = last_before
 			local el = elements[last_before]
 			local line = el.start_line or el.line
 			self:ensure_visible(line)
@@ -721,7 +722,7 @@ local pager_focus_prev = function(self)
 		-- No element found before viewport, wrap to last non-header
 		for i = #elements, 1, -1 do
 			if elements[i].type ~= "header" then
-				self.__navigation.focused_idx = i
+				self.__state.navigation.focused_idx = i
 				local line = elements[i].start_line or elements[i].line
 				self:ensure_visible(line)
 				self:display()
@@ -743,7 +744,7 @@ local pager_focus_prev = function(self)
 		return -- no non-header elements found
 	end
 
-	self.__navigation.focused_idx = idx
+	self.__state.navigation.focused_idx = idx
 	local el = elements[idx]
 	local line = el.start_line or el.line
 	self:ensure_visible(line)
@@ -752,7 +753,7 @@ end
 
 -- Jump to next header
 local pager_header_next = function(self)
-	local elements = self.__navigation.elements
+	local elements = self.__state.navigation.elements
 	if #elements == 0 then
 		return
 	end
@@ -762,7 +763,7 @@ local pager_header_next = function(self)
 	for _, el in ipairs(elements) do
 		if el.type == "header" and el.line > current_line then
 			self.__state.top_line = math.max(1, el.line - 2)
-			self.__navigation.focused_idx = 0
+			self.__state.navigation.focused_idx = 0
 			self:display()
 			return
 		end
@@ -771,7 +772,7 @@ end
 
 -- Jump to previous header
 local pager_header_prev = function(self)
-	local elements = self.__navigation.elements
+	local elements = self.__state.navigation.elements
 	if #elements == 0 then
 		return
 	end
@@ -787,14 +788,15 @@ local pager_header_prev = function(self)
 
 	if prev_header then
 		self.__state.top_line = math.max(1, prev_header.line - 2)
-		self.__navigation.focused_idx = 0
+		self.__state.navigation.focused_idx = 0
 		self:display()
 	end
 end
 
 -- Copy focused element (code block content or link URL)
 local pager_copy_element = function(self)
-	local focused = self.__navigation.focused_idx > 0 and self.__navigation.elements[self.__navigation.focused_idx]
+	local focused = self.__state.navigation.focused_idx > 0
+		and self.__state.navigation.elements[self.__state.navigation.focused_idx]
 
 	if not focused then
 		return false, "No element focused"
@@ -835,7 +837,8 @@ end
 
 -- Jump to footnote definition
 local pager_jump_to_footnote = function(self)
-	local focused = self.__navigation.focused_idx > 0 and self.__navigation.elements[self.__navigation.focused_idx]
+	local focused = self.__state.navigation.focused_idx > 0
+		and self.__state.navigation.elements[self.__state.navigation.focused_idx]
 
 	if not focused or focused.type ~= "footnote_ref" then
 		return false
@@ -844,7 +847,7 @@ local pager_jump_to_footnote = function(self)
 	local defs = self.content.elements and self.content.elements.footnote_defs or {}
 	for _, def in ipairs(defs) do
 		if def.label == focused.label then
-			self.__navigation.return_position = self.__state.top_line
+			self.__state.navigation.return_position = self.__state.top_line
 			self.__state.top_line = math.max(1, def.start_line - 2)
 			self:display()
 			return true
@@ -855,9 +858,9 @@ end
 
 -- Return from footnote jump
 local pager_return_from_footnote = function(self)
-	if self.__navigation.return_position then
-		self.__state.top_line = self.__navigation.return_position
-		self.__navigation.return_position = nil
+	if self.__state.navigation.return_position then
+		self.__state.top_line = self.__state.navigation.return_position
+		self.__state.navigation.return_position = nil
 		self:display()
 		return true
 	end
@@ -866,7 +869,8 @@ end
 
 -- Activate focused element (Enter key)
 local pager_activate_element = function(self)
-	local focused = self.__navigation.focused_idx > 0 and self.__navigation.elements[self.__navigation.focused_idx]
+	local focused = self.__state.navigation.focused_idx > 0
+		and self.__state.navigation.elements[self.__state.navigation.focused_idx]
 
 	if focused and focused.type == "footnote_ref" then
 		return self:jump_to_footnote()
@@ -876,30 +880,30 @@ local pager_activate_element = function(self)
 end
 
 local pager_page = function(self)
-	if #self.content.lines < self.__window.capacity and self.__config.exit_on_one_page then
+	if #self.content.lines < self.__state.window.capacity and self.cfg.exit_on_one_page then
 		return self:exit()
 	end
-	self.__screen = term.alt_screen()
+	self.__state.screen = term.alt_screen()
 	local buf = ""
 	self:display()
 	repeat
 		local cp = term.simple_get()
 		if cp then
-			self.__notification = nil
+			self.__state.notification = nil
 			if cp == "q" then
 				cp = "exit"
 			end
-			if self.__ctrls[cp] then
+			if self.cfg.ctrls[cp] then
 				if cp == "y" then
 					local ok, err = self:copy_element()
 					if ok then
-						self.__notification = "Copied!"
+						self.__state.notification = "Copied!"
 					else
-						self.__notification = err or "Copy failed"
+						self.__state.notification = err or "Copy failed"
 					end
 					self:display()
 				else
-					self[self.__ctrls[cp]](self, cp)
+					self[self.cfg.ctrls[cp]](self, cp)
 				end
 			else
 				if cp:match("[0-9]") then
@@ -931,59 +935,62 @@ local pager_new = function(config)
 		hide_links = false,
 	}
 	std.tbl.merge(default_config, config)
+	default_config.ctrls = {
+		["PAGE_UP"] = "page_up",
+		["K"] = "page_up",
+		["CTRL+b"] = "page_up",
+		["PAGE_DOWN"] = "page_down",
+		["J"] = "page_down",
+		["CTRL+f"] = "page_down",
+		["UP"] = "line_up",
+		["k"] = "line_up",
+		["DOWN"] = "line_down",
+		["j"] = "line_down",
+		[" "] = "line_down",
+		["CTRL+RIGHT"] = "change_indent",
+		["CTRL+LEFT"] = "change_indent",
+		["ALT+RIGHT"] = "change_wrap",
+		["ALT+LEFT"] = "change_wrap",
+		["CTRL+r"] = "next_render_mode",
+		["HOME"] = "top_line",
+		["g"] = "top_line",
+		["END"] = "bottom_line",
+		["G"] = "bottom_line",
+		["s"] = "toggle_status_line",
+		["l"] = "toggle_line_nums",
+		["/"] = "search",
+		["n"] = "search",
+		["b"] = "search",
+		["y"] = "copy_element",
+		["TAB"] = "focus_next",
+		["SHIFT+TAB"] = "focus_prev",
+		["["] = "header_prev",
+		["]"] = "header_next",
+		["ENTER"] = "activate_element",
+		["BACKSPACE"] = "return_from_footnote",
+	}
 
 	local pager = {
-		__window = { x = x, y = y, capacity = y - 2, l = l, c = c },
-		__config = default_config,
+		cfg = default_config,
 		__state = {
+			window = { x = x, y = y, capacity = y - 2, l = l, c = c },
 			top_line = 1,
 			cursor_line = 0,
 			history = {},
+			search = {
+				idx = 0,
+				pattern = "",
+				history = history.new(),
+			},
+			navigation = {
+				elements = {},
+				focused_idx = 0,
+				return_position = nil,
+			},
+			notification = nil,
+			screen = nil,
 		},
-		__search = {
-			idx = 0,
-			pattern = "",
-			history = history.new(),
-		},
-		__navigation = {
-			elements = {},
-			focused_idx = 0,
-			return_position = nil,
-		},
-		__notification = nil,
 		content = {},
-		__ctrls = {
-			["PAGE_UP"] = "page_up",
-			["K"] = "page_up",
-			["PAGE_DOWN"] = "page_down",
-			["J"] = "page_down",
-			["UP"] = "line_up",
-			["k"] = "line_up",
-			["DOWN"] = "line_down",
-			["j"] = "line_down",
-			[" "] = "line_down",
-			["CTRL+RIGHT"] = "change_indent",
-			["CTRL+LEFT"] = "change_indent",
-			["ALT+RIGHT"] = "change_wrap",
-			["ALT+LEFT"] = "change_wrap",
-			["CTRL+r"] = "next_render_mode",
-			["HOME"] = "top_line",
-			["g"] = "top_line",
-			["END"] = "bottom_line",
-			["G"] = "bottom_line",
-			["s"] = "toggle_status_line",
-			["l"] = "toggle_line_nums",
-			["/"] = "search",
-			["n"] = "search",
-			["b"] = "search",
-			["y"] = "copy_element",
-			["TAB"] = "focus_next",
-			["SHIFT+TAB"] = "focus_prev",
-			["["] = "header_prev",
-			["]"] = "header_next",
-			["ENTER"] = "activate_element",
-			["BACKSPACE"] = "return_from_footnote",
-		},
 		-- METHODS
 		display = pager_display,
 		display_line_nums = pager_display_line_nums,

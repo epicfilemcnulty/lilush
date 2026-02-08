@@ -1,5 +1,6 @@
--- SPDX-FileCopyrightText: © 2025 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 local std = require("std")
 local style = require("term.tss")
@@ -98,8 +99,13 @@ local search = function(self, input, history)
 			setmetatable(self.__meta, mt)
 			return self:available()
 		end
-		if self.__sources["cmds"].list[cmd] then
-			self.__candidates = self.__sources["cmds"]:search(cmd, args)
+		local cmds_source = self.__sources["cmds"]
+		local cmds_list = cmds_source.list
+		if cmds_source.cfg and cmds_source.cfg.list then
+			cmds_list = cmds_source.cfg.list
+		end
+		if cmds_list and cmds_list[cmd] then
+			self.__candidates = cmds_source:search(cmd, args)
 			local mt = {
 				__index = function(t, k)
 					return { source = "cmds" }

@@ -1,5 +1,6 @@
 -- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 --[[
     Simple in-memory job manager for PTY-backed background jobs.
@@ -49,8 +50,8 @@ local start_logger = function(master_fd, log_path)
 end
 
 local start = function(self, cmd, args, opts)
-	args = args or {}
-	opts = opts or {}
+	local launch_args = args or {}
+	local launch_opts = opts or {}
 	local pty, err = std.ps.pty_open()
 	if not pty then
 		return nil, err
@@ -74,15 +75,15 @@ local start = function(self, cmd, args, opts)
 			core.close(slave_fd)
 		end
 		core.close(pty.master)
-		std.ps.exec(cmd, unpack(args))
+		std.ps.exec(cmd, unpack(launch_args))
 		os.exit(127)
 	end
 
-	local id = self.next_id
-	self.next_id = self.next_id + 1
+	local id = self.__state.next_id
+	self.__state.next_id = self.__state.next_id + 1
 
 	local log_path = "/tmp/" .. std.nanoid() .. ".log"
-	if opts.log == false then
+	if launch_opts.log == false then
 		log_path = nil
 	end
 	local logger_pid = start_logger(pty.master, log_path)
@@ -90,21 +91,21 @@ local start = function(self, cmd, args, opts)
 		id = id,
 		pid = pid,
 		cmd = cmd,
-		args = args,
+		args = launch_args,
 		log_path = log_path,
 		master = pty.master,
 		logger_pid = logger_pid or 0,
 		status = "running",
 		started = os.time(),
 	}
-	self.entries[id] = entry
-	table.insert(self.order, id)
+	self.__state.entries[id] = entry
+	table.insert(self.__state.order, id)
 	return entry
 end
 
 local poll = function(self)
-	for _, id in ipairs(self.order) do
-		local job = self.entries[id]
+	for _, id in ipairs(self.__state.order) do
+		local job = self.__state.entries[id]
 		if job and job.status == "running" then
 			local ret, status = std.ps.waitpid(job.pid)
 			if ret and ret > 0 then
@@ -126,36 +127,36 @@ end
 -- Remove all finished jobs from the job table
 local reap = function(self)
 	local new_order = {}
-	for _, id in ipairs(self.order) do
-		local job = self.entries[id]
+	for _, id in ipairs(self.__state.order) do
+		local job = self.__state.entries[id]
 		if job.status == "exited" then
-			self.entries[id] = nil
+			self.__state.entries[id] = nil
 		else
 			table.insert(new_order, id)
 		end
 	end
-	self.order = new_order
+	self.__state.order = new_order
 end
 
 local list = function(self)
 	local out = {}
-	for _, id in ipairs(self.order) do
-		table.insert(out, self.entries[id])
+	for _, id in ipairs(self.__state.order) do
+		table.insert(out, self.__state.entries[id])
 	end
 	return out
 end
 
 local get = function(self, id)
-	return self.entries[id]
+	return self.__state.entries[id]
 end
 
 local kill = function(self, id, signal)
-	local job = self.entries[id]
+	local job = self.__state.entries[id]
 	if not job then
 		return nil, "no such job"
 	end
-	signal = tonumber(signal) or 15 -- SIGTERM by default
-	local ok, err = std.ps.kill(job.pid, signal)
+	local kill_signal = tonumber(signal) or 15 -- SIGTERM by default
+	local ok, err = std.ps.kill(job.pid, kill_signal)
 	if not ok then
 		return nil, err
 	end
@@ -163,7 +164,7 @@ local kill = function(self, id, signal)
 end
 
 local attach = function(self, id)
-	local job = self.entries[id]
+	local job = self.__state.entries[id]
 	if not job then
 		return nil, "no such job"
 	end
@@ -176,28 +177,37 @@ local attach = function(self, id)
 	if job.logger_pid and job.logger_pid > 0 then
 		std.ps.kill(job.logger_pid, 19)
 	end
-	std.ps.pty_attach(job.master, self.detach_key)
+	std.ps.pty_attach(job.master, self.cfg.detach_key)
 	if job.logger_pid and job.logger_pid > 0 then
 		std.ps.kill(job.logger_pid, 18)
 	end
 	return true
 end
 
-return {
-	new = function()
-		local jobs = {
+local new = function(config)
+	local cfg = config or {}
+	if cfg.detach_key == nil then
+		cfg.detach_key = detach_key
+	end
+
+	local jobs = {
+		cfg = cfg,
+		__state = {
 			next_id = 1,
 			entries = {},
 			order = {},
-			start = start,
-			list = list,
-			get = get,
-			kill = kill,
-			attach = attach,
-			poll = poll,
-			reap = reap,
-			detach_key = detach_key,
-		}
-		return jobs
-	end,
+		},
+		start = start,
+		list = list,
+		get = get,
+		kill = kill,
+		attach = attach,
+		poll = poll,
+		reap = reap,
+	}
+	return jobs
+end
+
+return {
+	new = new,
 }

@@ -1,10 +1,11 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 local ps = require("std.ps")
 local fs = require("std.fs")
 
-local mime_types = {
+local MIME_TYPES = {
 	["text/html"] = { html = true, htm = true, shtml = true },
 	["text/css"] = { css = true },
 	["text/plain"] = {
@@ -67,7 +68,7 @@ local mime_type = function(filename)
 	filename = filename or ""
 	local extension = filename:match("%.(%w+)$")
 	if extension then
-		for t, exts in pairs(mime_types) do
+		for t, exts in pairs(MIME_TYPES) do
 			if exts[extension] then
 				return t
 			end

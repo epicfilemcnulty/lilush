@@ -446,7 +446,7 @@ testify:that("reset clears parser state", function()
 
 	parser:reset()
 	evts = {}
-	parser._events:set_callback(function(e)
+	parser:set_event_callback(function(e)
 		evts[#evts + 1] = e
 	end)
 	parser:feed("Second")

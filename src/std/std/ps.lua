@@ -1,5 +1,7 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local core = require("std.core")
 
 local fs = require("std.fs")
@@ -11,6 +13,10 @@ end
 
 local function unsetenv(name)
 	return core.unsetenv(name)
+end
+
+local function environ()
+	return core.environ()
 end
 
 local function kill(pid, signal)
@@ -88,29 +94,27 @@ local function pipe()
 	end
 
 	local close_read = function(self)
-		if self._out_open then
+		if self.__out_open then
 			core.close(self.out)
-			self._out_open = false
+			self.__out_open = false
 		end
 	end
 
 	local close_write = function(self)
-		if self._inn_open then
+		if self.__inn_open then
 			core.close(self.inn)
-			self._inn_open = false
+			self.__inn_open = false
 		end
 	end
 
-	p._out_open = true
-	p._inn_open = true
+	p.__out_open = true
+	p.__inn_open = true
+	p.read = read
+	p.write = write
+	p.close_out = close_read
+	p.close_inn = close_write
 
 	setmetatable(p, {
-		__index = {
-			read = read,
-			write = write,
-			close_out = close_read,
-			close_inn = close_write,
-		},
 		__gc = function(self)
 			close_read(self)
 			close_write(self)

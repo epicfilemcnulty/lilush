@@ -1,9 +1,10 @@
--- SPDX-FileCopyrightText: © 2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 local std = require("std")
 local txt = require("std.txt")
+local TOOL_NAME = "bash"
 
 -- Maximum output size to prevent context overflow
 local MAX_OUTPUT_CHARS = 10000
@@ -20,11 +21,11 @@ local function truncate_output(str, max_chars)
 end
 
 return {
-	name = "bash",
+	name = TOOL_NAME,
 	description = {
 		type = "function",
 		["function"] = {
-			name = "bash",
+			name = TOOL_NAME,
 			description = "Executes a shell command and returns stdout, stderr, and exit code. "
 				.. "Command runs in the current working directory. "
 				.. "Output is truncated to 10K characters per stream to prevent context overflow.",
@@ -42,7 +43,7 @@ return {
 		local command = arguments.command
 
 		if not command then
-			return { error = "command is required" }
+			return { name = TOOL_NAME, ok = false, error = "command is required" }
 		end
 
 		local stdout_pipe = std.ps.pipe()
@@ -54,7 +55,7 @@ return {
 			stdout_pipe:close_out()
 			stderr_pipe:close_inn()
 			stderr_pipe:close_out()
-			return { error = "failed to launch bash" }
+			return { name = TOOL_NAME, ok = false, error = "failed to launch bash" }
 		end
 
 		-- Close write ends in parent, read output, then close read ends
@@ -80,7 +81,8 @@ return {
 
 		-- Build result
 		local response = {
-			name = "bash",
+			name = TOOL_NAME,
+			ok = true,
 			command = command,
 			exit_code = exit_code or 255,
 			stdout = stdout,

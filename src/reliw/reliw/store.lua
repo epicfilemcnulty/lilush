@@ -1,7 +1,32 @@
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local std = require("std")
 local redis = require("redis")
 local json = require("cjson.safe")
 local crypto = require("crypto")
+
+local validate_redis_client = function(client)
+	if type(client) ~= "table" then
+		return nil, "client must be a table"
+	end
+	if type(client.cmd) ~= "function" then
+		return nil, "missing cmd method"
+	end
+	if type(client.close) ~= "function" then
+		return nil, "missing close method"
+	end
+	return true
+end
+
+local get_redis = function(self)
+	return self.__state.red
+end
+
+local get_prefix = function(self)
+	return self.cfg.prefix
+end
 
 local normalize_virtual_path = function(path)
 	if type(path) ~= "string" or path == "" then
@@ -56,11 +81,53 @@ local resolve_storage_paths = function(data_dir, host, filename)
 	return normalized, host_path, fallback_path, nil
 end
 
+local normalize_acme_domain = function(domain)
+	if type(domain) ~= "string" then
+		return nil, "domain must be a string"
+	end
+	domain = domain:match("^%s*(.-)%s*$"):lower()
+	if domain == "" then
+		return nil, "domain must not be empty"
+	end
+	if domain:find("[%z\1-\31\127]") then
+		return nil, "domain has invalid chars"
+	end
+	if domain:find("/", 1, true) or domain:find(":", 1, true) then
+		return nil, "domain has invalid separators"
+	end
+	return domain
+end
+
+local normalize_acme_token = function(token)
+	if type(token) ~= "string" then
+		return nil, "token must be a string"
+	end
+	token = token:match("^%s*(.-)%s*$")
+	if token == "" then
+		return nil, "token must not be empty"
+	end
+	if token:find("[%z\1-\31\127]") then
+		return nil, "token has invalid chars"
+	end
+	if token:find("/", 1, true) or token:find(":", 1, true) then
+		return nil, "token has invalid separators"
+	end
+	if not token:match("^[A-Za-z0-9._%-]+$") then
+		return nil, "token has unsupported chars"
+	end
+	return token
+end
+
+local build_acme_key = function(self, domain, token)
+	return get_prefix(self) .. ":DATA:" .. domain .. ":.well-known/acme-challenge/" .. token
+end
+
 local fetch_proxy_config = function(self, host)
 	if not host or type(host) ~= "string" then
 		return nil, "no host/invalid type provided"
 	end
-	local config, err = self.red:cmd("GET", self.prefix .. ":PROXY:" .. host)
+	local red = get_redis(self)
+	local config, err = red:cmd("GET", get_prefix(self) .. ":PROXY:" .. host)
 	if err then
 		return nil, "proxy config not found"
 	end
@@ -71,7 +138,8 @@ local fetch_host_schema = function(self, host)
 	if not host or type(host) ~= "string" then
 		return nil, "no host/invalid type provided"
 	end
-	local paths, err = self.red:cmd("GET", self.prefix .. ":API:" .. host)
+	local red = get_redis(self)
+	local paths, err = red:cmd("GET", get_prefix(self) .. ":API:" .. host)
 	if err then
 		return nil, "API schema not found"
 	end
@@ -82,7 +150,8 @@ local fetch_entry_metadata = function(self, host, entry_id)
 	if not host or not entry_id then
 		return nil, "host or entry_id not provided"
 	end
-	local metadata, err = self.red:cmd("GET", self.prefix .. ":API:" .. host .. ":" .. entry_id)
+	local red = get_redis(self)
+	local metadata, err = red:cmd("GET", get_prefix(self) .. ":API:" .. host .. ":" .. entry_id)
 	if err then
 		return nil, "metadata: " .. tostring(err)
 	end
@@ -93,7 +162,8 @@ local fetch_userinfo = function(self, host, user)
 	if not host or not user then
 		return nil, "host/user not provided"
 	end
-	local user_info, err = self.red:cmd("HGET", self.prefix .. ":USERS:" .. host, user)
+	local red = get_redis(self)
+	local user_info, err = red:cmd("HGET", get_prefix(self) .. ":USERS:" .. host, user)
 	if err then
 		return nil, err
 	end
@@ -104,17 +174,19 @@ local fetch_userdata = function(self, host, file)
 	if not host or not file then
 		return nil, "host/file not provided"
 	end
-	local userdata, err = self.red:cmd("GET", self.prefix .. ":DATA:" .. host .. ":" .. file)
+	local red = get_redis(self)
+	local prefix = get_prefix(self)
+	local userdata, err = red:cmd("GET", prefix .. ":DATA:" .. host .. ":" .. file)
 	if err then
-		userdata, err = self.red:cmd("GET", self.prefix .. ":DATA:__:" .. file)
+		userdata, err = red:cmd("GET", prefix .. ":DATA:__:" .. file)
 	end
 	if not userdata then
 		return nil, "userdata not found"
 	end
 	if std.mime.type(file) == "application/lua" then
-		local fn, err = load(userdata)
+		local fn, load_err = load(userdata)
 		if not fn then
-			return nil, "failed to load Lua userdata: " .. tostring(err)
+			return nil, "failed to load Lua userdata: " .. tostring(load_err)
 		end
 		userdata = fn()
 	end
@@ -128,13 +200,17 @@ local fetch_content = function(self, host, query, metadata)
 	if not host or not query then
 		return nil, "host/query not provided"
 	end
+	local data_dir = self.cfg.data_dir
+	local cache_max_size = self.cfg.cache_max_size
+	local red = get_redis(self)
+	local prefix = get_prefix(self)
 	local filename = metadata.file
 	if not filename then
 		filename = query
 		if query:match("/$") and metadata.index then
 			filename = filename .. metadata.index
 		end
-		local normalized_filename, host_path, _, path_err = resolve_storage_paths(self.data_dir, host, filename)
+		local normalized_filename, host_path, _, path_err = resolve_storage_paths(data_dir, host, filename)
 		if not normalized_filename then
 			return nil, "invalid file path: " .. tostring(path_err)
 		end
@@ -143,7 +219,7 @@ local fetch_content = function(self, host, query, metadata)
 			if metadata.try_extensions then
 				local extension_candidates = { ".lua", ".dj", ".md" }
 				for _, ext in ipairs(extension_candidates) do
-					local candidate, candidate_host_path = resolve_storage_paths(self.data_dir, host, filename .. ext)
+					local candidate, candidate_host_path = resolve_storage_paths(data_dir, host, filename .. ext)
 					if candidate and std.fs.file_exists(candidate_host_path) then
 						filename = candidate
 						break
@@ -151,7 +227,7 @@ local fetch_content = function(self, host, query, metadata)
 				end
 			elseif metadata.gsub then
 				local remapped_query = query:gsub(metadata.gsub.pattern, metadata.gsub.replacement)
-				local remapped_filename, _, _, remap_err = resolve_storage_paths(self.data_dir, host, remapped_query)
+				local remapped_filename, _, _, remap_err = resolve_storage_paths(data_dir, host, remapped_query)
 				if not remapped_filename then
 					return nil, "invalid file path: " .. tostring(remap_err)
 				end
@@ -159,30 +235,23 @@ local fetch_content = function(self, host, query, metadata)
 			end
 		end
 	else
-		local normalized_filename, _, _, path_err = resolve_storage_paths(self.data_dir, host, filename)
+		local normalized_filename, _, _, path_err = resolve_storage_paths(data_dir, host, filename)
 		if not normalized_filename then
 			return nil, "invalid file path: " .. tostring(path_err)
 		end
 		filename = normalized_filename
 	end
 	local mime_type = std.mime.type(filename)
-	local count, _ = self.red:cmd("HEXISTS", self.prefix .. ":FILES:" .. host .. ":" .. filename, "content")
+	local target = prefix .. ":FILES:" .. host .. ":" .. filename
+	local count, _ = red:cmd("HEXISTS", target, "content")
 	if count and count == 1 then
-		local resp, _ = self.red:cmd(
-			"HMGET",
-			self.prefix .. ":FILES:" .. host .. ":" .. filename,
-			"content",
-			"hash",
-			"size",
-			"mime",
-			"title"
-		)
+		local resp, _ = red:cmd("HMGET", target, "content", "hash", "size", "mime", "title")
 		if resp then
 			local content = resp[1]
 			if resp[4] == "application/lua" then
-				local fn, err = load(resp[1])
+				local fn, load_err = load(resp[1])
 				if not fn then
-					return nil, "failed to load cached Lua content: " .. tostring(err)
+					return nil, "failed to load cached Lua content: " .. tostring(load_err)
 				end
 				content = fn()
 			end
@@ -190,7 +259,7 @@ local fetch_content = function(self, host, query, metadata)
 		end
 		return nil, "something went wrong"
 	end
-	local _, primary_path, fallback_path, path_err = resolve_storage_paths(self.data_dir, host, filename)
+	local _, primary_path, fallback_path, path_err = resolve_storage_paths(data_dir, host, filename)
 	if not primary_path then
 		return nil, "invalid file path: " .. tostring(path_err)
 	end
@@ -199,33 +268,20 @@ local fetch_content = function(self, host, query, metadata)
 		return nil, filename .. " not found"
 	end
 	local title = metadata.title or ""
-	local resp, _ = self.red:cmd("HGET", self.prefix .. ":TITLES:" .. host, filename)
+	local resp, _ = red:cmd("HGET", prefix .. ":TITLES:" .. host, filename)
 	if resp then
 		title = resp
 	end
 	local size = #content
 	local hash = crypto.bin_to_hex(crypto.sha256(content))
-	if size <= self.cache_max_size then
-		self.red:cmd(
-			"HSET",
-			self.prefix .. ":FILES:" .. host .. ":" .. filename,
-			"content",
-			content,
-			"hash",
-			hash,
-			"size",
-			size,
-			"mime",
-			mime_type,
-			"title",
-			title
-		)
-		self.red:cmd("EXPIRE", self.prefix .. ":FILES:" .. host .. ":" .. filename, 3600)
+	if size <= cache_max_size then
+		red:cmd("HSET", target, "content", content, "hash", hash, "size", size, "mime", mime_type, "title", title)
+		red:cmd("EXPIRE", target, 3600)
 	end
 	if mime_type == "application/lua" then
-		local fn, err = load(content)
+		local fn, load_err = load(content)
 		if not fn then
-			return nil, "failed to load Lua content: " .. tostring(err)
+			return nil, "failed to load Lua content: " .. tostring(load_err)
 		end
 		content = fn()
 	end
@@ -236,8 +292,9 @@ local fetch_hash_and_size = function(self, host, file)
 	if not host or not file then
 		return nil, "host/file not provided"
 	end
-	local target = self.prefix .. ":FILES:" .. host .. ":" .. file
-	local resp, err = self.red:cmd("HMGET", target, "hash", "size")
+	local red = get_redis(self)
+	local target = get_prefix(self) .. ":FILES:" .. host .. ":" .. file
+	local resp, err = red:cmd("HMGET", target, "hash", "size")
 	if err then
 		return nil, "not found"
 	end
@@ -252,8 +309,10 @@ local check_waf = function(self, host, query, headers)
 		return nil
 	end
 
-	local global = self.red:cmd("HGET", self.prefix .. ":WAF", "__")
-	local per_host = self.red:cmd("HGET", self.prefix .. ":WAF", host)
+	local red = get_redis(self)
+	local prefix = get_prefix(self)
+	local global = red:cmd("HGET", prefix .. ":WAF", "__")
+	local per_host = red:cmd("HGET", prefix .. ":WAF", host)
 	if not global and not per_host then
 		return nil
 	end
@@ -302,24 +361,22 @@ local add_waffer = function(self, ip)
 	if not ip then
 		return nil, "no IP provided"
 	end
-	return self.red:cmd("PUBLISH", self.prefix .. ":WAFFERS", ip)
+	local red = get_redis(self)
+	return red:cmd("PUBLISH", get_prefix(self) .. ":WAFFERS", ip)
 end
 
 local check_rate_limit = function(self, host, method, query, remote_ip, period)
 	if not host or not method or not query or not remote_ip then
 		return nil, "not all required args provided"
 	end
-	local count =
-		self.red:cmd("INCR", self.prefix .. ":LIMITS:" .. host .. ":" .. method .. ":" .. query .. ":" .. remote_ip)
+	local red = get_redis(self)
+	local target = get_prefix(self) .. ":LIMITS:" .. host .. ":" .. method .. ":" .. query .. ":" .. remote_ip
+	local count = red:cmd("INCR", target)
 	if not count then
 		return nil
 	end
 	if count == 1 then
-		self.red:cmd(
-			"EXPIRE",
-			self.prefix .. ":LIMITS:" .. host .. ":" .. method .. ":" .. query .. ":" .. remote_ip,
-			period
-		)
+		red:cmd("EXPIRE", target, period)
 	end
 	return count
 end
@@ -329,7 +386,8 @@ local set_session_data = function(self, host, user, ttl)
 		return nil, "required args not present"
 	end
 	local uuid = std.nanoid()
-	local ok, err = self.red:cmd("SET", self.prefix .. ":SESSIONS:" .. host .. ":" .. uuid, user, "EX", ttl)
+	local red = get_redis(self)
+	local ok, err = red:cmd("SET", get_prefix(self) .. ":SESSIONS:" .. host .. ":" .. uuid, user, "EX", ttl)
 	if ok then
 		return uuid
 	end
@@ -340,7 +398,8 @@ local destroy_session = function(self, host, token)
 	if not host or not token then
 		return nil, "required args not provided"
 	end
-	local ok, err = self.red:cmd("DEL", self.prefix .. ":SESSIONS:" .. host .. ":" .. token)
+	local red = get_redis(self)
+	local ok, err = red:cmd("DEL", get_prefix(self) .. ":SESSIONS:" .. host .. ":" .. token)
 	return ok, err
 end
 
@@ -348,11 +407,13 @@ local fetch_session_user = function(self, host, token)
 	if not host or not token then
 		return nil, "required args not provided"
 	end
-	local session_user, err = self.red:cmd("GET", self.prefix .. ":SESSIONS:" .. host .. ":" .. token)
+	local red = get_redis(self)
+	local prefix = get_prefix(self)
+	local session_user, err = red:cmd("GET", prefix .. ":SESSIONS:" .. host .. ":" .. token)
 	if err then
 		return nil
 	end
-	local user = self.red:cmd("HEXISTS", self.prefix .. ":USERS:" .. host, session_user)
+	local user = red:cmd("HEXISTS", prefix .. ":USERS:" .. host, session_user)
 	if not user or user <= 0 then
 		return nil
 	end
@@ -364,15 +425,16 @@ local fetch_metrics = function(self)
 	local metrics_by_method = "# TYPE http_requests_by_method counter\n"
 	local vhosts = {}
 	local seen_hosts = {}
-	local prefix = self.prefix .. ":METRICS:"
+	local prefix = get_prefix(self) .. ":METRICS:"
 	local suffix = ":total"
-	local match = self.prefix .. ":METRICS:*:total"
-	local scan_count = tostring(self.metrics_scan_count or 100)
-	local scan_limit = self.metrics_scan_limit or 2000
+	local match = get_prefix(self) .. ":METRICS:*:total"
+	local scan_count = tostring(self.cfg.metrics_scan_count or 100)
+	local scan_limit = self.cfg.metrics_scan_limit or 2000
 	local scanned_keys = 0
 	local cursor = "0"
+	local red = get_redis(self)
 	while true do
-		local resp = self.red:cmd("SCAN", cursor, "MATCH", match, "COUNT", scan_count)
+		local resp = red:cmd("SCAN", cursor, "MATCH", match, "COUNT", scan_count)
 		if not resp then
 			break
 		end
@@ -401,7 +463,7 @@ local fetch_metrics = function(self)
 	table.sort(vhosts)
 
 	for _, vhost_name in ipairs(vhosts) do
-		local values = self.red:cmd("HGETALL", self.prefix .. ":METRICS:" .. vhost_name .. ":total")
+		local values = red:cmd("HGETALL", get_prefix(self) .. ":METRICS:" .. vhost_name .. ":total")
 		if values then
 			for i = 1, #values, 2 do
 				metrics_total = metrics_total
@@ -414,7 +476,7 @@ local fetch_metrics = function(self)
 					.. "\n"
 			end
 		end
-		values = self.red:cmd("HGETALL", self.prefix .. ":METRICS:" .. vhost_name .. ":by_method")
+		values = red:cmd("HGETALL", get_prefix(self) .. ":METRICS:" .. vhost_name .. ":by_method")
 		if values then
 			for i = 1, #values, 2 do
 				metrics_by_method = metrics_by_method
@@ -432,24 +494,75 @@ local fetch_metrics = function(self)
 end
 
 local update_metrics = function(self, host, method, query, status)
+	local red = get_redis(self)
+	local prefix = get_prefix(self)
 	local resp, err
 	if host ~= "unknown" then
-		resp, err = self.red:cmd("HINCRBY", self.prefix .. ":METRICS:" .. host .. ":total", status, "1")
-		resp, err = self.red:cmd("HINCRBY", self.prefix .. ":METRICS:" .. host .. ":by_method", method, "1")
+		resp, err = red:cmd("HINCRBY", prefix .. ":METRICS:" .. host .. ":total", status, "1")
+		resp, err = red:cmd("HINCRBY", prefix .. ":METRICS:" .. host .. ":by_method", method, "1")
 	end
-	resp, err = self.red:cmd("HINCRBY", self.prefix .. ":METRICS:" .. host .. ":by_request", query, "1")
+	resp, err = red:cmd("HINCRBY", prefix .. ":METRICS:" .. host .. ":by_request", query, "1")
 	return resp, err
 end
 
 local send_ctl_msg = function(self, msg)
-	local resp, err = self.red:cmd("PUBLISH", self.prefix .. ":CTL", msg)
+	local red = get_redis(self)
+	local resp, err = red:cmd("PUBLISH", get_prefix(self) .. ":CTL", msg)
 	return resp, err
+end
+
+local provision_acme_challenge = function(self, domain, token, value)
+	local normalized_domain, domain_err = normalize_acme_domain(domain)
+	if not normalized_domain then
+		return nil, domain_err
+	end
+	local normalized_token, token_err = normalize_acme_token(token)
+	if not normalized_token then
+		return nil, token_err
+	end
+	if type(value) ~= "string" or value == "" then
+		return nil, "value must be a non-empty string"
+	end
+	local red = get_redis(self)
+	local key = build_acme_key(self, normalized_domain, normalized_token)
+	local ok, err = red:cmd("SET", key, value)
+	if err then
+		return nil, err
+	end
+	return ok
+end
+
+local cleanup_acme_challenge = function(self, domain, token)
+	local normalized_domain, domain_err = normalize_acme_domain(domain)
+	if not normalized_domain then
+		return nil, domain_err
+	end
+	local normalized_token, token_err = normalize_acme_token(token)
+	if not normalized_token then
+		return nil, token_err
+	end
+	local red = get_redis(self)
+	local key = build_acme_key(self, normalized_domain, normalized_token)
+	return red:cmd("DEL", key)
+end
+
+local close = function(self)
+	local red = self.__state.red
+	if not red then
+		return true
+	end
+	self.__state.red = nil
+	return red:close()
 end
 
 local new = function(srv_cfg)
 	local red, err = redis.connect(srv_cfg.redis)
 	if err then
 		return nil, err
+	end
+	local ok, client_err = validate_redis_client(red)
+	if not ok then
+		return nil, "invalid redis client: " .. client_err
 	end
 	local metrics_cfg = srv_cfg.metrics or {}
 	local scan_count = tonumber(metrics_cfg.scan_count) or 100
@@ -465,17 +578,17 @@ local new = function(srv_cfg)
 		scan_limit = 10000
 	end
 	return {
-		prefix = srv_cfg.redis.prefix,
-		data_dir = srv_cfg.data_dir,
-		cache_max_size = srv_cfg.cache_max_size,
-		metrics_scan_count = scan_count,
-		metrics_scan_limit = scan_limit,
-		red = red,
-		close = function(self)
-			if self.red then
-				self.red:close()
-			end
-		end,
+		cfg = {
+			prefix = srv_cfg.redis.prefix,
+			data_dir = srv_cfg.data_dir,
+			cache_max_size = srv_cfg.cache_max_size,
+			metrics_scan_count = scan_count,
+			metrics_scan_limit = scan_limit,
+		},
+		__state = {
+			red = red,
+		},
+		close = close,
 		fetch_host_schema = fetch_host_schema,
 		fetch_proxy_config = fetch_proxy_config,
 		fetch_userinfo = fetch_userinfo,
@@ -492,7 +605,11 @@ local new = function(srv_cfg)
 		destroy_session = destroy_session,
 		update_metrics = update_metrics,
 		send_ctl_msg = send_ctl_msg,
+		provision_acme_challenge = provision_acme_challenge,
+		cleanup_acme_challenge = cleanup_acme_challenge,
 	}
 end
 
-return { new = new }
+return {
+	new = new,
+}

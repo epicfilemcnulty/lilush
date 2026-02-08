@@ -1,5 +1,7 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local std = require("std")
 local storage = require("shell.store")
 
@@ -229,6 +231,8 @@ local completion_default = {
 	fs_exe = { fg = { 180, 142, 173 } },
 	bin = { fg = 247, s = "bold" },
 	env = { s = "bold" },
+	lua_keyword = { fg = 74, s = "bold" },
+	lua_symbol = { fg = 111 },
 	history = { text_indent = 4, fg = 65, s = "bold,italic" },
 	dir_history = { text_indent = 4, fg = 246, s = "bold,italic" },
 	snippet = { text_indent = 4, fg = 29, s = "bold" },

@@ -1,9 +1,11 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local std = require("std")
 
 local update = function(self)
-	self.env = std.environ()
+	self.__state.env = std.environ()
 end
 
 local environment = function(self, arg)
@@ -17,7 +19,7 @@ local environment = function(self, arg)
 	end
 
 	self:update()
-	for e, _ in pairs(self.env) do
+	for e, _ in pairs(self.__state.env) do
 		if e:match("^" .. std.escape_magic_chars(name)) then
 			local tc = " "
 			if braces then
@@ -30,8 +32,15 @@ local environment = function(self, arg)
 	return candidates
 end
 
-local new = function()
-	local source = { update = update, search = environment }
+local new = function(config)
+	local source = {
+		cfg = config or {},
+		__state = {
+			env = {},
+		},
+		update = update,
+		search = environment,
+	}
 	source:update()
 	return source
 end

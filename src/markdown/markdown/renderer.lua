@@ -1,6 +1,6 @@
--- SPDX-FileCopyrightText: © 2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 --[[
 Renderer registry and factory for markdown module.
@@ -22,7 +22,7 @@ Usage:
 
 -- Registry of available renderers
 -- Maps name -> module path suffix
-local registry = {
+local RENDERER_REGISTRY = {
 	static = "static",
 	streaming = "streaming",
 	html = "html",
@@ -32,7 +32,7 @@ local registry = {
 -- @param name string Renderer name ("static", "streaming")
 -- @return table Renderer module with new() function
 local function get(name)
-	local suffix = registry[name]
+	local suffix = RENDERER_REGISTRY[name]
 	if not suffix then
 		return nil, "unknown renderer: " .. tostring(name)
 	end
@@ -54,7 +54,7 @@ end
 -- List available renderer names
 local function list()
 	local names = {}
-	for name, _ in pairs(registry) do
+	for name, _ in pairs(RENDERER_REGISTRY) do
 		names[#names + 1] = name
 	end
 	return names

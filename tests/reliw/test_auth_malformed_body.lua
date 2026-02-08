@@ -9,7 +9,7 @@ local testify = testimony.new("== reliw.auth malformed body ==")
 
 testify:that("web.parse_args tolerates nil and non-string bodies", function()
 	helpers.clear_modules({ "web" })
-	local web = helpers.load_module_from_src("web", "src/luasocket/web.lua")
+	local web = helpers.load_module_from_src("web", "src/web/web.lua")
 
 	local parsed_nil = web.parse_args(nil)
 	testimony.assert_equal("table", type(parsed_nil))
@@ -34,7 +34,7 @@ testify:that("auth login POST with malformed body returns deterministic 401", fu
 			return ""
 		end,
 	})
-	local web = helpers.load_module_from_src("web", "src/luasocket/web.lua")
+	local web = helpers.load_module_from_src("web", "src/web/web.lua")
 	testimony.assert_not_nil(web)
 	local auth = helpers.load_module_from_src("reliw.auth", "src/reliw/reliw/auth.lua")
 

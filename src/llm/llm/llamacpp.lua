@@ -1,6 +1,6 @@
 -- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 local json = require("cjson.safe")
 local std = require("std")
@@ -25,6 +25,14 @@ local parse_tool_calls = function(text)
 	return calls
 end
 
+local get_headers = function(self)
+	local headers = { ["Content-Type"] = "application/json" }
+	if self.cfg.api_key then
+		headers["Authorization"] = "Bearer " .. self.cfg.api_key
+	end
+	return headers
+end
+
 local complete = function(self, model, query, sampler, sc, uuid)
 	local data = {
 		model = model,
@@ -41,14 +49,11 @@ local complete = function(self, model, query, sampler, sc, uuid)
 	if sc and #sc > 0 then
 		data.stop = sc
 	end
-	local headers = { ["Content-Type"] = "application/json" }
-	if self.api_key then
-		headers["Authorization"] = "Bearer " .. self.api_key
-	end
+	local headers = get_headers(self)
 	local resp, err = web.request(
-		self.api_url .. "/completion",
+		self.cfg.api_url .. "/completion",
 		{ method = "POST", body = json.encode(data), headers = headers },
-		self.timeout
+		self.cfg.timeout
 	)
 	if resp then
 		if resp.status == 200 then
@@ -64,12 +69,12 @@ local complete = function(self, model, query, sampler, sc, uuid)
 			local answer = {
 				text = text,
 				model = response.model or model,
-				backend = "llamacpp",
+				backend = self.cfg.backend,
 				tokens = predicted_n,
 				ctx = prompt_n + cache_n + predicted_n,
 				rate = timings.predicted_per_second or 0,
 			}
-			if self.debug_mode then
+			if self.cfg.debug_mode then
 				answer.raw = response
 			end
 			local tool_calls = parse_tool_calls(answer.text)
@@ -102,10 +107,7 @@ local stream = function(self, model, query, sampler, sc, uuid, user_callbacks)
 		req_body.stop = sc
 	end
 
-	local headers = { ["Content-Type"] = "application/json" }
-	if self.api_key then
-		headers["Authorization"] = "Bearer " .. self.api_key
-	end
+	local headers = get_headers(self)
 
 	local full_text = buffer.new()
 	local last_event = nil
@@ -126,7 +128,7 @@ local stream = function(self, model, query, sampler, sc, uuid, user_callbacks)
 				full_text:put(data.content)
 				if user_callbacks.chunk then
 					local chunk_data = { text = data.content }
-					if self.debug_mode then
+					if self.cfg.debug_mode then
 						chunk_data.raw = data
 					end
 					user_callbacks.chunk(chunk_data)
@@ -144,7 +146,7 @@ local stream = function(self, model, query, sampler, sc, uuid, user_callbacks)
 	}
 
 	client = web.sse_client(
-		self.api_url .. "/completion",
+		self.cfg.api_url .. "/completion",
 		{ method = "POST", body = json.encode(req_body), headers = headers },
 		callbacks
 	)
@@ -167,13 +169,13 @@ local stream = function(self, model, query, sampler, sc, uuid, user_callbacks)
 	local cache_n = timings.cache_n or 0
 	local response = {
 		text = ft,
-		backend = "llamacpp",
+		backend = self.cfg.backend,
 		model = model,
 		tokens = predicted_n,
 		ctx = prompt_n + cache_n + predicted_n,
 		rate = timings.predicted_per_second or 0,
 	}
-	if self.debug_mode then
+	if self.cfg.debug_mode then
 		response.raw = last_event
 	end
 	if #tool_calls > 0 then
@@ -196,7 +198,7 @@ local chat_complete = function(self, model, messages, sampler, opts)
 	end
 
 	local prompt = templates.apply(opts.template, messages, tool_descs, opts.dont_start)
-	return self:complete(model, prompt, sampler, opts.stop_conditions, opts.uuid)
+	return self.complete(self, model, prompt, sampler, opts.stop_conditions, opts.uuid)
 end
 
 local chat_stream = function(self, model, messages, sampler, opts)
@@ -213,24 +215,28 @@ local chat_stream = function(self, model, messages, sampler, opts)
 
 	local prompt = templates.apply(opts.template, messages, tool_descs, opts.dont_start)
 	local callbacks = opts.callbacks or {}
-	return self:stream(model, prompt, sampler, opts.stop_conditions, opts.uuid, callbacks)
+	return self.stream(self, model, prompt, sampler, opts.stop_conditions, opts.uuid, callbacks)
 end
 
 local new = function(api_url, api_key)
-	api_url = api_url or os.getenv("LLM_API_URL") or "http://127.0.0.1:8080"
+	local resolved_api_url = api_url or os.getenv("LLM_API_URL") or "http://127.0.0.1:8080"
 	local timeout = tonumber(os.getenv("LLM_API_TIMEOUT")) or 600
-	local client = {
-		api_url = api_url,
-		api_key = api_key or os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY"),
-		backend = "llamacpp",
-		timeout = timeout,
+	local resolved_api_key = api_key or os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+	local instance = {
+		cfg = {
+			api_url = resolved_api_url,
+			api_key = resolved_api_key,
+			backend = "llamacpp",
+			timeout = timeout,
+			debug_mode = os.getenv("LLM_DEBUG_MODE"),
+		},
+		__state = {},
 		complete = complete,
 		stream = stream,
-		debug_mode = os.getenv("LLM_DEBUG_MODE"),
 		chat_complete = chat_complete,
 		chat_stream = chat_stream,
 	}
-	return client
+	return instance
 end
 
 return { new = new }

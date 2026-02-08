@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local web = require("web")
 local json = require("cjson.safe")
 
@@ -30,17 +34,17 @@ local login = function(self, user, pass, mount)
 	if not pass or type(pass) ~= "string" then
 		return nil, "password must be provided"
 	end
-	local url = self.vault_addr .. "/v1/" .. mount .. "/login/" .. user
+	local url = self.cfg.vault_addr .. "/v1/" .. mount .. "/login/" .. user
 	local body = { password = pass }
 	local response, err =
-		handle_response(web.request(url, { method = "POST", body = json.encode(body), headers = self.headers }))
+		handle_response(web.request(url, { method = "POST", body = json.encode(body), headers = self.__state.headers }))
 	if not response then
 		return nil, err
 	end
-	self.headers["x-vault-token"] = response.auth.client_token
+	self.__state.headers["x-vault-token"] = response.auth.client_token
 	local lease_duration = response.auth.lease_duration or 0
-	self.token = response.auth.client_token
-	self.valid_till = lease_duration + os.time()
+	self.__state.token = response.auth.client_token
+	self.__state.valid_till = lease_duration + os.time()
 	return response
 end
 
@@ -49,8 +53,27 @@ local set_token = function(self, token)
 	if not token then
 		return nil, "no token provided/found"
 	end
-	self.headers["x-vault-token"] = token
+	self.__state.headers["x-vault-token"] = token
+	self.__state.token = token
+	self.__state.valid_till = nil
 	return true
+end
+
+local get_token = function(self)
+	return self.__state.token
+end
+
+local get_valid_till = function(self)
+	return self.__state.valid_till
+end
+
+local get_token_ttl = function(self, now)
+	local valid_till = self.get_valid_till(self)
+	if not valid_till then
+		return 0
+	end
+	now = now or os.time()
+	return valid_till - now
 end
 
 local get_secret = function(self, path, mount)
@@ -62,8 +85,8 @@ local get_secret = function(self, path, mount)
 	if not secret then
 		secret = path
 	end
-	local url = self.vault_addr .. "/v1/" .. mount .. "/" .. secret
-	local response, err = handle_response(web.request(url, { method = "GET", headers = self.headers }))
+	local url = self.cfg.vault_addr .. "/v1/" .. mount .. "/" .. secret
+	local response, err = handle_response(web.request(url, { method = "GET", headers = self.__state.headers }))
 	if not response then
 		return nil, err
 	end
@@ -78,8 +101,8 @@ local list_secrets = function(self, path, mount)
 	if not path or type(path) ~= "string" then
 		return nil, "secret path not provided"
 	end
-	local url = self.vault_addr .. "/v1/" .. mount .. "/" .. path
-	local response, err = handle_response(web.request(url, { method = "LIST", headers = self.headers }))
+	local url = self.cfg.vault_addr .. "/v1/" .. mount .. "/" .. path
+	local response, err = handle_response(web.request(url, { method = "LIST", headers = self.__state.headers }))
 	if not response then
 		return nil, err
 	end
@@ -87,8 +110,8 @@ local list_secrets = function(self, path, mount)
 end
 
 local healthy = function(self)
-	local url = self.vault_addr .. "/v1/sys/health"
-	local response, err = handle_response(web.request(url, { method = "GET", headers = self.headers }))
+	local url = self.cfg.vault_addr .. "/v1/sys/health"
+	local response, err = handle_response(web.request(url, { method = "GET", headers = self.__state.headers }))
 	if not response then
 		return nil, err
 	end
@@ -103,18 +126,27 @@ end
 
 local new = function(vault_addr, token)
 	local client = {
-		vault_addr = vault_addr or os.getenv("VAULT_ADDR") or "127.0.0.1:8200",
-		headers = {
-			["content-type"] = "application/json",
-			["x-vault-token"] = nil,
+		cfg = {
+			vault_addr = vault_addr or os.getenv("VAULT_ADDR") or "127.0.0.1:8200",
+		},
+		__state = {
+			headers = {
+				["content-type"] = "application/json",
+				["x-vault-token"] = nil,
+			},
+			token = nil,
+			valid_till = nil,
 		},
 		healthy = healthy,
 		login = login,
 		set_token = set_token,
+		get_token = get_token,
+		get_valid_till = get_valid_till,
+		get_token_ttl = get_token_ttl,
 		get_secret = get_secret,
 		list_secrets = list_secrets,
 	}
-	client:set_token(token)
+	client.set_token(client, token)
 	return client
 end
 

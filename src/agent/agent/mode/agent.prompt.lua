@@ -1,5 +1,6 @@
--- SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 --[[
 Agent mode prompt.
@@ -67,48 +68,52 @@ local function short_model_name(model)
 end
 
 local set = function(self, options)
+	local state = self.__state
 	options = options or {}
 	for k, v in pairs(options) do
 		-- Use false as sentinel to clear a value (since pairs() skips nil)
 		if v == false and (k == "status") then
-			self[k] = nil
+			state[k] = nil
+		elseif k == "home" then
+			self.cfg.home = v
 		else
-			self[k] = v
+			state[k] = v
 		end
 	end
 end
 
 local get = function(self)
+	local state = self.__state
 	local buf = buffer.new()
 
 	-- Mode indicator: [agent:model]
 	buf:put(style_text(tss, "prompts.agent.mode.prefix"))
 	buf:put(style_text(tss, "prompts.agent.mode.label"))
 
-	if self.model then
+	if state.model then
 		buf:put(style_text(tss, "prompts.agent.sep", ":"))
-		buf:put(style_text(tss, "prompts.agent.mode.model", short_model_name(self.model)))
+		buf:put(style_text(tss, "prompts.agent.mode.model", short_model_name(state.model)))
 	end
 
 	buf:put(style_text(tss, "prompts.agent.mode.suffix"))
 
 	-- Working directory
 	local cwd = std.fs.cwd() or "?"
-	local home = self.home or os.getenv("HOME") or ""
+	local home = self.cfg.home or os.getenv("HOME") or ""
 	cwd = cwd:gsub("^" .. std.escape_magic_chars(home), "~")
 
 	buf:put(" ")
 	buf:put(style_text(tss, "prompts.agent.dir", cwd))
 
 	-- Token count and cost
-	if self.tokens and self.tokens > 0 then
+	if state.tokens and state.tokens > 0 then
 		buf:put(" ")
 		buf:put(style_text(tss, "prompts.agent.tokens.prefix"))
 
 		-- Color based on usage percentage
 		local token_style = "prompts.agent.tokens.count"
-		if self.max_tokens and self.max_tokens > 0 then
-			local usage = self.tokens / self.max_tokens
+		if state.max_tokens and state.max_tokens > 0 then
+			local usage = state.tokens / state.max_tokens
 			if usage > 0.9 then
 				token_style = "prompts.agent.tokens.critical"
 			elseif usage > 0.7 then
@@ -116,30 +121,30 @@ local get = function(self)
 			end
 		end
 
-		buf:put(style_text(tss, token_style, format_tokens(self.tokens)))
+		buf:put(style_text(tss, token_style, format_tokens(state.tokens)))
 		buf:put(style_text(tss, "prompts.agent.tokens.unit"))
 
 		-- Show cost if available
-		if self.cost and self.cost > 0 then
+		if state.cost and state.cost > 0 then
 			local pricing = require("llm.pricing")
 			buf:put(style_text(tss, "prompts.agent.cost.prefix"))
-			buf:put(style_text(tss, "prompts.agent.cost.amount", pricing.format_cost(self.cost)))
+			buf:put(style_text(tss, "prompts.agent.cost.amount", pricing.format_cost(state.cost)))
 		end
 
 		buf:put(style_text(tss, "prompts.agent.tokens.suffix"))
 	end
 
 	-- Status indicator
-	if self.status then
+	if state.status then
 		buf:put(" ")
-		local status_style = "prompts.agent.status." .. self.status
+		local status_style = "prompts.agent.status." .. state.status
 		buf:put(style_text(tss, status_style))
 	end
 
 	-- Multi-line indicator
-	if self.lines and self.lines > 1 then
+	if state.lines and state.lines > 1 then
 		buf:put(style_text(tss, "prompts.agent.sep", "["))
-		buf:put(style_text(tss, "prompts.agent.sep", tostring(self.line or 1)))
+		buf:put(style_text(tss, "prompts.agent.sep", tostring(state.line or 1)))
 		buf:put(style_text(tss, "prompts.agent.sep", "]"))
 	end
 
@@ -151,21 +156,25 @@ local get = function(self)
 end
 
 local new = function(options)
-	local prompt = {
-		home = os.getenv("HOME") or "/tmp",
-		model = nil,
-		backend = nil,
-		tokens = 0,
-		max_tokens = 100000,
-		cost = 0, -- Session cost in dollars
-		status = nil, -- nil, "streaming", "thinking", "error"
-		lines = 1,
-		line = 1,
+	local instance = {
+		cfg = {
+			home = os.getenv("HOME") or "/tmp",
+		},
+		__state = {
+			model = nil,
+			backend = nil,
+			tokens = 0,
+			max_tokens = 100000,
+			cost = 0, -- Session cost in dollars
+			status = nil, -- nil, "streaming", "thinking", "error"
+			lines = 1,
+			line = 1,
+		},
 		get = get,
 		set = set,
 	}
-	prompt:set(options)
-	return prompt
+	instance:set(options)
+	return instance
 end
 
 return { new = new }

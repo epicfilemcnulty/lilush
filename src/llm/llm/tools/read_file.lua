@@ -1,19 +1,20 @@
 -- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 local std = require("std")
 
 -- Default max lines to prevent overwhelming context
 local DEFAULT_MAX_LINES = 1000
+local TOOL_NAME = "read_file"
 
 -- TODO: Refactor to use `offset` and `limit` instead of start_line/end_line/max_lines
 return {
-	name = "read_file",
+	name = TOOL_NAME,
 	description = {
 		type = "function",
 		["function"] = {
-			name = "read_file",
+			name = TOOL_NAME,
 			description = "Reads the local file at `filepath` and returns its content. "
 				.. "Supports optional line range selection with start_line/end_line. "
 				.. string.format(
@@ -48,13 +49,13 @@ return {
 		arguments = arguments or {}
 		local filepath = arguments.filepath
 		if not filepath then
-			return { error = "filepath is required" }
+			return { name = TOOL_NAME, ok = false, error = "filepath is required" }
 		end
 
 		-- Read file content
 		local content, err = std.fs.read_file(filepath)
 		if err then
-			return { name = "read_file", filepath = filepath, error = err }
+			return { name = TOOL_NAME, ok = false, filepath = filepath, error = err }
 		end
 
 		-- Split into lines
@@ -81,7 +82,8 @@ return {
 		end
 		if start_line > total_lines then
 			return {
-				name = "read_file",
+				name = TOOL_NAME,
+				ok = false,
 				filepath = filepath,
 				content = "",
 				lines = { start = start_line, ["end"] = start_line - 1 },
@@ -112,7 +114,8 @@ return {
 
 		-- Build result
 		local result = {
-			name = "read_file",
+			name = TOOL_NAME,
+			ok = true,
 			filepath = filepath,
 			content = table.concat(selected, "\n"),
 			lines = { start = start_line, ["end"] = actual_end },

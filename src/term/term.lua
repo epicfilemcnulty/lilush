@@ -1,6 +1,6 @@
 -- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 local core = require("term.core")
 local buffer = require("string.buffer")
@@ -39,7 +39,7 @@ local write_at = function(l, c, s)
 	io.flush()
 end
 
-local movements = {
+local MOVEMENTS = {
 	up = "\027[{count}A",
 	down = "\027[{count}B",
 	right = "\027[{count}C",
@@ -50,9 +50,9 @@ local movements = {
 }
 
 local move = function(direction, count)
-	if movements[direction] then
+	if MOVEMENTS[direction] then
 		local count = count or 1
-		local move = movements[direction]:gsub("{count}", count)
+		local move = MOVEMENTS[direction]:gsub("{count}", count)
 		io.write(move)
 		io.flush()
 	end
@@ -72,7 +72,7 @@ local clear_line = function(mode)
 	write("\027[" .. mode .. "K")
 end
 
-local colors = {
+local COLORS = {
 	black = 30,
 	red = 31,
 	green = 32,
@@ -84,7 +84,7 @@ local colors = {
 	reset = 39,
 }
 
-local styles = {
+local STYLES = {
 	reset = 0,
 	bold = 1,
 	dim = 2,
@@ -106,8 +106,8 @@ local style = function(...)
 	local args = { ... }
 	local style_ansi = "\27["
 	for _, v in ipairs(args) do
-		if styles[v] then
-			style_ansi = style_ansi .. styles[v] .. ";"
+		if STYLES[v] then
+			style_ansi = style_ansi .. STYLES[v] .. ";"
 		end
 	end
 	if style_ansi == "\27[" then
@@ -129,8 +129,8 @@ local color = function(fg, bg)
 	local fg_ansi = ""
 	local bg_ansi = ""
 	if fg then
-		if type(fg) == "string" and colors[fg] then
-			fg_ansi = "\027[" .. colors[fg] .. "m"
+		if type(fg) == "string" and COLORS[fg] then
+			fg_ansi = "\027[" .. COLORS[fg] .. "m"
 		elseif type(fg) == "number" then
 			fg_ansi = "\027[38;5;" .. fg .. "m"
 		else
@@ -138,8 +138,8 @@ local color = function(fg, bg)
 		end
 	end
 	if bg then
-		if type(bg) == "string" and colors[bg] then
-			bg_ansi = "\027[" .. colors[bg] + 10 .. "m"
+		if type(bg) == "string" and COLORS[bg] then
+			bg_ansi = "\027[" .. COLORS[bg] + 10 .. "m"
 		elseif type(bg) == "number" then
 			bg_ansi = "\027[48;5;" .. bg .. "m"
 		else
@@ -217,7 +217,7 @@ end
 ]]
 
 -- Preset configurations for common text sizing scenarios
-local ts_presets = {
+local TS_PRESETS = {
 	double = { s = 2 },
 	triple = { s = 3 },
 	quadruple = { s = 4 },
@@ -378,14 +378,14 @@ end
 
 --[[
   Calculate text-sizing chunk boundaries without generating escape sequences.
-  
+
   This is a helper for apply_sized() in TSS, which needs to know where chunks
   break so it can apply inline styles correctly within each chunk.
-  
+
   Parameters:
     text: plain text (no ANSI codes) to analyze
     opts: text-sizing options table (same format as text_size)
-  
+
   Returns:
     If chunking is needed: table of {start, stop, meta_str} where start/stop are
       1-based character indices (UTF-8 aware), and meta_str is the OSC 66 metadata
@@ -772,7 +772,7 @@ end
 ]]
 --
 
-local kkbp_codes = {
+local KKBP_CODES = {
 	["57441"] = "LEFT_SHIFT",
 	["57442"] = "LEFT_CTRL",
 	["57443"] = "LEFT_ALT",
@@ -853,7 +853,7 @@ local kkbp_codes = {
 	["127"] = "BACKSPACE",
 	["27"] = "ESC",
 }
-local kkbp_codes_legacy = {
+local KKBP_CODES_LEGACY = {
 	["2"] = "INSERT",
 	["3"] = "DELETE",
 	["5"] = "PAGE_UP",
@@ -970,10 +970,10 @@ local get = function()
 	if base then
 		base = std.utf.char(tonumber(base))
 	end
-	if seq:match("~") and kkbp_codes_legacy[codepoint] then
-		codepoint = kkbp_codes_legacy[codepoint]
-	elseif kkbp_codes[codepoint] then
-		codepoint = kkbp_codes[codepoint]
+	if seq:match("~") and KKBP_CODES_LEGACY[codepoint] then
+		codepoint = KKBP_CODES_LEGACY[codepoint]
+	elseif KKBP_CODES[codepoint] then
+		codepoint = KKBP_CODES[codepoint]
 	else
 		local cp = tonumber(codepoint)
 		if cp then
@@ -1069,10 +1069,11 @@ local simple_get = function()
 	return shortcut
 end
 
-local _M = {
+return {
+	TS_PRESETS = TS_PRESETS,
+	COLORS = COLORS,
 	kitty_notify = kitty_notify,
 	title = title,
-	colors = colors,
 	go = go,
 	move = move,
 	clear_line = clear_line,
@@ -1109,7 +1110,4 @@ local _M = {
 	text_size_chunks = text_size_chunks,
 	has_ts = has_ts,
 	has_ts_combined = has_ts_combined,
-	ts_presets = ts_presets,
 }
-
-return _M

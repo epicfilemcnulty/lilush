@@ -1,6 +1,6 @@
--- SPDX-FileCopyrightText: © 2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 --[[
 Default theme for markdown renderers.
@@ -89,6 +89,12 @@ local DEFAULT_RSS = {
 		num = { fg = 145 },
 		str = { fg = 144 },
 		bool = { fg = 146 },
+		opt = { fg = 110 },
+		arg = { fg = 108 },
+		flag = { fg = 111, s = "bold" },
+		meta = { fg = 247, s = "italic" },
+		neg = { fg = 167 },
+		multi = { fg = 179 },
 		fn = { before = "ʄ(", after = ")", fg = 175 },
 		file = { before = "Ⓕ ", fg = 152 },
 		dir = { before = "Ⓓ ", fg = 153 },
@@ -142,6 +148,7 @@ local DEFAULT_RSS = {
 	-- Table styles (GFM)
 	table = {
 		-- block_indent = 1, -- applies to full rendered table lines
+		overflow = "wrap", -- wrap (default) or clip
 		border = DEFAULT_TABLE_BORDERS,
 		header = { s = "bold", fg = 180, align = "center" },
 		cell = { fg = 250 },

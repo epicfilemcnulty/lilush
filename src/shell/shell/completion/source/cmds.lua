@@ -1,51 +1,8 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local std = require("std")
-
-local git_subcommands = {
-	["status"] = true,
-	["checkout"] = true,
-	["commit"] = true,
-	["diff"] = true,
-	["merge"] = true,
-	["log"] = true,
-	["pull"] = true,
-	["push"] = true,
-	["branch"] = true,
-}
-
-local docker_subcommands = {
-	["start"] = true,
-	["stop"] = true,
-	["images"] = true,
-	["inspect"] = true,
-	["run"] = true,
-	["tag"] = true,
-	["pull"] = true,
-	["push"] = true,
-	["exec"] = true,
-	["ps"] = true,
-	["rm"] = true,
-	["rmi"] = true,
-	["volume"] = true,
-}
-
-local ktl_subcommands = {
-	["describe"] = true,
-	["port-forward"] = true,
-	["get"] = true,
-	["delete"] = true,
-	["apply"] = true,
-	["logs"] = true,
-}
-
-local job_subcommands = {
-	["list"] = true,
-	["start"] = true,
-	["kill"] = true,
-	["attach"] = true,
-	["reap"] = true,
-}
 
 local kubectl_profile_completions = function(self, args)
 	local candidates = {}
@@ -66,7 +23,7 @@ end
 local kubectl_completions = function(self, args)
 	local candidates = {}
 	if #args == 1 then
-		for cmd, _ in pairs(ktl_subcommands) do
+		for cmd, _ in pairs(self.cfg.ktl_subcommands) do
 			if cmd:match("^" .. std.escape_magic_chars(args[1])) then
 				table.insert(candidates, cmd:sub(#args[1] + 1))
 			end
@@ -77,9 +34,9 @@ local kubectl_completions = function(self, args)
 end
 
 local ssh_profile_completions = function(self, args)
-	local args = args or {}
+	local cmd_args = args or {}
 	local candidates = {}
-	if args[1] then
+	if cmd_args[1] then
 		local home = os.getenv("HOME") or ""
 		local dirs = std.fs.list_dir(home .. "/.ssh/profiles/")
 		local profiles = {}
@@ -89,8 +46,8 @@ local ssh_profile_completions = function(self, args)
 			end
 		end
 		for _, profile in ipairs(profiles) do
-			if profile:match("^" .. std.escape_magic_chars(args[1])) then
-				table.insert(candidates, profile:sub(#args[1] + 1))
+			if profile:match("^" .. std.escape_magic_chars(cmd_args[1])) then
+				table.insert(candidates, profile:sub(#cmd_args[1] + 1))
 			end
 		end
 	end
@@ -99,10 +56,10 @@ local ssh_profile_completions = function(self, args)
 end
 
 local ssh_completions = function(self, args)
-	local args = args or {}
+	local cmd_args = args or {}
 	local candidates = {}
-	if #args > 0 then
-		local arg = args[#args]
+	if #cmd_args > 0 then
+		local arg = cmd_args[#cmd_args]
 		local home = os.getenv("HOME") or ""
 		local ssh_config = std.fs.read_file(home .. "/.ssh/config") or ""
 		local hosts = {}
@@ -122,7 +79,7 @@ end
 local git_completions = function(self, args)
 	local candidates = {}
 	local arg = args[#args]
-	for cmd, _ in pairs(git_subcommands) do
+	for cmd, _ in pairs(self.cfg.git_subcommands) do
 		if cmd:match("^" .. std.escape_magic_chars(arg)) then
 			table.insert(candidates, cmd:sub(#arg + 1))
 		end
@@ -134,7 +91,7 @@ end
 local docker_completions = function(self, args)
 	local candidates = {}
 	local arg = args[#args]
-	for cmd, _ in pairs(docker_subcommands) do
+	for cmd, _ in pairs(self.cfg.docker_subcommands) do
 		if cmd:match("^" .. std.escape_magic_chars(arg)) then
 			table.insert(candidates, cmd:sub(#arg + 1))
 		end
@@ -146,7 +103,7 @@ end
 local job_completions = function(self, args)
 	local candidates = {}
 	local arg = args[#args]
-	for cmd, _ in pairs(job_subcommands) do
+	for cmd, _ in pairs(self.cfg.job_subcommands) do
 		if cmd:match("^" .. std.escape_magic_chars(arg)) then
 			table.insert(candidates, cmd:sub(#arg + 1))
 		end
@@ -155,32 +112,9 @@ local job_completions = function(self, args)
 	return candidates
 end
 
-local list = {
-	["job"] = function(self, args)
-		return job_completions(self, args)
-	end,
-	["git"] = function(self, args)
-		return git_completions(self, args)
-	end,
-	["ktl"] = function(self, args)
-		return kubectl_completions(self, args)
-	end,
-	["ktl.profile"] = function(self, args)
-		return kubectl_profile_completions(self, args)
-	end,
-	["docker"] = function(self, args)
-		return docker_completions(self, args)
-	end,
-	["ssh.profile"] = function(self, args)
-		return ssh_profile_completions(self, args)
-	end,
-	["ssh"] = function(self, args)
-		return ssh_completions(self, args)
-	end,
-}
-
 local commands = function(self, cmd, args)
 	if #args > 0 then
+		local list = self.cfg.list
 		if list[cmd] then
 			return list[cmd](self, args)
 		end
@@ -188,8 +122,83 @@ local commands = function(self, cmd, args)
 	return {}
 end
 
-local new = function()
-	local source = { search = commands, list = list }
+local new = function(config)
+	local cfg = {
+		git_subcommands = {
+			status = true,
+			checkout = true,
+			commit = true,
+			diff = true,
+			merge = true,
+			log = true,
+			pull = true,
+			push = true,
+			branch = true,
+		},
+		docker_subcommands = {
+			start = true,
+			stop = true,
+			images = true,
+			inspect = true,
+			run = true,
+			tag = true,
+			pull = true,
+			push = true,
+			exec = true,
+			ps = true,
+			rm = true,
+			rmi = true,
+			volume = true,
+		},
+		ktl_subcommands = {
+			describe = true,
+			["port-forward"] = true,
+			get = true,
+			delete = true,
+			apply = true,
+			logs = true,
+		},
+		job_subcommands = {
+			list = true,
+			start = true,
+			kill = true,
+			attach = true,
+			reap = true,
+		},
+		list = {},
+	}
+	if config then
+		std.tbl.merge(cfg, config)
+	end
+
+	cfg.list = {
+		job = function(self, args)
+			return job_completions(self, args)
+		end,
+		git = function(self, args)
+			return git_completions(self, args)
+		end,
+		ktl = function(self, args)
+			return kubectl_completions(self, args)
+		end,
+		["ktl.profile"] = function(self, args)
+			return kubectl_profile_completions(self, args)
+		end,
+		docker = function(self, args)
+			return docker_completions(self, args)
+		end,
+		["ssh.profile"] = function(self, args)
+			return ssh_profile_completions(self, args)
+		end,
+		ssh = function(self, args)
+			return ssh_completions(self, args)
+		end,
+	}
+
+	local source = {
+		cfg = cfg,
+		search = commands,
+	}
 	return source
 end
 

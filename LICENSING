@@ -1,0 +1,23 @@
+Lilush — Dual-Licensed Software
+
+Copyright © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+
+This project is dual-licensed. You may use, modify, and distribute it
+under your choice of:
+
+  1. Open Weights License v1.0 or later      — see LICENSE
+  2. GNU General Public License v3.0 or later — see LICENSE-GPL3
+
+The compiled binary statically links the following third-party libraries:
+
+  LuaJIT      — MIT License           (© 2005—2026 Mike Pall)
+  LuaSocket   — MIT License           (© 1999—2013 Diego Nehab)
+  LuaSec      — MIT License           (© 2006—2023 Bruno Silvestre)
+  WolfSSL     — GPLv3+ or commercial   (© wolfSSL Inc.)
+  WireGuard   — LGPL-2.1+             (© Jason A. Donenfeld, Pablo Neira Ayuso)
+
+Because WolfSSL is licensed under GPLv3+, the combined binary as
+distributed is subject to the terms of the GPLv3+. The source code
+of Lilush itself remains available under either license at your choice.
+
+If you have licensing questions, contact: vladimir@deviant.guru

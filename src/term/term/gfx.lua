@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 --[[
 
   Module for working with Kitty's terminal graphics
@@ -169,14 +173,18 @@ local new_canvas = function(config)
 	std.tbl.merge(default_config, config)
 
 	local canvas = {
-		data = {},
 		cfg = default_config,
+		__state = {
+			data = {},
+		},
+		data = nil,
 		-- methods
 		tostring = function(self)
 			local rgba_data = sbuf.new(self.cfg.width * self.cfg.height * 4)
 			for y = 1, self.cfg.height do
+				local row = self.__state.data[y]
 				for x = 1, self.cfg.width do
-					local pixel = self.data[y][x]
+					local pixel = row[x]
 					local alpha = pixel[4] or 255 -- Default to fully solid if no alpha provided
 					rgba_data:put(string.char(pixel[1], pixel[2], pixel[3], alpha))
 				end
@@ -188,16 +196,17 @@ local new_canvas = function(config)
 		fill = function(self, col)
 			col = col or self.cfg.colors.bg
 			for y = 1, self.cfg.height do
-				self.data[y] = {}
+				self.__state.data[y] = {}
 				for x = 1, self.cfg.width do
-					self.data[y][x] = { col[1], col[2], col[3], col[4] or 255 }
+					self.__state.data[y][x] = { col[1], col[2], col[3], col[4] or 255 }
 				end
 			end
+			self.data = self.__state.data
 		end,
 		pixel = function(self, x, y, col)
 			col = col or self.cfg.colors.main
 			if x > 0 and x <= self.cfg.width and y > 0 and y <= self.cfg.height then
-				self.data[y][x] = { col[1], col[2], col[3], col[4] or 255 }
+				self.__state.data[y][x] = { col[1], col[2], col[3], col[4] or 255 }
 			end
 		end,
 		line = function(self, x1, y1, x2, y2, col)
@@ -253,6 +262,7 @@ local new_canvas = function(config)
 			end
 		end,
 	}
+	canvas.data = canvas.__state.data
 	canvas:fill()
 	return canvas
 end

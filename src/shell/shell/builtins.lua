@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local std = require("std")
 local term = require("term")
 local widgets = require("term.widgets")
@@ -29,7 +30,7 @@ end
     Throw errors to STDERR
 ]]
 local errmsg = function(msg)
-	local out = markdown.render(tostring(msg), { tss = theme.renderer.builtin_error })
+	local out = markdown.render(tostring(msg), { rss = theme.renderer.builtin_error })
 	io.stderr:write(out)
 	io.stderr:flush()
 end
@@ -42,6 +43,20 @@ end
 
 local style_text = function(tss, ...)
 	return tss:apply(...).text
+end
+
+local parse_or_report = function(parser, args)
+	local parsed, err = parser:parse(args)
+	if err then
+		local msg = argparser.format_error(err)
+		if err.kind == "help" then
+			helpmsg(msg)
+			return nil, 0
+		end
+		errmsg(msg)
+		return nil, 127
+	end
+	return parsed
 end
 --[[ 
     DIR FUNCTIONS 
@@ -211,51 +226,42 @@ render_dir = function(path, pattern, indent, args)
 	return buf:get()
 end
 
-local list_dir_help = [[
-: ls
-
-  List directory contents.
-]]
-
 local list_dir = function(cmd, args)
-	local parser = argparser.new({
-		long = { kind = "bool", note = "Show owner, date, permissions and link targets" },
-		tree = { kind = "bool", note = "Show directory tree" },
-		all = { kind = "bool", note = "Show hidden files" },
-		pathname = { kind = "str", default = ".", idx = 1 },
-	}, list_dir_help)
-	local args, err, help = parser:parse(args)
-	if err then
-		if help then
-			helpmsg(err)
-			return 0
-		end
-		errmsg(err)
-		return 127
+	local parser = argparser
+		.command("ls")
+		:summary("List directory contents.")
+		:option("all", { type = "boolean", short = "a", note = "Show hidden files" })
+		:option("tree", { type = "boolean", short = "t", note = "Show directory tree" })
+		:option("long", { type = "boolean", short = "l", note = "Show owner, date, permissions and link targets" })
+		:argument("path", { type = "string", nargs = "?", default = "." })
+		:build()
+	local parsed, status = parse_or_report(parser, args)
+	if status then
+		return status
 	end
 	local pattern = "^[^.]" -- no hidden files by default
-	if args.all then
+	if parsed.all then
 		pattern = ".*"
 	end
 
 	-- Parse pathname to see if it contains a pattern
 	-- along with the path
-	local path, p = args.pathname:match("^(.-)([^/]+)$")
+	local path, p = parsed.path:match("^(.-)([^/]+)$")
 	if p then
 		if #path == 0 then
 			if p ~= "." and p ~= ".." then
 				pattern = p
-				args.pathname = "."
+				parsed.path = "."
 			end
 		else
-			local st = std.fs.stat(args.pathname)
+			local st = std.fs.stat(parsed.path)
 			if not st or st.mode ~= "d" then
-				args.pathname = path
+				parsed.path = path
 				pattern = std.escape_magic_chars(p)
 			end
 		end
 	end
-	local out, err = render_dir(args.pathname, pattern, 0, args)
+	local out, err = render_dir(parsed.path, pattern, 0, parsed)
 	if not out then
 		errmsg(err)
 		return 127
@@ -276,27 +282,19 @@ local change_dir = function(cmd, args)
 	return 255
 end
 
-local mkdir_help = [[
-: mkdir
-
-  Make a directory.
-]]
 local mkdir = function(cmd, args)
-	local parser = argparser.new({
-		recursive = { kind = "bool", note = "Make all absent directories in the provided path" },
-		pathname = { kind = "str", idx = 1 },
-	}, mkdir_help)
-	local args, err, help = parser:parse(args)
-	if err then
-		if help then
-			helpmsg(err)
-			return 0
-		end
-		errmsg(err)
-		return 127
+	local parser = argparser
+		.command("mkdir")
+		:summary("Make a directory.")
+		:option("parents", { type = "boolean", short = "p", note = "Make all absent directories in the provided path" })
+		:argument("path", { type = "string" })
+		:build()
+	local parsed, status_code = parse_or_report(parser, args)
+	if status_code then
+		return status_code
 	end
 
-	local status, err = std.fs.mkdir(args.pathname, nil, args.recursive)
+	local status, err = std.fs.mkdir(parsed.path, nil, parsed.parents)
 	if not status then
 		errmsg(err)
 		return 127
@@ -328,38 +326,30 @@ local sys_dirs = {
 	["/usr/bin"] = true,
 }
 
-local file_remove_help = [[
-: rm
-
-  Remove files/directories.
-]]
 local file_remove = function(cmd, args)
-	local parser = argparser.new({
-		recursive = { kind = "bool", note = "remove non-empty directories" },
-		force = { kind = "bool", note = "remove directories too" },
-		pathname = { kind = "str", idx = 1, multi = true },
-	}, file_remove_help)
-	local args, err, help = parser:parse(args)
-	if err then
-		if help then
-			helpmsg(err)
-			return 0
-		end
-		errmsg(err)
-		return 127
+	local parser = argparser
+		.command("rm")
+		:summary("Remove files/directories.")
+		:option("recursive", { type = "boolean", short = "r", note = "remove non-empty directories" })
+		:option("force", { type = "boolean", short = "f", note = "remove directories too" })
+		:argument("paths", { type = "string", nargs = "+" })
+		:build()
+	local parsed, status_code = parse_or_report(parser, args)
+	if status_code then
+		return status_code
 	end
-	for i, pathname in ipairs(args.pathname) do
+	for i, pathname in ipairs(parsed.paths) do
 		local st, err = std.fs.stat(pathname)
 		if not st then
 			errmsg(err)
 			return 127
 		end
 		if st.mode == "d" then
-			if not args.force then
+			if not parsed.force then
 				errmsg("use `-f`{.flag} flag to remove a dir")
 				return 127
 			end
-			if std.fs.non_empty_dir(pathname) and not args.recursive then
+			if std.fs.non_empty_dir(pathname) and not parsed.recursive then
 				errmsg("use `-rf`{.flag} flags to remove a non-empty dir")
 				return 127
 			end
@@ -371,14 +361,14 @@ local file_remove = function(cmd, args)
 		if not path:match("^/") then
 			path = pwd .. "/" .. path
 		end
-		if args.force and (sys_dirs[path] or path == home_dir or pathname == "/") then
+		if parsed.force and (sys_dirs[path] or path == home_dir or pathname == "/") then
 			if cmd ~= "rmrf" then
 				errmsg("use `rmrf -rf`{.flag} if you do want to delete `" .. path .. "`")
 				return 33
 			end
 		end
 
-		local status, err = std.fs.remove(pathname, args.recursive)
+		local status, err = std.fs.remove(pathname, parsed.recursive)
 		if not status then
 			errmsg(err)
 			return 127
@@ -391,40 +381,35 @@ end
     KAT
 ]]
 local kat_help = [[
-# kat
-
-Show file contents. In Kitty terminal **kat**
-can also show images.
-
-Press `y` to copy code blocks to clipboard (OSC52).
+For text files shows contents in a pager.
+For non-text files, opens a file with
+a registered MIME handler.
 ]]
 local kat = function(cmd, args, jobs)
-	local parser = argparser.new({
-		raw = { kind = "bool", note = "Force raw rendering mode (no pager, no word wraps)" },
-		page = { kind = "bool", note = "Force using pager even on one screen documents" },
-		markdown = { short = "m", kind = "bool", note = "Force markdown rendering mode" },
-		indent = { kind = "num", default = 0, note = "Indentation" },
-		wrap = { kind = "num", default = 100, note = "Wrap width" },
-		links = { kind = "bool", note = "Show link's url" },
-		pathname = { kind = "file", idx = 1 },
-	}, kat_help)
-	local args, err, help = parser:parse(args)
-	if err then
-		if help then
-			helpmsg(err)
-			return 0
-		end
-		errmsg(err)
-		return 127
+	local parser = argparser
+		.command("kat")
+		:summary("Show file contents.")
+		:description(kat_help)
+		:option("raw", { type = "boolean", note = "Force raw rendering mode (no pager, no word wraps)" })
+		:option("pager", { type = "boolean", note = "Force using pager even on one screen documents" })
+		:option("markdown", { type = "boolean", short = "m", note = "Force markdown rendering mode" })
+		:option("indent", { type = "number", default = 0, note = "Indentation" })
+		:option("wrap", { type = "number", default = 100, note = "Wrap width" })
+		:option("links", { type = "boolean", note = "Show link's url" })
+		:argument("path", { type = "file" })
+		:build()
+	local parsed, status_code = parse_or_report(parser, args)
+	if status_code then
+		return status_code
 	end
-	local mime_info = std.mime.info(args.pathname)
-	if not mime_info.type:match("^text") and not std.txt.valid_utf(args.pathname) then
+	local mime_info = std.mime.info(parsed.path)
+	if not mime_info.type:match("^text") and not std.txt.valid_utf(parsed.path) then
 		local viewer = mime_info.cmdline:match("^%S+")
 		if not viewer then
 			errmsg("no handler for file type: " .. mime_info.type)
 			return 127
 		end
-		local job, err = jobs:start(viewer, { args.pathname }, { log = false })
+		local job, err = jobs:start(viewer, { parsed.path }, { log = false })
 		if not job then
 			errmsg(err)
 			return 127
@@ -436,24 +421,24 @@ local kat = function(cmd, args, jobs)
 	if mime_info.type:match("djot") or mime_info.type:match("markdown") then
 		render_mode = "markdown"
 	end
-	if args.markdown then
+	if parsed.markdown then
 		render_mode = "markdown"
 	end
-	if args.raw then
-		local txt = std.fs.read_file(args.pathname) or ""
+	if parsed.raw then
+		local txt = std.fs.read_file(parsed.path) or ""
 		term.write("\n" .. txt .. "\n")
 		return 0
 	end
 	term.set_raw_mode()
 	term.hide_cursor()
 	local pager = utils.pager.new({
-		exit_on_one_page = not args.page,
-		indent = args.indent,
+		exit_on_one_page = not parsed.pager,
+		indent = parsed.indent,
 		render_mode = render_mode,
-		hide_links = not args.links,
-		wrap = args.wrap,
+		hide_links = not parsed.links,
+		wrap = parsed.wrap,
 	})
-	pager:load_content(args.pathname)
+	pager:load_content(parsed.path)
 	pager:set_render_mode()
 	pager:page()
 	term.show_cursor()
@@ -462,59 +447,44 @@ local kat = function(cmd, args, jobs)
 end
 
 local job_help = [[
-: job
-
-  Manage background jobs.
-  Default detach key is *Ctrl+]*.
-
+Default detach key is *Ctrl+]*.
 ]]
 local job = function(cmd, args, jobs)
-	local parser = argparser.new({}, job_help, {
-		subs = {
-			list = {
-				schema = {
-					json = { kind = "bool", note = "output as JSON" },
-					text = { kind = "bool", note = "plain text output" },
-				},
-				help = "List all jobs\n",
-				default = true,
-			},
-			reap = { schema = {}, help = "Clean up exited jobs\n" },
-			start = {
-				schema = {
-					quiet = { kind = "bool", note = "Don't log the output" },
-					cmd = { kind = "str", idx = 1 },
-					args = { kind = "str", idx = 2, default = {}, multi = true },
-				},
-				help = "Start a new job\n",
-			},
-			kill = {
-				schema = {
-					signal = { kind = "num", default = 15, note = "Signal to send" },
-					id = { kind = "num", idx = 1 },
-				},
-				help = "Kill a job\n",
-			},
-			attach = {
-				schema = {
-					id = { kind = "num", idx = 1 },
-				},
-				help = "Attach to a job\n",
-			},
-		},
-	})
-	local args, err, help = parser:parse(args)
-	if err then
-		if help then
-			helpmsg(err)
-			return 0
-		end
-		errmsg(err)
-		return 127
+	local parser = argparser
+		.command("job")
+		:summary("Manage background jobs.")
+		:description(job_help)
+		:command("list", function(sub)
+			sub:summary("List all jobs")
+				:option("json", { type = "boolean", note = "output as JSON" })
+				:option("text", { type = "boolean", note = "plain text output" })
+		end)
+		:command("reap", function(sub)
+			sub:summary("Clean up exited jobs")
+		end)
+		:command("start", function(sub)
+			sub:summary("Start a new job")
+				:option("quiet", { type = "boolean", short = "q", note = "Don't log the output" })
+				:argument("cmd", { type = "string" })
+				:argument("args", { type = "string", nargs = "*", default = {} })
+		end)
+		:command("kill", function(sub)
+			sub:summary("Kill a job")
+				:option("signal", { type = "number", short = "s", default = 15, note = "Signal to send" })
+				:argument("id", { type = "number" })
+		end)
+		:command("attach", function(sub)
+			sub:summary("Attach to a job"):argument("id", { type = "number" })
+		end)
+		:build()
+	parser.cfg.default_subcommand = "list"
+	local parsed, status_code = parse_or_report(parser, args)
+	if status_code then
+		return status_code
 	end
 
-	if args.__sub == "start" then
-		local j, err = jobs:start(args.__args.cmd, args.__args.args, { log = not args.__args.quiet })
+	if parsed.__sub == "start" then
+		local j, err = jobs:start(parsed.__args.cmd, parsed.__args.args, { log = not parsed.__args.quiet })
 		if not j then
 			errmsg(err)
 			return 127
@@ -523,19 +493,19 @@ local job = function(cmd, args, jobs)
 		return 0
 	end
 
-	if args.__sub == "list" then
+	if parsed.__sub == "list" then
 		local entries = jobs:list()
 		if #entries == 0 then
 			term.write("No jobs\n")
 			return 0
 		end
 
-		if args.__args.json then
+		if parsed.__args.json then
 			std.tbl.print(json.encode(entries))
 			return 0
 		end
 
-		if args.text then
+		if parsed.__args.text then
 			local buf = buffer.new()
 			for _, entry in ipairs(entries) do
 				local status = entry.status
@@ -582,8 +552,8 @@ local job = function(cmd, args, jobs)
 		return 0
 	end
 
-	if args.__sub == "kill" then
-		local ok, err = jobs:kill(args.__args.id, args.__args.signal)
+	if parsed.__sub == "kill" then
+		local ok, err = jobs:kill(parsed.__args.id, parsed.__args.signal)
 		if not ok then
 			errmsg(err)
 			return 127
@@ -591,16 +561,16 @@ local job = function(cmd, args, jobs)
 		return 0
 	end
 
-	if args.__sub == "reap" then
+	if parsed.__sub == "reap" then
 		jobs:reap()
 		return 0
 	end
 
-	if args.__sub == "attach" then
+	if parsed.__sub == "attach" then
 		term.disable_kkbp()
 		term.disable_bracketed_paste()
 		term.set_raw_mode()
-		local ok, err = jobs:attach(args.__args.id)
+		local ok, err = jobs:attach(parsed.__args.id)
 		term.set_sane_mode()
 		if not ok then
 			errmsg(err)
@@ -611,27 +581,30 @@ local job = function(cmd, args, jobs)
 end
 
 local exec = function(cmd, args)
-	local cmd = table.remove(args, 1)
-	std.ps.exec(cmd, unpack(args))
+	local launch_args = args or {}
+	local launch_cmd = table.remove(launch_args, 1)
+	if not launch_cmd then
+		errmsg("no command specified")
+		return 127
+	end
+	std.ps.exec(launch_cmd, unpack(launch_args))
+	return 127, "failed to exec command: `" .. tostring(launch_cmd) .. "`"
 end
 
 local notify = function(cmd, args)
-	local parser = argparser.new({
-		pause = { kind = "str", default = "0", note = "Notify after the pause of: 5s, 1m, 3h" },
-		title = { kind = "str", default = "", note = "Title" },
-		message = { kind = "str", idx = 1, multi = true },
-	}, "# notify ")
-	local args, err, help = parser:parse(args)
-	if err then
-		if help then
-			helpmsg(err)
-			return 0
-		end
-		errmsg(err)
-		return 127
+	local parser = argparser
+		.command("notify")
+		:summary("Desktop notification helper.")
+		:option("after", { type = "string", default = "0", note = "Notify after pause: 5s, 1m, 3h" })
+		:option("title", { type = "string", default = "", note = "Title" })
+		:argument("message", { type = "string", nargs = "+" })
+		:build()
+	local parsed, status_code = parse_or_report(parser, args)
+	if status_code then
+		return status_code
 	end
 	local seconds = 0
-	for duration, unit in args.pause:gmatch("(%d+)(%w?)") do
+	for duration, unit in parsed.after:gmatch("(%d+)(%w?)") do
 		local d = tonumber(duration) or 0
 		if unit:match("[hH]") then
 			seconds = seconds + d * 3600
@@ -641,11 +614,11 @@ local notify = function(cmd, args)
 			seconds = seconds + d
 		end
 	end
-	local msg = table.concat(args.message, " ")
+	local msg = table.concat(parsed.message, " ")
 	local pid = std.ps.fork()
 	if pid and pid == 0 then
 		std.sleep(seconds)
-		term.kitty_notify(args.title, msg)
+		term.kitty_notify(parsed.title, msg)
 		os.exit(0)
 	end
 	return 0
@@ -732,46 +705,26 @@ local render_dns_record = function(records)
 	return out:get()
 end
 
-local dig_help = [[
-
-: dig
-
-  DNS lookup tool.
-]]
 local dig = function(cmd, args)
 	local tss = style.new(theme)
-	local parser = argparser.new({
-		cache = { kind = "bool" },
-		tcp = { kind = "bool" },
-		args = { kind = "str", idx = 1, multi = true },
-	}, dig_help)
-	local args, err, help = parser:parse(args)
-	if err then
-		if help then
-			helpmsg(err)
-			return 0
-		end
-		errmsg(err)
-		return 127
+	local parser = argparser
+		.command(cmd)
+		:summary("DNS lookup tool.")
+		:option("cache", { type = "boolean" })
+		:option("tcp", { type = "boolean" })
+		:option("type", { type = "string", short = "t", default = "A", note = "Record type" })
+		:option("nameserver", { type = "string", short = "n", note = "Nameserver to query" })
+		:argument("domain", { type = "string" })
+		:build()
+	local parsed, status_code = parse_or_report(parser, args)
+	if status_code then
+		return status_code
 	end
-	local ns
-	local rtype = "A"
-	local domain
-	for _, arg in ipairs(args.args) do
-		if arg:match("^@") then
-			ns = arg:match("^@(.+)")
-		elseif arg:match("^%u") then
-			rtype = arg
-		else
-			domain = arg
-		end
-	end
-	if not domain then
-		errmsg("You must provide a domain name to resolve")
-		return 127
-	end
+	local domain = parsed.domain
+	local rtype = parsed.type
+	local ns = parsed.nameserver
 	if cmd == "dig" then
-		local records, glue, ns = dig.simple(domain, rtype, ns, args)
+		local records, glue, ns = dig.simple(domain, rtype, ns, parsed)
 		if records == nil then
 			errmsg(glue)
 			return 255
@@ -791,7 +744,7 @@ local dig = function(cmd, args)
 		return 0
 	end
 	if cmd == "digg" then
-		local response, err = dig.fullchain(domain, rtype, args)
+		local response, err = dig.fullchain(domain, rtype, parsed)
 		if response == nil then
 			errmsg(err)
 			return 255
@@ -1037,26 +990,18 @@ local netstat = function()
 	return parsed
 end
 
-local netstat_help = [[
-: netstat
-
-  Tool to lookup network connections information.
-]]
 local render_netstat = function(cmd, args)
 	local tss = style.new(theme)
-	local parser = argparser.new({
-		listen = { kind = "bool" },
-		source = { kind = "str", default = ".*", idx = 1 },
-		destination = { kind = "str", default = ".*", idx = 2 },
-	}, netstat_help)
-	local args, err, help = parser:parse(args)
-	if err then
-		if help then
-			helpmsg(err)
-			return 0
-		end
-		errmsg(err)
-		return 127
+	local parser = argparser
+		.command("netstat")
+		:summary("Lookup network connections information.")
+		:option("listening", { type = "boolean", short = "l" })
+		:option("source", { type = "string", default = ".*" })
+		:option("destination", { type = "string", default = ".*" })
+		:build()
+	local parsed, status_code = parse_or_report(parser, args)
+	if status_code then
+		return status_code
 	end
 
 	local conns, err = netstat()
@@ -1065,11 +1010,11 @@ local render_netstat = function(cmd, args)
 		return 127
 	end
 	local s = "."
-	if args.listen then
+	if parsed.listening then
 		s = "LISTEN"
 	end
-	local src = args.source
-	local dst = args.destination
+	local src = parsed.source
+	local dst = parsed.destination
 
 	local matched = {}
 	local longest = { src = 0, dst = 0, state = 0, user = 0, process = 0 }
@@ -1185,29 +1130,21 @@ local render_netstat = function(cmd, args)
 	return 0
 end
 
-local history_help = [[
-: history
-
-  See commands history.
-]]
 local history = function(cmd, args)
 	local tss = style.new(theme)
-	local parser = argparser.new({
-		short = { kind = "bool" },
-		time = { kind = "bool" },
-		lines = { kind = "num", default = 15 },
-	}, history_help)
-	local args, err, help = parser:parse(args)
-	if err then
-		if help then
-			helpmsg(err)
-			return 0
-		end
-		errmsg(err)
-		return 127
+	local parser = argparser
+		.command("history")
+		:summary("See commands history.")
+		:option("compact", { type = "boolean" })
+		:option("time-only", { type = "boolean" })
+		:option("lines", { type = "number", short = "n", default = 15 })
+		:build()
+	local parsed, status_code = parse_or_report(parser, args)
+	if status_code then
+		return status_code
 	end
 	local store = storage.new()
-	local entries, err = store:load_history("shell", args.lines)
+	local entries, err = store:load_history("shell", parsed.lines)
 	store:close()
 	if err then
 		errmsg(err)
@@ -1223,9 +1160,9 @@ local history = function(cmd, args)
 		if status > 0 then
 			cmd = style_text(tss, "builtins.history.cmd.fail", entry.cmd)
 		end
-		if args.short then
+		if parsed.compact then
 			buf:put(cmd, "\n")
-		elseif args.time then
+		elseif parsed["time-only"] then
 			buf:put(time, cmd, "\n")
 		else
 			buf:put(date, time, cmd, "\n")
@@ -1296,10 +1233,11 @@ local wgcli = function(cmd, args)
 		end
 		term.write("\n")
 	end
+	return 0
 end
 
 local ps_help = [[
-# _ps_ provides a snapshot of currently running processes
+_ps_ provides a snapshot of currently running processes
 
   You can choose the fields of process information to display with the `-f` flag.
   The available fields are:
@@ -1323,41 +1261,34 @@ local ps_help = [[
 
 local kinda_ps = function(cmd, args)
 	local cur_user = os.getenv("USER") or ""
-	local parser = argparser.new({
-		all = { kind = "bool", note = "Show processes of all users" },
-		json = { kind = "bool", note = "JSON output" },
-		text = { kind = "bool", note = "Plain text output" },
-		kernel = { kind = "bool", note = "Show kernel threads" },
-		format = { kind = "str", default = "pid,cmd", note = "Fields to display" },
-		extended = { kind = "bool", short = "x", note = "Shortcut for `pid,uid,state,cmdline` format" },
-		detailed = { kind = "bool", note = "Shortcut for `pid,user,state,cpu,mem,cmd` format" },
-		parent = { kind = "num", default = 0, note = "Show only children of this process" },
-		sort = { kind = "num", default = 1, note = "Index of the field to sort by" },
-		user = { kind = "str", default = cur_user, note = "Show only processes of this user" },
-		pattern = {
-			kind = "str",
-			idx = 1,
-			default = ".*",
-			note = "Show only those processes whose cmdline matches the pattern",
-		},
-	}, ps_help)
-	local args, err, help = parser:parse(args)
-	if err then
-		if help then
-			helpmsg(err)
-			return 0
-		end
-		errmsg(err)
-		return 127
+	local parser = argparser
+		.command("ps")
+		:summary("Process snapshot tool.")
+		:description(ps_help)
+		:option("all", { type = "boolean", short = "a", note = "Show processes of all users" })
+		:option("json", { type = "boolean", note = "JSON output" })
+		:option("text", { type = "boolean", note = "Plain text output" })
+		:option("kernel", { type = "boolean", short = "k", note = "Show kernel threads" })
+		:option("format", { type = "string", short = "o", default = "pid,cmd", note = "Fields to display" })
+		:option("extended", { type = "boolean", short = "x", note = "Shortcut for `pid,uid,state,cmdline` format" })
+		:option("detailed", { type = "boolean", note = "Shortcut for `pid,user,state,cpu,mem,cmd` format" })
+		:option("parent", { type = "number", short = "p", default = 0, note = "Show only children of this process" })
+		:option("sort", { type = "number", default = 1, note = "Index of the field to sort by" })
+		:option("user", { type = "string", short = "u", default = cur_user, note = "Show only processes of this user" })
+		:argument("pattern", { type = "string", nargs = "?", default = ".*" })
+		:build()
+	local parsed, status_code = parse_or_report(parser, args)
+	if status_code then
+		return status_code
 	end
-	if args.extended then
-		args.format = "pid,uid,state,cmdline"
+	if parsed.extended then
+		parsed.format = "pid,uid,state,cmdline"
 	end
-	if args.detailed then
-		args.format = "pid,user,state,cpu,mem,cmd"
+	if parsed.detailed then
+		parsed.format = "pid,user,state,cpu,mem,cmd"
 	end
-	if args.extended and args.detailed then
-		args.format = "pid,uid,state,cpu,mem_mb,cmdline"
+	if parsed.extended and parsed.detailed then
+		parsed.format = "pid,uid,state,cpu,mem_mb,cmdline"
 	end
 	-- See https://man7.org/linux/man-pages/man5/proc.5.html (or `man 5 proc`) for
 	-- details on the proc pseudo fs
@@ -1413,7 +1344,7 @@ local kinda_ps = function(cmd, args)
 	end
 
 	local ps_tbl_fields = {}
-	for field_name in args.format:gmatch("([%w_]+),?") do
+	for field_name in parsed.format:gmatch("([%w_]+),?") do
 		table.insert(ps_tbl_fields, field_name)
 	end
 	if #ps_tbl_fields == 0 then
@@ -1421,17 +1352,17 @@ local kinda_ps = function(cmd, args)
 	end
 	local ps_tbl = {}
 
-	local sort_field_idx = args.sort
+	local sort_field_idx = parsed.sort
 	if sort_field_idx > #ps_tbl_fields or sort_field_idx < 1 then
 		sort_field_idx = 1
 	end
 
-	if args.json then
+	if parsed.json then
 		for _, proc in ipairs(processes) do
-			if proc.user == args.user or args.all then
-				if proc.cmdline:match(args.pattern) then
-					if proc.ppid ~= 2 or args.kernel then
-						if proc.ppid == args.parent or args.parent == 0 then
+			if proc.user == parsed.user or parsed.all then
+				if proc.cmdline:match(parsed.pattern) then
+					if proc.ppid ~= 2 or parsed.kernel then
+						if proc.ppid == parsed.parent or parsed.parent == 0 then
 							local row = {}
 							for _, col_name in ipairs(ps_tbl_fields) do
 								row[col_name] = proc[col_name]
@@ -1452,10 +1383,10 @@ local kinda_ps = function(cmd, args)
 	end
 
 	for _, proc in ipairs(processes) do
-		if proc.user == args.user or args.all then
-			if proc.cmdline:match(args.pattern) then
-				if proc.ppid ~= 2 or args.kernel then
-					if proc.ppid == args.parent or args.parent == 0 then
+		if proc.user == parsed.user or parsed.all then
+			if proc.cmdline:match(parsed.pattern) then
+				if proc.ppid ~= 2 or parsed.kernel then
+					if proc.ppid == parsed.parent or parsed.parent == 0 then
 						local row = {}
 						for idx, col_name in ipairs(ps_tbl_fields) do
 							local val = proc[col_name] or -1
@@ -1482,7 +1413,7 @@ local kinda_ps = function(cmd, args)
 		return a[sort_field_idx] < b[sort_field_idx]
 	end
 	table.sort(ps_tbl, sort_func)
-	if args.text then
+	if parsed.text then
 		term.write("\n")
 		for _, entry in ipairs(ps_tbl) do
 			term.write(table.concat(entry, " ") .. "\n")
@@ -1498,10 +1429,6 @@ end
 local _M
 
 local files_matching_help = [[
-: files_matching
-
-  Execute a given command over each file matching a pattern.
-
 By default the name of each matched file will be inserted as
 the first argument of the provided command.
 
@@ -1513,26 +1440,18 @@ files_matching .txt chmod 0640 {}
 ```
 ]]
 local files_matching = function(cmd, args)
-	local parser = argparser.new({
-		pattern = { kind = "str", idx = 1, note = "literal pattern to match in a filename (not regex)" },
-		command = {
-			kind = "str",
-			idx = 2,
-			default = { "echo" },
-			multi = true,
-			note = "The command to execute, with all required arguments",
-		},
-	}, files_matching_help)
-	local args, err, help = parser:parse(args)
-	if err then
-		if help then
-			helpmsg(err)
-			return 0
-		end
-		errmsg(err)
-		return 127
+	local parser = argparser
+		.command("files_matching")
+		:summary("Execute a command over matching files.")
+		:description(files_matching_help)
+		:argument("pattern", { type = "string" })
+		:argument("command", { type = "string", nargs = "+", default = { "echo" } })
+		:build()
+	local parsed, status_code = parse_or_report(parser, args)
+	if status_code then
+		return status_code
 	end
-	local path, pattern = args.pattern:match("^(.-)([^/]+)$")
+	local path, pattern = parsed.pattern:match("^(.-)([^/]+)$")
 	if #path == 0 then
 		path = "."
 	end
@@ -1549,7 +1468,7 @@ local files_matching = function(cmd, args)
 				full_path = path .. "/" .. file
 			end
 		end
-		for i, arg in ipairs(args.command) do
+		for i, arg in ipairs(parsed.command) do
 			if arg:match("%s") then
 				cmd = cmd .. '"' .. arg .. '" '
 			else
@@ -1579,31 +1498,23 @@ local files_matching = function(cmd, args)
 	return 0
 end
 
-local zx_help = [[
-: zx
-
-  Snippet launcher.
-]]
 local zx = function(cmd, args)
-	local parser = argparser.new({
-		pattern = { kind = "str", idx = 1, multi = true },
-	}, zx_help)
-	local args, err, help = parser:parse(args)
-	if err then
-		if help then
-			helpmsg(err)
-			return 0
-		end
-		errmsg(err)
-		return 127
+	local parser = argparser
+		.command("zx")
+		:summary("Snippet launcher.")
+		:argument("patterns", { type = "string", nargs = "+" })
+		:build()
+	local parsed, status_code = parse_or_report(parser, args)
+	if status_code then
+		return status_code
 	end
-	for _, arg in ipairs(args.pattern) do
+	for _, arg in ipairs(parsed.patterns) do
 		arg = std.escape_magic_chars(arg)
 	end
 	local store = storage.new()
 	local snippets = store:list_snippets()
 	for _, snippet_name in ipairs(snippets) do
-		if snippet_name:match(table.concat(args.pattern, ".-")) then
+		if snippet_name:match(table.concat(parsed.patterns, ".-")) then
 			local snippet = store:get_snippet(snippet_name)
 			store:close(true)
 			if not snippet then
@@ -1670,33 +1581,26 @@ local zx = function(cmd, args)
 end
 
 local zxscr_help = [[
-: zxscr
-
-  Display ZX Spectrum SCR files in the terminal using Kitty graphics protocol.
-
   The SCR format is a 6912-byte memory dump of the ZX Spectrum display memory,
   containing bitmap data (6144 bytes) and color attributes (768 bytes).
-
 ]]
 
 local zxscr = function(cmd, args)
 	local MAX_SCALE = 8 -- Let's hardcode a guardrail...
-	local parser = argparser.new({
-		scale = { kind = "num", default = 1, note = "Scale factor (1-" .. MAX_SCALE .. ")" },
-		filepath = { kind = "file", idx = 1, note = "Path to .scr file" },
-	}, zxscr_help)
+	local parser = argparser
+		.command("zxscr")
+		:summary("Display ZX Spectrum SCR images in terminal.")
+		:description(zxscr_help)
+		:option("scale", { type = "number", short = "s", default = 1, note = "Scale factor (1-" .. MAX_SCALE .. ")" })
+		:argument("file", { type = "file", note = "Path to .scr file" })
+		:build()
 
-	local parsed, err, help = parser:parse(args)
-	if err then
-		if help then
-			helpmsg(err)
-			return 0
-		end
-		errmsg(err)
-		return 127
+	local parsed, status_code = parse_or_report(parser, args)
+	if status_code then
+		return status_code
 	end
 
-	if not parsed.filepath then
+	if not parsed.file then
 		errmsg("No file specified")
 		return 127
 	end
@@ -1706,7 +1610,7 @@ local zxscr = function(cmd, args)
 		return 127
 	end
 
-	local ok, err = zxscr_mod.display(parsed.filepath, { scale = parsed.scale })
+	local ok, err = zxscr_mod.display(parsed.file, { scale = parsed.scale })
 	if not ok then
 		errmsg(err)
 		return 127

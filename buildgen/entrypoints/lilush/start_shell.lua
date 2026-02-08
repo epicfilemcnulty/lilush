@@ -1,0 +1,6 @@
+math.randomseed(os.time())
+local sh = require("shell")
+local core = require("std.core")
+core.register_signal(2)
+local shell = sh.new()
+shell:run()

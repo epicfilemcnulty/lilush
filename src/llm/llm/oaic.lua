@@ -1,6 +1,6 @@
 -- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 -- API docs:
 -- https://platform.openai.com/docs/api-reference/chat
@@ -165,12 +165,12 @@ local request = function(url, json_data, headers, timeout, backend, debug_mode)
 					answer.text = resp_json.content[1].text
 				end
 				-- Clean up response text: remove leading newlines and common EOS token artifacts
-			answer.text = tostring(answer.text or "")
-				:gsub("^\n+", "")
-				:gsub("<|im_end|>%s*$", "")
-				:gsub("<|eot_id|>%s*$", "")
-				:gsub("</s>%s*$", "")
-				:gsub("%s+$", "")
+				answer.text = tostring(answer.text or "")
+					:gsub("^\n+", "")
+					:gsub("<|im_end|>%s*$", "")
+					:gsub("<|eot_id|>%s*$", "")
+					:gsub("</s>%s*$", "")
+					:gsub("%s+$", "")
 				answer.backend = backend
 				return answer
 			end
@@ -182,7 +182,8 @@ local request = function(url, json_data, headers, timeout, backend, debug_mode)
 end
 
 local models = function(self)
-	local resp, err = web.request(self.api_url .. "/models", { method = "GET", headers = self.headers }, self.timeout)
+	local resp, err =
+		web.request(self.cfg.api_url .. "/models", { method = "GET", headers = self.__state.headers }, self.cfg.timeout)
 	if not resp or resp.status ~= 200 then
 		return nil, err or (resp and ("bad response status: " .. resp.status .. "\n" .. tostring(resp.body)))
 	end
@@ -212,12 +213,12 @@ local complete = function(self, model, messages, sampler, opts)
 		end
 	end
 	return request(
-		self.api_url .. "/chat/completions",
+		self.cfg.api_url .. "/chat/completions",
 		json.encode(data),
-		self.headers,
-		self.timeout,
-		self.backend,
-		self.debug_mode
+		self.__state.headers,
+		self.cfg.timeout,
+		self.cfg.backend,
+		self.cfg.debug_mode
 	)
 end
 
@@ -315,7 +316,7 @@ local stream = function(self, model, messages, sampler, user_callbacks, opts)
 					full_text:put(s)
 					if user_callbacks.chunk then
 						local chunk_data = { text = s }
-						if self.debug_mode then
+						if self.cfg.debug_mode then
 							chunk_data.raw = chunk
 						end
 						user_callbacks.chunk(chunk_data)
@@ -331,8 +332,8 @@ local stream = function(self, model, messages, sampler, user_callbacks, opts)
 	}
 
 	client = web.sse_client(
-		self.api_url .. "/chat/completions",
-		{ method = "POST", body = json.encode(data), headers = self.headers },
+		self.cfg.api_url .. "/chat/completions",
+		{ method = "POST", body = json.encode(data), headers = self.__state.headers },
 		callbacks
 	)
 	local ok, err = client:connect()
@@ -380,7 +381,7 @@ local stream = function(self, model, messages, sampler, user_callbacks, opts)
 	end
 	local out = {
 		text = ft,
-		backend = self.backend,
+		backend = self.cfg.backend,
 		model = model,
 		tokens = tokens,
 		ctx = ctx,
@@ -407,7 +408,7 @@ local chat_complete = function(self, model, messages, sampler, opts)
 			tool_descs = opts.tool_descriptions
 		end
 		local prompt = templates.apply(opts.template, messages, tool_descs, opts.dont_start)
-		return self:complete(model, { { role = "user", content = prompt } }, sampler, opts)
+		return self.complete(self, model, { { role = "user", content = prompt } }, sampler, opts)
 	end
 
 	-- Use OAIC-native tool calling
@@ -418,7 +419,7 @@ local chat_complete = function(self, model, messages, sampler, opts)
 		tool_objects = opts.tool_objects
 	end
 	opts.tool_objects = tool_objects
-	return self:complete(model, messages, sampler, opts)
+	return self.complete(self, model, messages, sampler, opts)
 end
 
 local chat_stream = function(self, model, messages, sampler, opts)
@@ -436,7 +437,7 @@ local chat_stream = function(self, model, messages, sampler, opts)
 		end
 		local prompt = templates.apply(opts.template, messages, tool_descs, opts.dont_start)
 		local callbacks = opts.callbacks or {}
-		return self:stream(model, { { role = "user", content = prompt } }, sampler, callbacks, opts)
+		return self.stream(self, model, { { role = "user", content = prompt } }, sampler, callbacks, opts)
 	end
 
 	-- Use OAIC-native tool calling
@@ -448,36 +449,41 @@ local chat_stream = function(self, model, messages, sampler, opts)
 	end
 	opts.tool_objects = tool_objects
 	local callbacks = opts.callbacks or {}
-	return self:stream(model, messages, sampler, callbacks, opts)
+	return self.stream(self, model, messages, sampler, callbacks, opts)
 end
 
 local new = function(api_url, api_key)
 	-- Check OAIC-specific env var first, then generic LLM_API_URL (with /v1 suffix)
 	local base_url = os.getenv("LLM_API_URL")
-	local api_url = api_url
+	local resolved_api_url = api_url
 		or os.getenv("LLM_OAIC_API_URL")
 		or (base_url and (base_url:match("/v1$") and base_url or base_url .. "/v1"))
 		or "http://127.0.0.1:8080/v1"
-	local api_key = api_key or os.getenv("LLM_API_KEY") or "n/a"
+	local resolved_api_key = api_key or os.getenv("LLM_API_KEY") or "n/a"
 	local timeout = tonumber(os.getenv("LLM_API_TIMEOUT")) or 600
-	local headers = {
-		["Authorization"] = "Bearer " .. api_key,
-		["Content-Type"] = "application/json",
-	}
-	local client = {
-		headers = headers,
-		backend = "oaic",
-		timeout = timeout,
-		api_key = api_key,
-		api_url = api_url,
-		debug_mode = os.getenv("LLM_DEBUG_MODE"),
+
+	local instance = {
+		cfg = {
+			backend = "oaic",
+			timeout = timeout,
+			api_key = resolved_api_key,
+			api_url = resolved_api_url,
+			debug_mode = os.getenv("LLM_DEBUG_MODE"),
+		},
+		__state = {
+			headers = {
+				["Authorization"] = "Bearer " .. resolved_api_key,
+				["Content-Type"] = "application/json",
+			},
+		},
 		complete = complete,
 		stream = stream,
 		chat_complete = chat_complete,
 		chat_stream = chat_stream,
 		models = models,
 	}
-	return client
+
+	return instance
 end
 
 return { new = new }

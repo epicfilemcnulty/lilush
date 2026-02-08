@@ -1,15 +1,16 @@
 -- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 local std = require("std")
+local TOOL_NAME = "write_file"
 
 return {
-	name = "write_file",
+	name = TOOL_NAME,
 	description = {
 		type = "function",
 		["function"] = {
-			name = "write_file",
+			name = TOOL_NAME,
 			description = "Writes content to a file at the specified path. "
 				.. "Overwrites the file if it exists, creates it if it doesn't. "
 				.. "Use create_dirs=true to create parent directories if they don't exist.",
@@ -33,10 +34,10 @@ return {
 		local content = arguments.content
 
 		if not filepath then
-			return { error = "filepath is required" }
+			return { name = TOOL_NAME, ok = false, error = "filepath is required" }
 		end
-		if not content then
-			return { error = "content is required" }
+		if content == nil then
+			return { name = TOOL_NAME, ok = false, error = "content is required" }
 		end
 
 		-- Check if file exists before writing
@@ -48,7 +49,12 @@ return {
 			if parent_dir and not std.fs.dir_exists(parent_dir) then
 				local ok, err = std.fs.mkdir(parent_dir, nil, true)
 				if not ok then
-					return { name = "write_file", filepath = filepath, error = "failed to create directory: " .. err }
+					return {
+						name = TOOL_NAME,
+						ok = false,
+						filepath = filepath,
+						error = "failed to create directory: " .. err,
+					}
 				end
 			end
 		end
@@ -56,11 +62,12 @@ return {
 		-- Write the file
 		local ok, err = std.fs.write_file(filepath, content)
 		if not ok then
-			return { name = "write_file", filepath = filepath, error = err }
+			return { name = TOOL_NAME, ok = false, filepath = filepath, error = err }
 		end
 
 		return {
-			name = "write_file",
+			name = TOOL_NAME,
+			ok = true,
 			filepath = filepath,
 			bytes_written = #content,
 			created = not existed,

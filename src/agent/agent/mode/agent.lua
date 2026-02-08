@@ -1,6 +1,6 @@
--- SPDX-FileCopyrightText: © 2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 --[[
 Agent mode for Lilush shell.
@@ -16,7 +16,6 @@ local std = require("std")
 local term = require("term")
 local json = require("cjson.safe")
 local llm = require("llm")
-local llm_tools = require("llm.tools")
 local style = require("term.tss")
 local theme = require("agent.theme")
 
@@ -24,6 +23,7 @@ local config_mod = require("agent.config")
 local conversation_mod = require("agent.conversation")
 local system_prompt_mod = require("agent.system_prompt")
 local stream_mod = require("agent.stream")
+local agent_tools = require("agent.tools")
 
 -- Create TSS instance for styled output
 local tss = style.new(theme)
@@ -212,9 +212,9 @@ slash_commands["/help"] = function(self, args)
 end
 
 slash_commands["/clear"] = function(self, args)
-	local system_prompt = self.config:get_system_prompt() or system_prompt_mod.get()
-	self.conversation = conversation_mod.new(system_prompt)
-	self.config:clear_session_approvals()
+	local system_prompt = self.__state.config:get_system_prompt() or system_prompt_mod.get()
+	self.__state.conversation = conversation_mod.new(system_prompt)
+	self.__state.config:clear_session_approvals()
 	self:update_prompt()
 	write_info("Conversation cleared.")
 	return 0
@@ -224,17 +224,17 @@ slash_commands["/model"] = function(self, args)
 	if args and #args > 0 then
 		local model_name = args[1]
 		local backend_name = args[2] -- Optional
-		local ok, err = self.config:set_model(model_name, backend_name)
+		local ok, err = self.__state.config:set_model(model_name, backend_name)
 		if not ok then
 			write_error("Error: " .. err)
 			return 1
 		end
 		self:init_client()
 		self:update_prompt()
-		write_info("Model set to: " .. self.config:get_model())
+		write_info("Model set to: " .. self.__state.config:get_model())
 	else
-		write_line("Current model: " .. (self.config:get_model() or "not set"))
-		write_line("Current backend: " .. (self.config:get_backend() or "not set"))
+		write_line("Current model: " .. (self.__state.config:get_model() or "not set"))
+		write_line("Current backend: " .. (self.__state.config:get_backend() or "not set"))
 	end
 	return 0
 end
@@ -242,26 +242,26 @@ end
 slash_commands["/backend"] = function(self, args)
 	if args and #args > 0 then
 		local backend_name = args[1]
-		local ok, err = self.config:set_backend(backend_name)
+		local ok, err = self.__state.config:set_backend(backend_name)
 		if not ok then
 			write_error("Error: " .. err)
 			return 1
 		end
 		self:init_client()
 		self:update_prompt()
-		write_info("Backend set to: " .. backend_name .. ", model: " .. self.config:get_model())
+		write_info("Backend set to: " .. backend_name .. ", model: " .. self.__state.config:get_model())
 	else
-		write_line("Current backend: " .. (self.config:get_backend() or "not set"))
-		write_line("Available backends: " .. table.concat(self.config:list_backends(), ", "))
+		write_line("Current backend: " .. (self.__state.config:get_backend() or "not set"))
+		write_line("Available backends: " .. table.concat(self.__state.config:list_backends(), ", "))
 	end
 	return 0
 end
 
 slash_commands["/models"] = function(self, args)
 	write_line("Available backends:")
-	for _, name in ipairs(self.config:list_backends()) do
-		local bc = self.config:get_backend_config(name)
-		local marker = (name == self.config:get_backend()) and " *" or ""
+	for _, name in ipairs(self.__state.config:list_backends()) do
+		local bc = self.__state.config:get_backend_config(name)
+		local marker = (name == self.__state.config:get_backend()) and " *" or ""
 		write_line("  " .. name .. marker .. " (default model: " .. (bc.default_model or "?") .. ")")
 	end
 	return 0
@@ -269,8 +269,8 @@ end
 
 slash_commands["/tools"] = function(self, args)
 	write_line("Available tools:")
-	for _, name in ipairs(self.tools_list) do
-		local tool_config = self.config:get_tool_config(name)
+	for _, name in ipairs(self:list_tools()) do
+		local tool_config = self.__state.config:get_tool_config(name)
 		local approval = tool_config.approval or "auto"
 		write_line("  " .. name .. " [" .. approval .. "]")
 	end
@@ -278,11 +278,11 @@ slash_commands["/tools"] = function(self, args)
 end
 
 slash_commands["/tokens"] = function(self, args)
-	local tokens = self.conversation:tokens()
-	local max_tokens = self.config:get_max_tokens()
+	local tokens = self.__state.conversation:tokens()
+	local max_tokens = self.__state.config:get_max_tokens()
 	local percentage = math.floor((tokens / max_tokens) * 100)
 	write_line("Token usage: " .. tokens .. " / " .. max_tokens .. " (" .. percentage .. "%)")
-	write_line("Messages: " .. self.conversation:count())
+	write_line("Messages: " .. self.__state.conversation:count())
 	return 0
 end
 
@@ -292,7 +292,7 @@ slash_commands["/save"] = function(self, args)
 		write_error("Usage: /save <name>")
 		return 1
 	end
-	local filepath, err = self.conversation:save(name)
+	local filepath, err = self.__state.conversation:save(name)
 	if not filepath then
 		write_error("Error: " .. err)
 		return 1
@@ -316,13 +316,13 @@ slash_commands["/load"] = function(self, args)
 		end
 		return 0
 	end
-	local ok, err = self.conversation:load(name)
+	local ok, err = self.__state.conversation:load(name)
 	if not ok then
 		write_error("Error: " .. err)
 		return 1
 	end
 	self:update_prompt()
-	write_info("Loaded conversation: " .. name .. " (" .. self.conversation:count() .. " messages)")
+	write_info("Loaded conversation: " .. name .. " (" .. self.__state.conversation:count() .. " messages)")
 	return 0
 end
 
@@ -343,11 +343,11 @@ end
 slash_commands["/system"] = function(self, args)
 	if args and #args > 0 then
 		local new_prompt = table.concat(args, " ")
-		self.config:set_system_prompt(new_prompt)
-		self.conversation:set_system_prompt(new_prompt)
+		self.__state.config:set_system_prompt(new_prompt)
+		self.__state.conversation:set_system_prompt(new_prompt)
 		write_info("System prompt updated.")
 	else
-		local prompt = self.conversation:get_system_prompt()
+		local prompt = self.__state.conversation:get_system_prompt()
 		if prompt then
 			write_line("Current system prompt:")
 			write_line(prompt)
@@ -360,18 +360,18 @@ end
 
 slash_commands["/config"] = function(self, args)
 	write_line("Current configuration:")
-	write_line("  Backend: " .. self.config:get_backend())
-	write_line("  Model: " .. self.config:get_model())
-	local sampler = self.config:get_sampler()
+	write_line("  Backend: " .. self.__state.config:get_backend())
+	write_line("  Model: " .. self.__state.config:get_model())
+	local sampler = self.__state.config:get_sampler()
 	write_line("  Temperature: " .. (sampler.temperature or "default"))
 	write_line("  Max tokens: " .. (sampler.max_new_tokens or "default"))
-	write_line("  Context limit: " .. self.config:get_max_tokens())
+	write_line("  Context limit: " .. self.__state.config:get_max_tokens())
 	return 0
 end
 
 slash_commands["/cost"] = function(self, args)
 	local pricing = require("llm.pricing")
-	local cost_data = self.conversation:get_cost()
+	local cost_data = self.__state.conversation:get_cost()
 
 	write_line("Session cost breakdown:")
 	write_line("  Requests:      " .. cost_data.request_count)
@@ -383,7 +383,7 @@ slash_commands["/cost"] = function(self, args)
 	write_line("  Total cost:    " .. pricing.format_cost(cost_data.total_cost))
 
 	-- Show if model has known pricing
-	local model = self.config:get_model()
+	local model = self.__state.config:get_model()
 	local model_price = pricing.get_price(model)
 	if not model_price then
 		write_info("  (Note: No pricing data for model '" .. model .. "')")
@@ -395,8 +395,8 @@ slash_commands["/cost"] = function(self, args)
 end
 
 slash_commands["/debug"] = function(self, args)
-	self._debug = not self._debug
-	if self._debug then
+	self.__state.debug = not self.__state.debug
+	if self.__state.debug then
 		write_info("Debug mode enabled - tool args and results will be shown")
 	else
 		write_info("Debug mode disabled")
@@ -420,9 +420,9 @@ end
 -- Initialize LLM client
 -- Handles Zen routing to correct endpoint based on model's api_style
 local function init_client(self)
-	local backend = self.config:get_backend()
-	local backend_config = self.config:get_backend_config()
-	local model = self.config:get_model()
+	local backend = self.__state.config:get_backend()
+	local backend_config = self.__state.config:get_backend_config()
+	local model = self.__state.config:get_model()
 
 	-- Get API key from environment variable specified in config
 	local api_key_env = backend_config.api_key_env
@@ -430,47 +430,57 @@ local function init_client(self)
 
 	-- For Zen, we need to route to correct endpoint based on model's api_style
 	if backend == "zen" then
-		local model_config = self.config:get_model_config(model)
+		local model_config = self.__state.config:get_model_config(model)
 		local api_style = model_config and model_config.api_style or "oaic"
 		local base_url = backend_config.url
 
 		if api_style == "anthropic" then
 			-- Use anthropic client with Zen URL (anthropic.lua adds /messages internally)
-			self.client = llm.new("anthropic", base_url, api_key)
+			self.__state.client = llm.new("anthropic", base_url, api_key)
 		else
 			-- Use oaic client with Zen URL (oaic.lua appends /chat/completions internally)
 			-- NOTE: When /responses endpoint support is added, this will need to change
-			self.client = llm.new("oaic", base_url, api_key)
+			self.__state.client = llm.new("oaic", base_url, api_key)
 		end
 		-- Store the effective api_style for tool loop
-		self._api_style = api_style
+		self.__state.api_style = api_style
 	else
 		-- For non-Zen backends, use api_style to determine client type
 		local api_style = backend_config.api_style or backend
 		if api_style == "oaic" then
-			self.client = llm.new("oaic", backend_config.url, api_key)
+			self.__state.client = llm.new("oaic", backend_config.url, api_key)
 		elseif api_style == "anthropic" then
-			self.client = llm.new("anthropic", backend_config.url, api_key)
+			self.__state.client = llm.new("anthropic", backend_config.url, api_key)
 		else
 			-- Native backend (llamacpp native, etc)
-			self.client = llm.new(backend, backend_config.url, api_key)
+			self.__state.client = llm.new(backend, backend_config.url, api_key)
 		end
-		self._api_style = api_style
+		self.__state.api_style = api_style
 	end
 end
 
 -- Update prompt with current state
 local function update_prompt(self)
-	if self.input.prompt then
-		self.input:prompt_set({
-			model = self.config:get_model(),
-			backend = self.config:get_backend(),
-			tokens = self.conversation:tokens(),
-			max_tokens = self.config:get_max_tokens(),
-			cost = self.conversation:get_total_cost(),
-			status = nil,
-		})
-	end
+	self.__state.input:prompt_set({
+		model = self.__state.config:get_model(),
+		backend = self.__state.config:get_backend(),
+		tokens = self.__state.conversation:tokens(),
+		max_tokens = self.__state.config:get_max_tokens(),
+		cost = self.__state.conversation:get_total_cost(),
+		status = nil,
+	})
+end
+
+local list_tools = function(self)
+	return self.__state.tools.list()
+end
+
+local get_tool_descriptions = function(self, tool_names)
+	return self.__state.tools.get_descriptions(tool_names or self:list_tools())
+end
+
+local is_debug_enabled = function(self)
+	return self.__state.debug
 end
 
 -- Tool call handler for approval flow
@@ -485,12 +495,12 @@ local function on_tool_call(self, call, index, response)
 	write_tool(tool_name, format_tool_args(tool_name, args))
 
 	-- Show full args in debug mode
-	if self._debug then
+	if self.__state.debug then
 		write_debug("args", format_debug_table(args))
 	end
 
 	-- Check if approval is needed
-	if not self.config:tool_needs_approval(tool_name) then
+	if not self.__state.config:tool_needs_approval(tool_name) then
 		return { action = "allow" }
 	end
 
@@ -504,7 +514,7 @@ local function on_tool_call(self, call, index, response)
 		-- Abort with user message
 		return { action = "abort", message = decision.abort_message }
 	elseif decision == "always" then
-		self.config:set_session_approval(tool_name, "auto")
+		self.__state.config:set_session_approval(tool_name, "auto")
 		return { action = "allow" }
 	else
 		-- "yes" or any other input = allow
@@ -514,7 +524,7 @@ end
 
 -- Tool result handler for debug output
 local function on_tool_result(self, call, result, is_error)
-	if not self._debug then
+	if not self:is_debug_enabled() then
 		return
 	end
 	if is_error then
@@ -527,20 +537,18 @@ end
 -- Process LLM response (streaming or not)
 local function process_response(self, user_input)
 	-- Add user message to conversation
-	self.conversation:add_user(user_input)
+	self.__state.conversation:add_user(user_input)
 
 	-- Update prompt to show streaming status
-	if self.input.prompt then
-		self.input:prompt_set({ status = "streaming" })
-	end
+	self.__state.input:prompt_set({ status = "streaming" })
 
 	-- Get messages for LLM
-	local messages = self.conversation:get_messages()
-	local sampler = self.config:get_sampler()
-	local model = self.config:get_model()
+	local messages = self.__state.conversation:get_messages()
+	local sampler = self.__state.config:get_sampler()
+	local model = self.__state.config:get_model()
 
 	-- Use the api_style determined during init_client
-	local style = self._api_style or "oaic"
+	local style = self.__state.api_style or "oaic"
 
 	-- Create stream buffer for markdown rendering
 	write_line("") -- Blank line before response
@@ -576,10 +584,12 @@ local function process_response(self, user_input)
 		on_tool_result(self, call, result, is_error)
 	end
 
+	local tools_list = self:list_tools()
+
 	-- Run tool loop with streaming
-	local resp, err = llm_tools.loop(self.client, model, messages, sampler, {
-		tools = self.tools_list,
-		tool_objects = llm_tools.get_descriptions(self.tools_list),
+	local resp, err = self.__state.tools.loop(self.__state.client, model, messages, sampler, {
+		tools = tools_list,
+		tool_objects = self:get_tool_descriptions(tools_list),
 		execute_tools = true,
 		max_steps = 100,
 		stream = true,
@@ -599,9 +609,7 @@ local function process_response(self, user_input)
 	})
 
 	-- Clear status (use false as sentinel since pairs() skips nil)
-	if self.input.prompt then
-		self.input:prompt_set({ status = false })
-	end
+	self.__state.input:prompt_set({ status = false })
 
 	if not resp then
 		write_error("Error: " .. tostring(err))
@@ -618,7 +626,7 @@ local function process_response(self, user_input)
 	-- Input tokens = total context - output tokens (approximation)
 	local input_tokens = (resp.ctx or 0) - (resp.tokens or 0)
 	local output_tokens = resp.tokens or 0
-	self.conversation:add_usage(model, input_tokens, output_tokens, 0)
+	self.__state.conversation:add_usage(model, input_tokens, output_tokens, 0)
 
 	-- Ensure stream is flushed
 	stream:flush()
@@ -627,7 +635,7 @@ local function process_response(self, user_input)
 	if resp.aborted then
 		-- Add assistant's partial response to conversation (if any text)
 		if resp.text and #resp.text > 0 then
-			self.conversation:add_assistant(resp.text, nil)
+			self.__state.conversation:add_assistant(resp.text, nil)
 			write_line("")
 		end
 
@@ -645,7 +653,7 @@ local function process_response(self, user_input)
 	end
 
 	-- Add assistant response to conversation
-	self.conversation:add_assistant(resp.text, resp.tool_calls)
+	self.__state.conversation:add_assistant(resp.text, resp.tool_calls)
 
 	-- Add trailing newline if there was content
 	if resp.text and #resp.text > 0 then
@@ -660,15 +668,15 @@ end
 
 -- Main run function
 local function run(self)
-	local input = self.input:get_content()
+	local input_text = self.__state.input:get_content()
 
 	-- Handle empty input
-	if not input or input:match("^%s*$") then
+	if not input_text or input_text:match("^%s*$") then
 		return 0
 	end
 
 	-- Handle slash commands
-	local cmd, args = parse_slash_command(input)
+	local cmd, args = parse_slash_command(input_text)
 	if cmd then
 		local handler = slash_commands[cmd]
 		if handler then
@@ -681,46 +689,62 @@ local function run(self)
 	end
 
 	-- Process as LLM input
-	return process_response(self, input)
+	return process_response(self, input_text)
+end
+
+local get_input = function(self)
+	return self.__state.input
+end
+
+local can_handle_combo = function(self, combo)
+	return type(self.__state.combos[combo]) == "function"
+end
+
+local handle_combo = function(self, combo)
+	local handler = self.__state.combos[combo]
+	if type(handler) == "function" then
+		return handler(self, combo)
+	end
+	return false
 end
 
 -- Constructor
-local function new(input)
+local function new(input_obj, config)
 	local mode = {
-		input = input,
-		combos = {
-			-- TODO: Add key combos
-			-- ["ALT+c"] = clear_conversation_combo,
-			-- ["ALT+m"] = switch_model_combo,
+		cfg = config or {},
+		__state = {
+			input = input_obj,
+			combos = {
+				-- TODO: Add key combos
+				-- ["ALT+c"] = clear_conversation_combo,
+				-- ["ALT+m"] = switch_model_combo,
+			},
+			config = config_mod.new(),
+			conversation = nil,
+			client = nil,
+			tools = agent_tools,
+			debug = false,
+			api_style = nil,
 		},
-		config = config_mod.new(),
-		conversation = nil,
-		client = nil,
-		tools_list = {},
-		_debug = false, -- Debug mode toggle
 
 		-- Methods
 		init_client = init_client,
 		update_prompt = update_prompt,
+		list_tools = list_tools,
+		get_tool_descriptions = get_tool_descriptions,
+		is_debug_enabled = is_debug_enabled,
 		run = run,
+		get_input = get_input,
+		can_handle_combo = can_handle_combo,
+		handle_combo = handle_combo,
 	}
 
 	-- Initialize client
 	mode:init_client()
 
-	-- Get list of available tools
-	mode.tools_list = {
-		"read_file",
-		"write_file",
-		"edit_file",
-		"bash",
-		"web_search",
-		"fetch_webpage",
-	}
-
 	-- Initialize conversation with system prompt
-	local system_prompt = mode.config:get_system_prompt() or system_prompt_mod.get()
-	mode.conversation = conversation_mod.new(system_prompt)
+	local system_prompt = mode.__state.config:get_system_prompt() or system_prompt_mod.get()
+	mode.__state.conversation = conversation_mod.new(system_prompt)
 
 	-- Update prompt with initial state
 	mode:update_prompt()

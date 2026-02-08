@@ -1,5 +1,7 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local std = require("std")
 local buffer = require("string.buffer")
 local theme = require("shell.theme")
@@ -111,28 +113,27 @@ local aws_prompt = function(self)
 end
 
 local vault_prompt = function(self)
-	if self.vault_status then
-		return style_text(tss, "prompts.shell.vault." .. self.vault_status)
+	if self.__state.vault_status then
+		return style_text(tss, "prompts.shell.vault." .. self.__state.vault_status)
 	end
 	return nil
 end
 
 local user_prompt = function(self)
 	local buf = buffer.new()
-	if self.user ~= "root" then
-		buf:put(style_text(tss, "prompts.shell.user.user", self.user))
+	if self.__state.user ~= "root" then
+		buf:put(style_text(tss, "prompts.shell.user.user", self.__state.user))
 	else
-		buf:put(style_text(tss, "prompts.shell.user.root", self.user))
+		buf:put(style_text(tss, "prompts.shell.user.root", self.__state.user))
 	end
-	buf:put("@", style_text(tss, "prompts.shell.user.hostname", self.hostname))
+	buf:put("@", style_text(tss, "prompts.shell.user.hostname", self.__state.hostname))
 	return buf:get()
 end
 
 local kube_prompt = function(self)
 	local profile = os.getenv("KUBECONFIG")
-	local home = os.getenv("HOME") or ""
 	if not profile then
-		profile = std.fs.readlink(home .. "/.kube/config") or ""
+		profile = std.fs.readlink(self.__state.home .. "/.kube/config") or ""
 	end
 	profile = profile:match("/?([^/]+)$")
 	local ns = os.getenv("KTL_NAMESPACE") or "kube-system"
@@ -148,7 +149,7 @@ local kube_prompt = function(self)
 end
 
 local dir_prompt = function(self)
-	local current_dir = std.fs.cwd():gsub(self.home, "~")
+	local current_dir = std.fs.cwd():gsub(self.__state.home, "~")
 	return style_text(tss, "prompts.shell.sep", "(")
 		.. style_text(tss, "prompts.shell.dir", current_dir)
 		.. style_text(tss, "prompts.shell.sep", ")")
@@ -165,7 +166,7 @@ local python_prompt = function(self)
 end
 
 local ssh_prompt = function(self)
-	local config_file = self.home .. "/.ssh/config"
+	local config_file = self.__state.home .. "/.ssh/config"
 	local target = std.fs.readlink(config_file)
 	if target then
 		local profile = target:match("profiles/([^/]+)/config")
@@ -190,33 +191,35 @@ local blocks_map = {
 }
 
 local set = function(self, options)
-	local options = options or {}
-	for k, v in pairs(options) do
-		self[k] = v
+	local updates = options or {}
+	for key, value in pairs(updates) do
+		self.__state[key] = value
 	end
-	-- Sanity check for valid blocks
-	for i, b in ipairs(self.blocks) do
-		if not blocks_map[b] then
-			table.remove(self.blocks, i)
+
+	local filtered = {}
+	for _, block in ipairs(self.__state.blocks) do
+		if blocks_map[block] then
+			table.insert(filtered, block)
 		end
 	end
+	self.__state.blocks = filtered
 end
 
 local blocks_order = { "aws", "kube", "ssh", "user", "dir", "git", "python", "vault" }
 
 local get = function(self)
 	local prompt = buffer.new()
-	for _, b in ipairs(blocks_order) do
-		if std.tbl.contains(self.blocks, b) then
-			local out = blocks_map[b](self)
+	for _, block in ipairs(blocks_order) do
+		if std.tbl.contains(self.__state.blocks, block) then
+			local out = blocks_map[block](self)
 			if out then
 				prompt:put(out)
 			end
 		end
 	end
-	if self.lines and self.lines > 1 then
+	if self.__state.lines and self.__state.lines > 1 then
 		prompt:put(style_text(tss, "prompts.shell.sep", "["))
-		prompt:put(style_text(tss, "prompts.shell.sep", tostring(self.line)))
+		prompt:put(style_text(tss, "prompts.shell.sep", tostring(self.__state.line)))
 		prompt:put(style_text(tss, "prompts.shell.sep", "]"))
 	end
 	prompt:put("$ ")
@@ -225,32 +228,45 @@ end
 
 local toggle_block = function(self, block)
 	if blocks_map[block] then
-		local idx = std.tbl.contains(self.blocks, block)
+		local idx = std.tbl.contains(self.__state.blocks, block)
 		if idx then
-			table.remove(self.blocks, idx)
+			table.remove(self.__state.blocks, idx)
 		else
-			table.insert(self.blocks, block)
+			table.insert(self.__state.blocks, block)
 		end
 	end
 end
 
-local new = function(options)
+local get_blocks = function(self)
+	return self.__state.blocks
+end
+
+local set_blocks = function(self, blocks)
+	self.__state.blocks = blocks or {}
+end
+
+local new = function(config)
 	local prompt = {
-		home = os.getenv("HOME") or "/tmp",
-		user = os.getenv("USER") or "nobody",
-		hostname = tostring(std.fs.read_file("/etc/hostname")):gsub("\n", ""),
-		pwd = std.fs.cwd() or "",
-		blocks = {},
-		vault_status = "unknown",
+		cfg = config or {},
+		__state = {
+			home = os.getenv("HOME") or "/tmp",
+			user = os.getenv("USER") or "nobody",
+			hostname = tostring(std.fs.read_file("/etc/hostname")):gsub("\n", ""),
+			pwd = std.fs.cwd() or "",
+			blocks = {},
+			vault_status = "unknown",
+		},
 		get = get,
 		set = set,
+		get_blocks = get_blocks,
+		set_blocks = set_blocks,
 		toggle_block = toggle_block,
 	}
-	prompt:set(options)
-	if #prompt.blocks == 0 then
+	prompt:set(prompt.cfg)
+	if #prompt.__state.blocks == 0 then
 		local user_blocks_str = os.getenv("LILUSH_PROMPT") or "user,dir"
-		for b in user_blocks_str:gmatch("(%w+),?") do
-			table.insert(prompt.blocks, b)
+		for block in user_blocks_str:gmatch("(%w+),?") do
+			table.insert(prompt.__state.blocks, block)
 		end
 	end
 	return prompt

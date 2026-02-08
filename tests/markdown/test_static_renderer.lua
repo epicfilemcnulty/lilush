@@ -245,7 +245,7 @@ end)
 
 testify:that("thematic break uses custom TSS content", function()
 	local result = markdown.render("Before\n\n---\n\nAfter", {
-		tss = {
+		rss = {
 			thematic_break = {
 				content = "=",
 				fill = true,
@@ -354,7 +354,7 @@ testify:that("default width is 80", function()
 	testimony.assert_true(#lines > 1)
 end)
 
-testify:that("table rows are clipped to configured width", function()
+testify:that("table rows wrap to additional lines by default", function()
 	local input = [[| Property | Description |
 |---|---|
 | text_indent | Text-level indentation applied by tss:apply() for simple elements that can become very long and should be clipped |
@@ -365,10 +365,18 @@ testify:that("table rows are clipped to configured width", function()
 
 	local has_table = false
 	local has_ellipsis = false
+	local body_lines = 0
 	for line in plain:gmatch("[^\n]+") do
 		if line:find("┌", 1, true) or line:find("│", 1, true) or line:find("└", 1, true) then
 			has_table = true
 			testimony.assert_true(std.utf.display_len(line) <= width)
+			if
+				line:find("│", 1, true)
+				and not line:find("Property", 1, true)
+				and not line:find("Description", 1, true)
+			then
+				body_lines = body_lines + 1
+			end
 			if line:find("…", 1, true) then
 				has_ellipsis = true
 			end
@@ -376,6 +384,33 @@ testify:that("table rows are clipped to configured width", function()
 	end
 
 	testimony.assert_true(has_table)
+	testimony.assert_true(body_lines >= 2)
+	testimony.assert_false(has_ellipsis)
+end)
+
+testify:that("table overflow clip mode keeps truncation behavior", function()
+	local input = [[| Property | Description |
+|---|---|
+| text_indent | Text-level indentation applied by tss:apply() for simple elements that can become very long and should be clipped |
+]]
+	local width = 60
+	local result = markdown.render(input, {
+		width = width,
+		rss = {
+			table = { overflow = "clip" },
+		},
+	})
+	local plain = strip_ansi(result)
+
+	local has_ellipsis = false
+	for line in plain:gmatch("[^\n]+") do
+		if line:find("┌", 1, true) or line:find("│", 1, true) or line:find("└", 1, true) then
+			testimony.assert_true(std.utf.display_len(line) <= width)
+			if line:find("…", 1, true) then
+				has_ellipsis = true
+			end
+		end
+	end
 	testimony.assert_true(has_ellipsis)
 end)
 
@@ -581,7 +616,7 @@ end)
 testify:that("applies list.indent_per_level to nested list depth spacing", function()
 	local input = "- Outer\n  - Inner"
 	local result = markdown.render(input, {
-		tss = {
+		rss = {
 			list = { indent_per_level = 2 },
 		},
 	})
@@ -600,7 +635,7 @@ end)
 testify:that("combines list.indent_per_level with list_item.block_indent", function()
 	local input = "- Outer\n  - Inner"
 	local result = markdown.render(input, {
-		tss = {
+		rss = {
 			list = { indent_per_level = 2 },
 			list_item = { block_indent = 3 },
 		},
@@ -664,7 +699,7 @@ end)
 testify:that("applies table block_indent to full rendered line", function()
 	local input = "| A | B |\n|---|---|\n| 1 | 2 |"
 	local result = markdown.render(input, {
-		tss = {
+		rss = {
 			table = { block_indent = 2 },
 		},
 	})
@@ -684,7 +719,7 @@ end)
 testify:that("applies code block_indent to bordered code blocks", function()
 	local input = "```\ncode\n```"
 	local result = markdown.render(input, {
-		tss = {
+		rss = {
 			code_block = { block_indent = 3 },
 		},
 	})
@@ -703,7 +738,7 @@ end)
 testify:that("applies blockquote block_indent to quoted lines", function()
 	local input = "> Quoted line."
 	local result = markdown.render(input, {
-		tss = {
+		rss = {
 			blockquote = { block_indent = 2 },
 		},
 	})
@@ -717,7 +752,7 @@ end)
 testify:that("applies div block_indent to full rendered box lines", function()
 	local input = "::: note\nIndented div\n:::"
 	local result = markdown.render(input, {
-		tss = {
+		rss = {
 			div = {
 				note = { block_indent = 2 },
 			},
@@ -738,7 +773,7 @@ end)
 testify:that("applies list_item block_indent to list marker lines", function()
 	local input = "- Item with indent"
 	local result = markdown.render(input, {
-		tss = {
+		rss = {
 			list_item = { block_indent = 3 },
 		},
 	})

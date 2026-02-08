@@ -1,10 +1,14 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local std = require("std")
-local utils = require("shell.utils")
 
 local update = function(self)
-	self.binaries = {}
+	local binaries = self.__state.binaries or self.binaries or {}
+	for name, _ in pairs(binaries) do
+		binaries[name] = nil
+	end
 
 	local path = os.getenv("PATH")
 	if path then
@@ -13,17 +17,19 @@ local update = function(self)
 			if files then
 				for f, stat in pairs(files) do
 					if stat.perms:match("[75]") then
-						self.binaries[f] = true
+						binaries[f] = true
 					end
 				end
 			end
 		end
 	end
+	self.__state.binaries = binaries
+	self.binaries = binaries
 end
 
 local search = function(self, cmd)
 	local candidates = {}
-	for name in pairs(self.binaries) do
+	for name in pairs(self.__state.binaries or self.binaries or {}) do
 		if name:match("^" .. std.escape_magic_chars(cmd)) then
 			table.insert(candidates, name:sub(#cmd + 1) .. " ")
 		end
@@ -32,8 +38,17 @@ local search = function(self, cmd)
 	return candidates
 end
 
-local new = function()
-	local source = { update = update, search = search }
+local new = function(config)
+	local source = {
+		cfg = config or {},
+		__state = {
+			binaries = {},
+		},
+		binaries = {},
+		update = update,
+		search = search,
+	}
+	source.binaries = source.__state.binaries
 	source:update()
 	return source
 end

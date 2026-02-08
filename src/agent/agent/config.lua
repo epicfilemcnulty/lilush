@@ -1,6 +1,6 @@
--- SPDX-FileCopyrightText: © 2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 --[[
 Agent configuration module.
@@ -132,7 +132,7 @@ local defaults = {
 }
 
 -- Load configuration from file
-local function load_file()
+local load_file = function()
 	local home = os.getenv("HOME") or "/tmp"
 	local config_path = home .. "/.config/lilush/agent.json"
 	local content = std.fs.read_file(config_path)
@@ -147,7 +147,7 @@ local function load_file()
 end
 
 -- Save configuration to file
-local function save_file(config)
+local save_file = function(config)
 	local home = os.getenv("HOME") or "/tmp"
 	local config_dir = home .. "/.config/lilush"
 	local config_path = config_dir .. "/agent.json"
@@ -176,59 +176,34 @@ local function save_file(config)
 	return std.fs.write_file(config_path, content)
 end
 
---[[
-Configuration object that supports runtime changes.
-]]
-local Config = {}
-Config.__index = Config
-
-function Config:new()
-	local file_config = load_file() or {}
-	local config = std.tbl.merge(defaults, file_config)
-
-	local self = setmetatable({
-		-- Static configuration
-		_config = config,
-
-		-- Runtime state (can differ from config)
-		_backend = config.backend,
-		_model = config.model,
-
-		-- Session-level tool approval overrides
-		-- When a user says "allow all" for a tool, it's stored here
-		_session_approvals = {},
-	}, Config)
-
-	-- Apply custom pricing if configured
+local init_pricing = function(config)
 	if config.pricing and next(config.pricing) then
 		local pricing = require("llm.pricing")
 		pricing.set_custom_prices(config.pricing)
 	end
-
-	return self
 end
 
 -- Get current backend name
-function Config:get_backend()
-	return self._backend
+local get_backend = function(self)
+	return self.__state.backend
 end
 
 -- Get current model name
-function Config:get_model()
-	return self._model
+local get_model = function(self)
+	return self.__state.model
 end
 
 -- Get backend configuration
-function Config:get_backend_config(backend_name)
-	backend_name = backend_name or self._backend
-	return self._config.backends[backend_name]
+local get_backend_config = function(self, backend_name)
+	backend_name = backend_name or self.__state.backend
+	return (self.cfg.backends or {})[backend_name]
 end
 
 -- Get model configuration (api_style, endpoint) for current or specified model
 -- Returns { api_style = "anthropic"|"oaic", endpoint = "/path" } or nil
-function Config:get_model_config(model_name)
-	model_name = model_name or self._model
-	local backend_config = self:get_backend_config()
+local get_model_config = function(self, model_name)
+	model_name = model_name or self.__state.model
+	local backend_config = self.get_backend_config(self)
 
 	if not backend_config then
 		return nil
@@ -249,92 +224,90 @@ function Config:get_model_config(model_name)
 end
 
 -- Set backend (switches to that backend's default model if model not specified)
-function Config:set_backend(backend_name, model_name)
-	local backend_config = self._config.backends[backend_name]
+local set_backend = function(self, backend_name, model_name)
+	local backend_config = (self.cfg.backends or {})[backend_name]
 	if not backend_config then
 		return nil, "unknown backend: " .. tostring(backend_name)
 	end
 
-	self._backend = backend_name
-	self._model = model_name or backend_config.default_model
+	self.__state.backend = backend_name
+	self.__state.model = model_name or backend_config.default_model
 	return true
 end
 
 -- Set model (optionally with backend)
-function Config:set_model(model_name, backend_name)
+local set_model = function(self, model_name, backend_name)
 	if backend_name then
-		local ok, err = self:set_backend(backend_name, model_name)
-		if not ok then
-			return nil, err
-		end
-	else
-		self._model = model_name
+		return self.set_backend(self, backend_name, model_name)
 	end
+	self.__state.model = model_name
 	return true
 end
 
 -- Get sampler configuration
-function Config:get_sampler()
-	return std.tbl.copy(self._config.sampler)
+local get_sampler = function(self)
+	return std.tbl.copy(self.cfg.sampler or {})
 end
 
 -- Update sampler settings
-function Config:set_sampler(settings)
-	for k, v in pairs(settings) do
-		self._config.sampler[k] = v
+local set_sampler = function(self, settings)
+	self.cfg.sampler = self.cfg.sampler or {}
+	for k, v in pairs(settings or {}) do
+		self.cfg.sampler[k] = v
 	end
 end
 
 -- Get tool configuration
-function Config:get_tool_config(tool_name)
-	return self._config.tools[tool_name] or { approval = "auto" }
+local get_tool_config = function(self, tool_name)
+	local tools = self.cfg.tools or {}
+	return tools[tool_name] or { approval = "auto" }
 end
 
 -- Check if tool requires approval (considering session overrides)
-function Config:tool_needs_approval(tool_name)
+local tool_needs_approval = function(self, tool_name)
 	-- Session override takes precedence
-	if self._session_approvals[tool_name] == "auto" then
+	if self.__state.session_approvals[tool_name] == "auto" then
 		return false
 	end
 
-	local tool_config = self:get_tool_config(tool_name)
+	local tool_config = self.get_tool_config(self, tool_name)
 	return tool_config.approval == "ask"
 end
 
 -- Set session-level approval override for a tool
-function Config:set_session_approval(tool_name, approval)
-	self._session_approvals[tool_name] = approval
+local set_session_approval = function(self, tool_name, approval)
+	self.__state.session_approvals[tool_name] = approval
 end
 
 -- Clear session approvals (e.g., when starting new conversation)
-function Config:clear_session_approvals()
-	self._session_approvals = {}
+local clear_session_approvals = function(self)
+	self.__state.session_approvals = {}
 end
 
 -- Get system prompt (returns nil if should use default)
-function Config:get_system_prompt()
-	return self._config.system_prompt
+local get_system_prompt = function(self)
+	return self.cfg.system_prompt
 end
 
 -- Set system prompt
-function Config:set_system_prompt(prompt)
-	self._config.system_prompt = prompt
+local set_system_prompt = function(self, prompt)
+	self.cfg.system_prompt = prompt
 end
 
 -- Get max conversation tokens
-function Config:get_max_tokens()
-	return self._config.max_conversation_tokens
+local get_max_tokens = function(self)
+	return self.cfg.max_conversation_tokens
 end
 
 -- Get render settings
-function Config:get_render_config()
-	return self._config.render
+local get_render_config = function(self)
+	return self.cfg.render
 end
 
 -- Get list of available backends
-function Config:list_backends()
+local list_backends = function(self)
 	local backends = {}
-	for name, _ in pairs(self._config.backends) do
+	for name, _ in pairs(self.cfg.backends or {}) do
 		table.insert(backends, name)
 	end
 	table.sort(backends)
@@ -342,9 +315,9 @@ function Config:list_backends()
 end
 
 -- Get list of models for a backend (if available)
-function Config:list_models(backend_name)
-	backend_name = backend_name or self._backend
-	local backend_config = self._config.backends[backend_name]
+local list_models = function(self, backend_name)
+	backend_name = backend_name or self.__state.backend
+	local backend_config = (self.cfg.backends or {})[backend_name]
 	if not backend_config then
 		return {}
 	end
@@ -367,19 +340,56 @@ function Config:list_models(backend_name)
 end
 
 -- Get pricing overrides from config
-function Config:get_pricing_overrides()
-	return self._config.pricing or {}
+local get_pricing_overrides = function(self)
+	return self.cfg.pricing or {}
 end
 
 -- Save current configuration to file
-function Config:save()
-	return save_file(self._config)
+local save = function(self)
+	return save_file(self.cfg)
 end
 
--- Export for module
+local new = function()
+	local file_config = load_file() or {}
+	local config = std.tbl.merge(defaults, file_config)
+
+	local instance = {
+		cfg = config,
+		__state = {
+			backend = config.backend,
+			model = config.model,
+			-- Session-level tool approval overrides
+			-- When a user says "allow all" for a tool, it's stored here.
+			session_approvals = {},
+		},
+		get_backend = get_backend,
+		get_model = get_model,
+		get_backend_config = get_backend_config,
+		get_model_config = get_model_config,
+		set_backend = set_backend,
+		set_model = set_model,
+		get_sampler = get_sampler,
+		set_sampler = set_sampler,
+		get_tool_config = get_tool_config,
+		tool_needs_approval = tool_needs_approval,
+		set_session_approval = set_session_approval,
+		clear_session_approvals = clear_session_approvals,
+		get_system_prompt = get_system_prompt,
+		set_system_prompt = set_system_prompt,
+		get_max_tokens = get_max_tokens,
+		get_render_config = get_render_config,
+		list_backends = list_backends,
+		list_models = list_models,
+		get_pricing_overrides = get_pricing_overrides,
+		save = save,
+	}
+
+	init_pricing(config)
+
+	return instance
+end
+
 return {
-	new = function()
-		return Config:new()
-	end,
+	new = new,
 	defaults = defaults,
 }

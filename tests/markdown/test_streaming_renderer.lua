@@ -263,7 +263,7 @@ end)
 
 testify:that("thematic break uses custom TSS content", function()
 	local result = render_with_streaming("Before\n\n---\n\nAfter", {
-		tss = {
+		rss = {
 			thematic_break = {
 				content = "=",
 				fill = true,
@@ -341,7 +341,7 @@ testify:that("code block expands tabs and keeps right border aligned", function(
 	end
 end)
 
-testify:that("table rows are clipped to configured width", function()
+testify:that("table rows wrap to additional lines by default", function()
 	local input = [[| Property | Description |
 |---|---|
 | text_indent | Text-level indentation applied by tss:apply() for simple elements that can become very long and should be clipped |
@@ -352,10 +352,18 @@ testify:that("table rows are clipped to configured width", function()
 
 	local has_table = false
 	local has_ellipsis = false
+	local body_lines = 0
 	for line in plain:gmatch("[^\n]+") do
 		if line:find("┌", 1, true) or line:find("│", 1, true) or line:find("└", 1, true) then
 			has_table = true
 			testimony.assert_true(std.utf.display_len(line) <= width)
+			if
+				line:find("│", 1, true)
+				and not line:find("Property", 1, true)
+				and not line:find("Description", 1, true)
+			then
+				body_lines = body_lines + 1
+			end
 			if line:find("…", 1, true) then
 				has_ellipsis = true
 			end
@@ -363,6 +371,33 @@ testify:that("table rows are clipped to configured width", function()
 	end
 
 	testimony.assert_true(has_table)
+	testimony.assert_true(body_lines >= 2)
+	testimony.assert_false(has_ellipsis)
+end)
+
+testify:that("table overflow clip mode keeps truncation behavior", function()
+	local input = [[| Property | Description |
+|---|---|
+| text_indent | Text-level indentation applied by tss:apply() for simple elements that can become very long and should be clipped |
+]]
+	local width = 60
+	local result = render_with_streaming(input, {
+		width = width,
+		rss = {
+			table = { overflow = "clip" },
+		},
+	})
+	local plain = strip_ansi(result)
+
+	local has_ellipsis = false
+	for line in plain:gmatch("[^\n]+") do
+		if line:find("┌", 1, true) or line:find("│", 1, true) or line:find("└", 1, true) then
+			testimony.assert_true(std.utf.display_len(line) <= width)
+			if line:find("…", 1, true) then
+				has_ellipsis = true
+			end
+		end
+	end
 	testimony.assert_true(has_ellipsis)
 end)
 
@@ -405,7 +440,7 @@ end)
 
 testify:that("applies list.indent_per_level to nested list depth spacing", function()
 	local result = render_with_streaming("- Outer\n  - Inner", {
-		tss = {
+		rss = {
 			list = { indent_per_level = 2 },
 		},
 	})
@@ -423,7 +458,7 @@ end)
 
 testify:that("combines list.indent_per_level with list_item.block_indent", function()
 	local result = render_with_streaming("- Outer\n  - Inner", {
-		tss = {
+		rss = {
 			list = { indent_per_level = 2 },
 			list_item = { block_indent = 3 },
 		},
@@ -469,7 +504,7 @@ end)
 testify:that("applies table block_indent to full rendered line", function()
 	local input = "| A | B |\n|---|---|\n| 1 | 2 |"
 	local result = render_with_streaming(input, {
-		tss = {
+		rss = {
 			table = { block_indent = 2 },
 		},
 	})
@@ -489,7 +524,7 @@ end)
 testify:that("applies code block_indent to bordered code blocks", function()
 	local input = "```\ncode\n```"
 	local result = render_with_streaming(input, {
-		tss = {
+		rss = {
 			code_block = { block_indent = 3 },
 		},
 	})
@@ -510,7 +545,7 @@ end)
 testify:that("applies blockquote block_indent to quoted lines", function()
 	local input = "> Quoted line."
 	local result = render_with_streaming(input, {
-		tss = {
+		rss = {
 			blockquote = { block_indent = 2 },
 		},
 	})
@@ -531,7 +566,7 @@ end)
 testify:that("applies div block_indent to full rendered box lines", function()
 	local input = "::: note\nIndented div\n:::"
 	local result = render_with_streaming(input, {
-		tss = {
+		rss = {
 			div = {
 				note = { block_indent = 2 },
 			},
@@ -605,7 +640,7 @@ end)
 
 testify:that("applies list_item block_indent to list marker lines", function()
 	local result = render_with_streaming("- Item with indent", {
-		tss = {
+		rss = {
 			list_item = { block_indent = 3 },
 		},
 	})
@@ -762,7 +797,7 @@ end
 
 testify:that("inline code with single class applies class style", function()
 	local test_rss = create_test_rss()
-	local result = render_with_streaming("`123`{.num}", { tss = test_rss })
+	local result = render_with_streaming("`123`{.num}", { rss = test_rss })
 	-- Should have class-specific markers
 	testimony.assert_true(contains(result, "[NUM:"))
 	testimony.assert_true(contains(result, ":NUM]"))
@@ -772,7 +807,7 @@ end)
 
 testify:that("inline code with multiple classes applies all class styles", function()
 	local test_rss = create_test_rss()
-	local result = render_with_streaming("`value`{.num .req}", { tss = test_rss })
+	local result = render_with_streaming("`value`{.num .req}", { rss = test_rss })
 	-- TSS cascading: later class (.req) overrides earlier (.num) for before/after
 	-- So we get [REQ:...:REQ], not a mix of both markers
 	testimony.assert_true(contains(result, "[REQ:"))
@@ -783,7 +818,7 @@ end)
 
 testify:that("inline code without class uses base code style", function()
 	local test_rss = create_test_rss()
-	local result = render_with_streaming("`plain`", { tss = test_rss })
+	local result = render_with_streaming("`plain`", { rss = test_rss })
 	-- Should have base code markers
 	testimony.assert_true(contains(result, "[C:"))
 	testimony.assert_true(contains(result, ":C]"))
@@ -794,7 +829,7 @@ end)
 
 testify:that("inline code class works in paragraph context", function()
 	local test_rss = create_test_rss()
-	local result = render_with_streaming("The value is `42`{.num} which is a number.", { tss = test_rss })
+	local result = render_with_streaming("The value is `42`{.num} which is a number.", { rss = test_rss })
 	-- Should have class markers
 	testimony.assert_true(contains(result, "[NUM:"))
 	testimony.assert_true(contains(result, ":NUM]"))
@@ -813,7 +848,7 @@ testify:that("inline code with class in heading", function()
 			highlight = { fg = 201 }, -- Different color for highlight class
 		},
 	}
-	local result = render_with_streaming("# Heading with `code`{.highlight}", { tss = test_rss })
+	local result = render_with_streaming("# Heading with `code`{.highlight}", { rss = test_rss })
 	local plain = strip_ansi(result)
 	-- Should contain the heading text
 	testimony.assert_true(contains(plain, "Heading with"))
@@ -824,7 +859,7 @@ end)
 
 testify:that("multiple inline codes with different classes", function()
 	local test_rss = create_test_rss()
-	local result = render_with_streaming("Number: `123`{.num}, String: `hello`{.str}", { tss = test_rss })
+	local result = render_with_streaming("Number: `123`{.num}, String: `hello`{.str}", { rss = test_rss })
 	-- Should have both class markers
 	testimony.assert_true(contains(result, "[NUM:"))
 	testimony.assert_true(contains(result, ":NUM]"))

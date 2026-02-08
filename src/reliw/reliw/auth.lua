@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local crypto = require("crypto")
 local web = require("web")
 
@@ -43,7 +47,7 @@ end
 local logout = function(store, headers)
 	local token = ""
 	local host = headers.host
-	-- TO DO: Should add `parse_host_from_headers` func to `web_server`...
+	-- TO DO: Should add `parse_host_from_headers` func to `web.server`...
 	host = host:match("^([^:]+)")
 	local cookie = headers.cookie
 	if cookie then
@@ -106,7 +110,7 @@ local login_page = function(store, method, query, args, headers, body)
 	return "Wrong login/pass", 401
 end
 
-local _M = {
+return {
 	login = login,
 	logout = logout,
 	login_page = login_page,
@@ -115,4 +119,3 @@ local _M = {
 	authenticated_as = get_session_user,
 	authorized = authorized,
 }
-return _M

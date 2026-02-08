@@ -1,6 +1,6 @@
--- SPDX-FileCopyrightText: © 2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 -- Anthropic Messages API client
 -- API docs: https://docs.anthropic.com/en/api/messages
@@ -245,9 +245,9 @@ local complete = function(self, model, messages, sampler, opts)
 	end
 
 	local resp, err = web.request(
-		self.api_url .. "/messages",
-		{ method = "POST", body = json.encode(data), headers = self.headers },
-		self.timeout
+		self.cfg.api_url .. "/messages",
+		{ method = "POST", body = json.encode(data), headers = self.__state.headers },
+		self.cfg.timeout
 	)
 
 	if not resp then
@@ -278,7 +278,7 @@ local complete = function(self, model, messages, sampler, opts)
 		stop_reason = response.stop_reason,
 	}
 
-	if self.debug_mode then
+	if self.cfg.debug_mode then
 		answer.raw = response
 	end
 
@@ -387,7 +387,7 @@ local stream = function(self, model, messages, sampler, user_callbacks, opts)
 						full_text:put(delta.text)
 						if user_callbacks.chunk then
 							local chunk_data = { text = delta.text }
-							if self.debug_mode then
+							if self.cfg.debug_mode then
 								chunk_data.raw = event_data
 							end
 							user_callbacks.chunk(chunk_data)
@@ -435,8 +435,8 @@ local stream = function(self, model, messages, sampler, user_callbacks, opts)
 	}
 
 	client = web.sse_client(
-		self.api_url .. "/messages",
-		{ method = "POST", body = json.encode(data), headers = self.headers },
+		self.cfg.api_url .. "/messages",
+		{ method = "POST", body = json.encode(data), headers = self.__state.headers },
 		callbacks
 	)
 
@@ -500,7 +500,7 @@ local chat_complete = function(self, model, messages, sampler, opts)
 	end
 
 	opts.tool_objects = tool_objects
-	return self:complete(model, messages, sampler, opts)
+	return self.complete(self, model, messages, sampler, opts)
 end
 
 -- Chat streaming wrapper
@@ -517,34 +517,36 @@ local chat_stream = function(self, model, messages, sampler, opts)
 
 	opts.tool_objects = tool_objects
 	local callbacks = opts.callbacks or {}
-	return self:stream(model, messages, sampler, callbacks, opts)
+	return self.stream(self, model, messages, sampler, callbacks, opts)
 end
 
 local new = function(api_url, api_key)
-	api_url = api_url or os.getenv("ANTHROPIC_API_URL") or "https://api.anthropic.com/v1"
-	api_key = api_key or os.getenv("ANTHROPIC_API_KEY") or os.getenv("LLM_API_KEY")
+	local resolved_api_url = api_url or os.getenv("ANTHROPIC_API_URL") or "https://api.anthropic.com/v1"
+	local resolved_api_key = api_key or os.getenv("ANTHROPIC_API_KEY") or os.getenv("LLM_API_KEY")
 	local timeout = tonumber(os.getenv("LLM_API_TIMEOUT")) or 600
 
-	local headers = {
-		["x-api-key"] = api_key,
-		["anthropic-version"] = "2023-06-01",
-		["Content-Type"] = "application/json",
-	}
-
-	local client = {
-		headers = headers,
-		backend = "anthropic",
-		timeout = timeout,
-		api_key = api_key,
-		api_url = api_url,
-		debug_mode = os.getenv("LLM_DEBUG_MODE"),
+	local instance = {
+		cfg = {
+			backend = "anthropic",
+			timeout = timeout,
+			api_key = resolved_api_key,
+			api_url = resolved_api_url,
+			debug_mode = os.getenv("LLM_DEBUG_MODE"),
+		},
+		__state = {
+			headers = {
+				["x-api-key"] = resolved_api_key,
+				["anthropic-version"] = "2023-06-01",
+				["Content-Type"] = "application/json",
+			},
+		},
 		complete = complete,
 		stream = stream,
 		chat_complete = chat_complete,
 		chat_stream = chat_stream,
 	}
 
-	return client
+	return instance
 end
 
 return { new = new }

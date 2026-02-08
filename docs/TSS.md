@@ -7,9 +7,20 @@ This document defines the behavior of `term.tss` (`src/term/term/tss.lua`):
 - width semantics (`w`)
 - public API contract
 
-## Overview
+## Overview & Terminology
 
-TSS is a style system for terminal output. A style sheet (`rss`) is a Lua table.
+TSS is a style system for terminal output. 
+
+A style sheet is defined as a Lua table with style definition, and is referred as `rss` (raw style sheet).
+`tss` is an instantiated object of a particular `rss`, with methods to apply it:
+
+```lua
+
+local tss_mod = require("term.tss")
+local rss = { fg = "white" }
+local tss = tss_mod.new(rss)
+```
+
 Styles are resolved by dot-path (for example: `table.border.top_line`), then applied
 through `tss:apply()` or `tss:apply_sized()`.
 
@@ -110,6 +121,13 @@ TSS object methods:
 - `scope(overrides?)`
 - `set_property(path, property, value)`
 - `get_property(path, property)`
+- `get_style(path?)`
+- `get_window_width()`
+- `set_window_width(width)`
+- `get_window_size()`
+- `set_window_size(height?, width?)`
+- `get_supports_ts()`
+- `set_supports_ts(enabled)`
 - `calc_el_width(w, max?, scale?)`
 
 ### `apply()` return value
@@ -127,6 +145,11 @@ Use `.text`, `.width`, and `.height` explicitly.
 Some style fields used in markdown renderers are not interpreted by `term.tss` directly
 (for example `list.indent_per_level`).
 They are consumed by renderer code and may coexist with core TSS properties.
+
+| Path | Type | Values | Default | Behavior |
+|------|------|--------|---------|----------|
+| `list.indent_per_level` | `number` | non-negative number (renderer uses floored integer) | `4` | Controls nesting indentation step for markdown list rendering (spaces per nesting level after level 1). |
+| `table.overflow` | `string` | `wrap`, `clip` | `wrap` | Controls terminal table cell overflow handling in markdown renderers. `wrap` expands row height and wraps cell content within fitted column width. `clip` preserves legacy single-line truncation with ellipsis when needed. |
 
 Thematic break glyph customization uses core TSS fields:
 - `thematic_break.content` for the repeated pattern

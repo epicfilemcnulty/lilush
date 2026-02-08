@@ -5,7 +5,7 @@
 local testimony = require("testimony")
 local helpers = require("tests.reliw._helpers")
 
-local testify = testimony.new("== web_server chunked body limits ==")
+local testify = testimony.new("== web.server chunked body limits ==")
 
 local new_client = function(receive_queue)
 	local client = {
@@ -39,8 +39,8 @@ local new_client = function(receive_queue)
 end
 
 local new_server = function(max_body_size, handle_fn)
-	helpers.clear_modules({ "web_server" })
-	local web_server = helpers.load_module_from_src("web_server", "src/luasocket/web_server.lua")
+	helpers.clear_modules({ "web.server" })
+	local web_server = helpers.load_module_from_src("web.server", "src/web/server.lua")
 	local srv, err = web_server.new({
 		max_body_size = max_body_size,
 		log_level = 100,

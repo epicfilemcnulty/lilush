@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local std = require("std")
 local markdown = require("markdown")
 
@@ -128,6 +132,8 @@ local render_page = function(content, vars, user_tmpl)
 	return std.txt.template(page_header, vars) .. content .. std.txt.template(tmpl.footer, vars)
 end
 
-local _M = { error_page = error_page, markdown_to_html = markdown_to_html, render_page = render_page }
-
-return _M
+return {
+	error_page = error_page,
+	markdown_to_html = markdown_to_html,
+	render_page = render_page,
+}

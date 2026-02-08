@@ -1,5 +1,7 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local core = require("std.core")
 local buffer = require("string.buffer")
 
@@ -130,13 +132,13 @@ local hostname = function()
 	return name
 end
 
-local progress_icons = { "⣿", "⣗", "⡯", "⣦", "⣢", "⣲", "⣶", "⣮", "⣦", "⢿", "⡟", "⣤" }
+local PROGRESS_ICONS = { "⣿", "⣗", "⡯", "⣦", "⣢", "⣲", "⣶", "⣮", "⣦", "⢿", "⡟", "⣤" }
 local progress_icon = function()
 	local pid = ps.launch({
 		name = "progress_bar",
 		func = function(cmd, args)
 			while true do
-				for _, icon in ipairs(progress_icons) do
+				for _, icon in ipairs(PROGRESS_ICONS) do
 					io.write(icon)
 					io.flush()
 					sleep_ms(200)

@@ -1,6 +1,6 @@
--- SPDX-FileCopyrightText: © 2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 --[[
 Streaming buffer for chunk boundary handling in markdown inline parsing.
@@ -118,100 +118,98 @@ end
 --   emit: callback function for events
 --   link_refs: table of link reference definitions
 --   footnote_tracker: table to track footnote usage
-local function new(options)
+local parse_and_emit = function(self, content)
+	if content == "" then
+		return
+	end
+
+	local parser = inline.new({
+		emit = self.__state.emit,
+		link_refs = self.__state.link_refs,
+		footnote_tracker = self.__state.footnote_tracker,
+	})
+	parser:parse(content)
+	self.__state.chars_since_open = 0
+end
+
+local emit_buffered_as_text = function(self)
+	if self.__state.buffer ~= "" then
+		self.__state.emit({ type = "text", text = self.__state.buffer })
+		self.__state.buffer = ""
+		self.__state.chars_since_open = 0
+	end
+end
+
+local feed = function(self, chunk)
+	if not chunk or chunk == "" then
+		return
+	end
+
+	self.__state.buffer = self.__state.buffer .. chunk
+	self.__state.chars_since_open = self.__state.chars_since_open + #chunk
+
+	-- First, try to find a safe emission point.
+	-- This should happen BEFORE stale opener check so we parse what we can.
+	if self.cfg.emit_at_word_boundary then
+		local safe_point = find_last_safe_point(self.__state.buffer)
+		if safe_point and safe_point > 1 then
+			local to_emit = sub(self.__state.buffer, 1, safe_point)
+			self.__state.buffer = sub(self.__state.buffer, safe_point + 1)
+			parse_and_emit(self, to_emit)
+			self.__state.chars_since_open = #self.__state.buffer
+		end
+	end
+
+	-- Only check for stale openers if we still have buffered content
+	-- that couldn't be emitted (likely unclosed syntax).
+	if self.__state.chars_since_open > self.cfg.stale_opener_threshold then
+		emit_buffered_as_text(self)
+	end
+end
+
+local flush = function(self)
+	if self.__state.buffer ~= "" then
+		parse_and_emit(self, self.__state.buffer)
+		self.__state.buffer = ""
+		self.__state.chars_since_open = 0
+	end
+end
+
+local reset = function(self)
+	self.__state.buffer = ""
+	self.__state.chars_since_open = 0
+end
+
+local get_buffer = function(self)
+	return self.__state.buffer
+end
+
+local set_emit = function(self, emit)
+	self.__state.emit = emit or function() end
+end
+
+local new = function(options)
 	options = options or {}
-	local config = {}
+	local cfg = {}
 	for k, v in pairs(DEFAULT_CONFIG) do
-		config[k] = options[k] or v
+		cfg[k] = options[k] or v
 	end
 
-	local self = {
-		_config = config,
-		_buffer = "", -- Accumulated content not yet emitted
-		_emit = options.emit or function() end, -- Event callback
-		_link_refs = options.link_refs or {}, -- Link reference definitions
-		_footnote_tracker = options.footnote_tracker or {}, -- Footnote usage tracker
-		_chars_since_open = 0, -- Chars since last potential opener
-		_parser = nil, -- Inline parser instance (created on demand)
+	return {
+		cfg = cfg,
+		__state = {
+			buffer = "",
+			emit = options.emit or function() end,
+			link_refs = options.link_refs or {},
+			footnote_tracker = options.footnote_tracker or {},
+			chars_since_open = 0,
+		},
+		feed = feed,
+		flush = flush,
+		reset = reset,
+		get_buffer = get_buffer,
+		set_emit = set_emit,
 	}
-
-	-- Feed a chunk of content to the buffer
-	-- Returns immediately-emittable events if possible
-	function self:feed(chunk)
-		if not chunk or chunk == "" then
-			return
-		end
-
-		self._buffer = self._buffer .. chunk
-		self._chars_since_open = self._chars_since_open + #chunk
-
-		-- First, try to find a safe emission point
-		-- This should happen BEFORE stale opener check so we parse what we can
-		if self._config.emit_at_word_boundary then
-			local safe_point = find_last_safe_point(self._buffer)
-			if safe_point and safe_point > 1 then
-				-- Parse and emit content up to safe point
-				local to_emit = sub(self._buffer, 1, safe_point)
-				self._buffer = sub(self._buffer, safe_point + 1)
-				self:_parse_and_emit(to_emit)
-				-- Reset stale counter since we made progress
-				self._chars_since_open = #self._buffer
-			end
-		end
-
-		-- Only check for stale openers if we still have buffered content
-		-- that couldn't be emitted (likely unclosed syntax)
-		if self._chars_since_open > self._config.stale_opener_threshold then
-			-- Force emit what we have so far as literal text
-			self:_emit_buffered_as_text()
-		end
-	end
-
-	-- Parse content through inline parser and emit events
-	function self:_parse_and_emit(content)
-		if content == "" then
-			return
-		end
-
-		local parser = inline.new({
-			emit = self._emit,
-			link_refs = self._link_refs,
-			footnote_tracker = self._footnote_tracker,
-		})
-		parser:parse(content)
-		self._chars_since_open = 0
-	end
-
-	-- Emit buffered content as plain text (for stale opener timeout)
-	function self:_emit_buffered_as_text()
-		if self._buffer ~= "" then
-			self._emit({ type = "text", text = self._buffer })
-			self._buffer = ""
-			self._chars_since_open = 0
-		end
-	end
-
-	-- Flush remaining buffer (call at end of block/document)
-	function self:flush()
-		if self._buffer ~= "" then
-			self:_parse_and_emit(self._buffer)
-			self._buffer = ""
-			self._chars_since_open = 0
-		end
-	end
-
-	-- Reset buffer state
-	function self:reset()
-		self._buffer = ""
-		self._chars_since_open = 0
-	end
-
-	-- Get current buffer content (for debugging)
-	function self:get_buffer()
-		return self._buffer
-	end
-
-	return self
 end
 
 return { new = new }

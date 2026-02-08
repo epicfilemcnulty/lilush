@@ -1,5 +1,7 @@
--- SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local std = require("std")
 local term = require("term")
 
@@ -47,7 +49,7 @@ local resolve_ts = function(ts)
 
 	-- If ts is a string, look it up in presets
 	if type(ts) == "string" then
-		local preset = term.ts_presets[ts]
+		local preset = term.TS_PRESETS[ts]
 		if not preset then
 			return nil -- Unknown preset, ignore
 		end
@@ -357,6 +359,60 @@ local get_property = function(self, path, property)
 		end
 	end
 	return obj[property]
+end
+
+local get_style = function(self, path)
+	local obj = self.__style
+	if not path or path == "" then
+		return std.tbl.copy(obj or {})
+	end
+	for e in path:gmatch("([^.]+)%.?") do
+		if obj[e] then
+			obj = obj[e]
+		else
+			return nil
+		end
+	end
+	return std.tbl.copy(obj)
+end
+
+local style_snapshot = function(self)
+	return std.tbl.copy(self.__style or {})
+end
+
+local get_window_width = function(self)
+	return self.__window.w
+end
+
+local set_window_width = function(self, width)
+	if type(width) ~= "number" then
+		return
+	end
+	self.__window.w = math.max(0, math.floor(width))
+end
+
+local get_window_size = function(self)
+	return {
+		h = self.__window.h,
+		w = self.__window.w,
+	}
+end
+
+local set_window_size = function(self, height, width)
+	if type(height) == "number" then
+		self.__window.h = math.max(0, math.floor(height))
+	end
+	if type(width) == "number" then
+		self.__window.w = math.max(0, math.floor(width))
+	end
+end
+
+local get_supports_ts = function(self)
+	return self.__supports_ts ~= false
+end
+
+local set_supports_ts = function(self, enabled)
+	self.__supports_ts = enabled ~= false
 end
 
 --[[
@@ -753,9 +809,17 @@ end
 new = function(rss, opts)
 	opts = opts or {}
 	local win_l, win_c = term.window_size()
+	local state = {
+		window = { h = win_l, w = win_c },
+		style = rss or {},
+	}
 	return {
-		__window = { h = win_l, w = win_c },
-		__style = rss or {},
+		cfg = {
+			supports_ts = opts.supports_ts ~= false,
+		},
+		__state = state,
+		__window = state.window,
+		__style = state.style,
 		-- TSS-level protocol gate: when false, ts properties are ignored.
 		__supports_ts = opts.supports_ts ~= false,
 		calc_el_width = calc_el_width,
@@ -765,6 +829,14 @@ new = function(rss, opts)
 		scope = scope,
 		set_property = set_property,
 		get_property = get_property,
+		get_style = get_style,
+		style_snapshot = style_snapshot,
+		get_window_width = get_window_width,
+		set_window_width = set_window_width,
+		get_window_size = get_window_size,
+		set_window_size = set_window_size,
+		get_supports_ts = get_supports_ts,
+		set_supports_ts = set_supports_ts,
 	}
 end
 

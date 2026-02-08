@@ -1,6 +1,6 @@
--- SPDX-FileCopyrightText: © 2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 --[[
 Markdown parser/renderer module for Lilush.
@@ -38,7 +38,7 @@ end
 -- options:
 --   renderer: string - renderer name ("static" default, "streaming" future)
 --   width: number - content width (default 80)
---   tss: table - custom TSS style sheet to merge with defaults
+--   rss: table - custom renderer style sheet to merge with defaults
 --   indent: number - global indentation (default 0)
 --   hide_link_urls: boolean - hide URLs in rendered output (default false)
 --   supports_ts: boolean - whether terminal supports OSC 66 text sizing (default true)
@@ -50,7 +50,7 @@ local render = function(input, options)
 	-- Create renderer instance
 	local r, err = renderer_registry.create(renderer_name, {
 		width = options.width or 80,
-		tss = options.tss,
+		rss = options.rss,
 		indent = options.indent or 0,
 		hide_link_urls = options.hide_link_urls or false,
 		supports_ts = options.supports_ts,

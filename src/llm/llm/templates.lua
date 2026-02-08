@@ -1,6 +1,6 @@
 -- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 local std = require("std")
 local buffer = require("string.buffer")
@@ -21,6 +21,19 @@ For each function call, return a json object with function name and arguments wi
 {"name": <function-name>, "arguments": <args-json-object>}
 </tool_call>
  ]]
+
+local stringify_content = function(value)
+	if value == nil then
+		return ""
+	end
+	if type(value) == "string" then
+		return value
+	end
+	if type(value) == "table" then
+		return json.encode(value) or tostring(value)
+	end
+	return tostring(value)
+end
 
 -- Applies chat template to messages, optionally including tool descriptions
 -- tpl: template with prefixes/suffixes for system/user/llm roles
@@ -51,7 +64,7 @@ local apply = function(tpl, messages, tools, dont_start)
 
 	for _, msg in ipairs(messages) do
 		if msg.role == "system" then
-			out:put(template.system.prefix, msg.content)
+			out:put(template.system.prefix, stringify_content(msg.content))
 			if #tools > 0 then
 				local th = tpl.tool_header or tool_header
 				local tf = tpl.tool_footer or tool_footer
@@ -65,10 +78,9 @@ local apply = function(tpl, messages, tools, dont_start)
 				out:put("</tools>", tf)
 			end
 			out:put(template.system.suffix)
-		end
-		if msg.role == "user" then
+		elseif msg.role == "user" then
 			out:put(template.user.prefix)
-			if msg.tool_responses then
+			if type(msg.tool_responses) == "table" then
 				for _, response in ipairs(msg.tool_responses) do
 					local resp_json = json.encode(response)
 					if resp_json then
@@ -76,12 +88,11 @@ local apply = function(tpl, messages, tools, dont_start)
 					end
 				end
 			else
-				out:put(msg.content)
+				out:put(stringify_content(msg.content))
 			end
 			out:put(template.user.suffix)
-		end
-		if msg.role == "assistant" then
-			out:put(template.llm.prefix, msg.content, template.llm.suffix)
+		elseif msg.role == "assistant" then
+			out:put(template.llm.prefix, stringify_content(msg.content), template.llm.suffix)
 		end
 	end
 

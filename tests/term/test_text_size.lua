@@ -84,31 +84,31 @@ testify:that("nil opts returns text unchanged", function()
 end)
 
 testify:that("ts_presets superscript has w=1", function()
-	testimony.assert_equal(1, term.ts_presets.superscript.w)
+	testimony.assert_equal(1, term.TS_PRESETS.superscript.w)
 end)
 
 testify:that("ts_presets subscript has w=1", function()
-	testimony.assert_equal(1, term.ts_presets.subscript.w)
+	testimony.assert_equal(1, term.TS_PRESETS.subscript.w)
 end)
 
 testify:that("ts_presets half has w=1", function()
-	testimony.assert_equal(1, term.ts_presets.half.w)
+	testimony.assert_equal(1, term.TS_PRESETS.half.w)
 end)
 
 testify:that("ts_presets compact has w=1", function()
-	testimony.assert_equal(1, term.ts_presets.compact.w)
+	testimony.assert_equal(1, term.TS_PRESETS.compact.w)
 end)
 
 testify:that("ts_presets double does not have w", function()
-	testimony.assert_nil(term.ts_presets.double.w)
+	testimony.assert_nil(term.TS_PRESETS.double.w)
 end)
 
 testify:that("ts_presets triple does not have w", function()
-	testimony.assert_nil(term.ts_presets.triple.w)
+	testimony.assert_nil(term.TS_PRESETS.triple.w)
 end)
 
 testify:that("ts_presets quadruple does not have w", function()
-	testimony.assert_nil(term.ts_presets.quadruple.w)
+	testimony.assert_nil(term.TS_PRESETS.quadruple.w)
 end)
 
 testify:that("wide characters are handled correctly (single emoji)", function()

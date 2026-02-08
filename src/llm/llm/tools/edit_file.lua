@@ -1,8 +1,9 @@
 -- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 local std = require("std")
+local TOOL_NAME = "edit_file"
 
 -- Count occurrences of a pattern in a string
 local function count_occurrences(str, pattern)
@@ -31,11 +32,11 @@ local function find_line_number(content, pos)
 end
 
 return {
-	name = "edit_file",
+	name = TOOL_NAME,
 	description = {
 		type = "function",
 		["function"] = {
-			name = "edit_file",
+			name = TOOL_NAME,
 			description = "Edits a file by replacing exact text. "
 				.. "Finds `old_text` in the file and replaces it with `new_text`. "
 				.. "The old_text must match exactly (including whitespace and indentation). "
@@ -44,7 +45,10 @@ return {
 				type = "object",
 				properties = {
 					filepath = { type = "string", description = "Path to the file to edit" },
-					old_text = { type = "string", description = "Exact text to find and replace (must be unique in file)" },
+					old_text = {
+						type = "string",
+						description = "Exact text to find and replace (must be unique in file)",
+					},
 					new_text = { type = "string", description = "Text to replace old_text with" },
 				},
 				required = { "filepath", "old_text", "new_text" },
@@ -58,19 +62,19 @@ return {
 		local new_text = arguments.new_text
 
 		if not filepath then
-			return { error = "filepath is required" }
+			return { name = TOOL_NAME, ok = false, error = "filepath is required" }
 		end
 		if not old_text then
-			return { error = "old_text is required" }
+			return { name = TOOL_NAME, ok = false, error = "old_text is required" }
 		end
 		if new_text == nil then
-			return { error = "new_text is required" }
+			return { name = TOOL_NAME, ok = false, error = "new_text is required" }
 		end
 
 		-- Read file content
 		local content, err = std.fs.read_file(filepath)
 		if err then
-			return { name = "edit_file", filepath = filepath, error = "failed to read file: " .. err }
+			return { name = TOOL_NAME, ok = false, filepath = filepath, error = "failed to read file: " .. err }
 		end
 
 		-- Check for occurrences
@@ -78,7 +82,8 @@ return {
 
 		if occurrences == 0 then
 			return {
-				name = "edit_file",
+				name = TOOL_NAME,
+				ok = false,
 				filepath = filepath,
 				error = "old_text not found in file",
 			}
@@ -86,7 +91,8 @@ return {
 
 		if occurrences > 1 then
 			return {
-				name = "edit_file",
+				name = TOOL_NAME,
+				ok = false,
 				filepath = filepath,
 				error = "old_text found "
 					.. occurrences
@@ -104,11 +110,12 @@ return {
 		-- Write back to file
 		local ok, write_err = std.fs.write_file(filepath, new_content)
 		if not ok then
-			return { name = "edit_file", filepath = filepath, error = "failed to write file: " .. write_err }
+			return { name = TOOL_NAME, ok = false, filepath = filepath, error = "failed to write file: " .. write_err }
 		end
 
 		return {
-			name = "edit_file",
+			name = TOOL_NAME,
+			ok = true,
 			filepath = filepath,
 			success = true,
 			line = line_number,

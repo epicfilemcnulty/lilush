@@ -1,4 +1,7 @@
-local std = require("std")
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 --[[ 
      RELIW assumes the following data schema in the redis DB:
 
@@ -83,7 +86,7 @@ local check_rate_limit = function(store, host, method, query, remote_ip, period)
 	return store:check_rate_limit(host, method, query, remote_ip, period)
 end
 
-local api = {
+return {
 	proxy_config = proxy_config,
 	entry_index = entry_index,
 	entry_metadata = entry_metadata,
@@ -93,4 +96,3 @@ local api = {
 	check_waf = check_waf,
 	add_waffer = add_waffer,
 }
-return api

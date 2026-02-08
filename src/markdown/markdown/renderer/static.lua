@@ -1,6 +1,6 @@
--- SPDX-FileCopyrightText: © 2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 --[[
 Static terminal renderer for markdown.
@@ -11,7 +11,7 @@ suitable for pager display and non-streaming use cases.
 
 Usage:
     local static = require("markdown.renderer.static")
-    local renderer = static.new({ width = 80, tss = custom_tss })
+    local renderer = static.new({ width = 80, rss = custom_rss })
 
     -- Feed events from parser
     renderer:render_event({ type = "block_start", tag = "para" })
@@ -26,6 +26,7 @@ local std = require("std")
 local buffer = require("string.buffer")
 local tss_mod = require("term.tss")
 local theme = require("markdown.renderer.theme")
+local table_layout = require("markdown.renderer.table_layout")
 
 local DEFAULT_BORDERS = theme.DEFAULT_BORDERS
 local DEFAULT_RSS = theme.DEFAULT_RSS
@@ -76,55 +77,6 @@ local clamp_display_width = function(text, width)
 	return std.txt.limit(text, width, width)
 end
 
-local fit_table_width = function(col_widths, available_width)
-	local cols = #col_widths
-	if cols == 0 then
-		return col_widths
-	end
-
-	-- Row width = sum(col_widths) + (3 * cols + 1)
-	local fixed_width = 3 * cols + 1
-	local target_sum = available_width - fixed_width
-
-	local min_col_width = 3
-	if target_sum < cols * min_col_width then
-		min_col_width = 1
-	end
-
-	local total = 0
-	for i = 1, cols do
-		local w = math.floor(tonumber(col_widths[i]) or 0)
-		if w < min_col_width then
-			w = min_col_width
-		end
-		col_widths[i] = w
-		total = total + w
-	end
-
-	local min_total = cols * min_col_width
-	if target_sum < min_total then
-		target_sum = min_total
-	end
-
-	while total > target_sum do
-		local widest_idx = nil
-		local widest = min_col_width
-		for i = 1, cols do
-			if col_widths[i] > widest then
-				widest = col_widths[i]
-				widest_idx = i
-			end
-		end
-		if not widest_idx then
-			break
-		end
-		col_widths[widest_idx] = col_widths[widest_idx] - 1
-		total = total - 1
-	end
-
-	return col_widths
-end
-
 -- Helper: render pre-styled content with borders (for divs)
 -- Unlike render_bordered_block, this takes already-rendered content with ANSI codes
 local render_bordered_content = function(tss, style_base, content, width, label, indent, pad)
@@ -135,7 +87,7 @@ local render_bordered_content = function(tss, style_base, content, width, label,
 	local pad_str = string.rep(" ", pad)
 
 	-- Get border definition
-	local border_def = tss.__style[style_base] and tss.__style[style_base].border or DEFAULT_BORDERS
+	local border_def = tss:get_property(style_base, "border") or DEFAULT_BORDERS
 
 	-- Split content into logical lines.
 	local lines = {}
@@ -243,7 +195,7 @@ local render_bordered_block = function(tss, style_base, lines, width, label, ind
 	})
 
 	-- Build top line
-	local border_def = border_tss.__style[style_base] and border_tss.__style[style_base].border or DEFAULT_BORDERS
+	local border_def = border_tss:get_property(style_base, "border") or DEFAULT_BORDERS
 	local top_line
 
 	if label and label ~= "" then
@@ -292,14 +244,14 @@ end
 
 -- Get the current content buffer based on block type
 local get_current_content = function(self)
-	if self._in_table_cell then
-		return self._table_cell_content
-	elseif self._in_heading then
-		return self._heading_content
-	elseif self._in_footnote then
-		return self._footnote_content
-	elseif self._in_paragraph then
-		return self._paragraph_content
+	if self.__state.in_table_cell then
+		return self.__state.table_cell_content
+	elseif self.__state.in_heading then
+		return self.__state.heading_content
+	elseif self.__state.in_footnote then
+		return self.__state.footnote_content
+	elseif self.__state.in_paragraph then
+		return self.__state.paragraph_content
 	end
 	return nil
 end
@@ -315,13 +267,13 @@ end
 
 -- Apply current inline style stack to text (used for non-sized content like paragraphs)
 local apply_inline_styles = function(self, text)
-	if #self._inline_stack == 0 then
+	if #self.__state.inline_stack == 0 then
 		return text
 	end
 
 	-- Build list of style elements from stack
 	local elements = {}
-	for _, style_info in ipairs(self._inline_stack) do
+	for _, style_info in ipairs(self.__state.inline_stack) do
 		local tag = style_info.tag
 		if tag == "strong" or tag == "emph" or tag == "code" or tag == "strikethrough" then
 			elements[#elements + 1] = tag
@@ -336,7 +288,7 @@ local apply_inline_styles = function(self, text)
 		return text
 	end
 
-	return self._tss:apply(elements, text).text
+	return self.__state.tss:apply(elements, text).text
 end
 
 -- Build styled text from content buffer (for non-text-sized blocks)
@@ -355,9 +307,9 @@ local build_styled_text = function(self, content, base_elements)
 	end)
 
 	-- Get base style
-	local base_props, _ = self._tss:get(base_elements[1])
+	local base_props, _ = self.__state.tss:get(base_elements[1])
 	for i = 2, #base_elements do
-		base_props, _ = self._tss:get(base_elements[i], base_props)
+		base_props, _ = self.__state.tss:get(base_elements[i], base_props)
 	end
 
 	-- Build styled text
@@ -369,7 +321,7 @@ local build_styled_text = function(self, content, base_elements)
 		if not elements or #elements == 0 then
 			return text
 		end
-		return self._tss:apply(elements, text).text
+		return self.__state.tss:apply(elements, text).text
 	end
 
 	-- Process character by character, tracking active ranges
@@ -411,67 +363,68 @@ end
 
 -- Render paragraph
 local render_paragraph = function(self)
-	local content = self._paragraph_content
+	local content = self.__state.paragraph_content
 	if content.plain == "" then
 		return
 	end
 
 	-- Record start line for pending element resolution
-	local para_start_line = self._current_line
+	local para_start_line = self.__state.current_line
 
 	-- Handle list item markers
 	local marker_text = ""
 	local marker_width = 0
 	local continuation_indent = ""
 
-	if self._in_list_item and #self._list_stack > 0 then
-		local depth = self._list_item_depth
-		local list = self._list_stack[depth]
+	if self.__state.in_list_item and #self.__state.list_stack > 0 then
+		local depth = self.__state.list_item_depth
+		local list = self.__state.list_stack[depth]
 		if list then
-			local item_count = self._list_item_count[depth] or 1
+			local item_count = self.__state.list_item_count[depth] or 1
 			-- For ordered lists, add start offset to get actual number (e.g., start=5, count=1 -> num=5)
 			local item_num = list.ordered and (list.start + item_count - 1) or item_count
 
 			-- Build base indent for nesting (configured spaces per level, starting at level 2)
-			local list_block_indent = get_block_indent(self._tss, "list_item")
-			local indent_per_level = get_list_indent_per_level(self._tss)
+			local list_block_indent = get_block_indent(self.__state.tss, "list_item")
+			local indent_per_level = get_list_indent_per_level(self.__state.tss)
 			local raw_base_indent = string.rep(" ", indent_per_level * (depth - 1))
 			local base_indent = string.rep(" ", list_block_indent) .. raw_base_indent
 
-			if self._list_item_first_block then
+			if self.__state.list_item_first_block then
 				-- First block gets the marker
 				if list.ordered then
 					-- Ordered: format number, apply style
 					local num_str = string.format("%d. ", item_num)
-					local styled = self._tss:apply("list_item.ol", num_str)
+					local styled = self.__state.tss:apply("list_item.ol", num_str)
 					marker_text = base_indent .. styled.text
 					marker_width = list_block_indent + #raw_base_indent + std.utf.display_len(num_str)
-				elseif self._list_item_task then
+				elseif self.__state.list_item_task then
 					-- Task list: render checkbox
-					local checkbox_style = self._list_item_task.checked and "task_list.checked" or "task_list.unchecked"
-					local styled = self._tss:apply(checkbox_style)
+					local checkbox_style = self.__state.list_item_task.checked and "task_list.checked"
+						or "task_list.unchecked"
+					local styled = self.__state.tss:apply(checkbox_style)
 					marker_text = base_indent .. styled.text
 					-- Get display width of the checkbox content
-					local _, obj = self._tss:get(checkbox_style)
-					local checkbox_content = obj.content or (self._list_item_task.checked and "☑ " or "☐ ")
+					local _, obj = self.__state.tss:get(checkbox_style)
+					local checkbox_content = obj.content or (self.__state.list_item_task.checked and "☑ " or "☐ ")
 					marker_width = list_block_indent + #raw_base_indent + std.utf.display_len(checkbox_content)
 				else
 					-- Unordered: get marker from TSS (uses content property)
-					local styled = self._tss:apply("list_item.ul")
+					local styled = self.__state.tss:apply("list_item.ul")
 					marker_text = base_indent .. styled.text
 					-- Get display width of the content (bullet + space)
-					local _, obj = self._tss:get("list_item.ul")
+					local _, obj = self.__state.tss:get("list_item.ul")
 					local marker_content = obj.content or "- "
 					marker_width = list_block_indent + #raw_base_indent + std.utf.display_len(marker_content)
 				end
 
-				self._list_item_first_block = false
+				self.__state.list_item_first_block = false
 				-- Store continuation indent for subsequent blocks and wrapped lines
 				continuation_indent = string.rep(" ", marker_width)
-				self._list_continuation_indent = continuation_indent
+				self.__state.list_continuation_indent = continuation_indent
 			else
 				-- Subsequent blocks in same item get continuation indent
-				continuation_indent = self._list_continuation_indent
+				continuation_indent = self.__state.list_continuation_indent
 				marker_text = continuation_indent
 				marker_width = #continuation_indent
 			end
@@ -479,15 +432,15 @@ local render_paragraph = function(self)
 	end
 
 	-- Check if base paragraph style has text-sizing
-	local para_props, _ = self._tss:get("para")
+	local para_props, _ = self.__state.tss:get("para")
 	local has_ts = para_props and para_props.ts
 	local lines_output = 0
 
 	if has_ts then
 		-- Use apply_sized for proper text-sizing with inline styles
-		local result = self._tss:apply_sized({ "para" }, content)
+		local result = self.__state.tss:apply_sized({ "para" }, content)
 		local extra_lines = result.height - 1
-		self._output:put(marker_text, result.text, "\n", string.rep("\n", extra_lines), "\n")
+		self.__state.output:put(marker_text, result.text, "\n", string.rep("\n", extra_lines), "\n")
 		lines_output = 1 + extra_lines + 1 -- text line + extra + trailing newline
 	else
 		-- No text-sizing - use traditional approach with pre-styled content
@@ -495,7 +448,7 @@ local render_paragraph = function(self)
 		local styled_text = build_styled_text(self, content, { "para" })
 
 		-- Calculate available width for content (account for marker/indent)
-		local available_width = self._width - marker_width
+		local available_width = self.__state.width - marker_width
 		if available_width < 20 then
 			available_width = 20 -- Minimum reasonable width
 		end
@@ -505,17 +458,17 @@ local render_paragraph = function(self)
 
 		-- Output first line with marker, rest with continuation indent
 		if #wrapped > 0 then
-			self._output:put(marker_text, wrapped[1], "\n")
+			self.__state.output:put(marker_text, wrapped[1], "\n")
 			for i = 2, #wrapped do
-				self._output:put(continuation_indent, wrapped[i], "\n")
+				self.__state.output:put(continuation_indent, wrapped[i], "\n")
 			end
 			lines_output = #wrapped
 		end
 
 		-- Add extra newline after paragraph (but not for tight lists)
 		-- For now, always add it - tight/loose handling can be refined later
-		if not self._in_list_item then
-			self._output:put("\n")
+		if not self.__state.in_list_item then
+			self.__state.output:put("\n")
 			lines_output = lines_output + 1
 		end
 	end
@@ -523,44 +476,44 @@ local render_paragraph = function(self)
 	-- Resolve pending links - associate them with the paragraph start line
 	-- (Since tracking exact positions within wrapped text is complex,
 	-- we just track the line where the link appears)
-	if self._pending_links then
-		for _, link_info in ipairs(self._pending_links) do
-			self._elements.links[#self._elements.links + 1] = {
+	if self.__state.pending_links then
+		for _, link_info in ipairs(self.__state.pending_links) do
+			self.__state.elements.links[#self.__state.elements.links + 1] = {
 				line = para_start_line, -- Simplified: all links in para on start line
 				url = link_info.url,
 				title = link_info.title,
 			}
 		end
-		self._pending_links = nil
+		self.__state.pending_links = nil
 	end
 
 	-- Resolve pending footnote refs
-	if self._pending_footnote_refs then
-		for _, fn_info in ipairs(self._pending_footnote_refs) do
-			self._elements.footnote_refs[#self._elements.footnote_refs + 1] = {
+	if self.__state.pending_footnote_refs then
+		for _, fn_info in ipairs(self.__state.pending_footnote_refs) do
+			self.__state.elements.footnote_refs[#self.__state.elements.footnote_refs + 1] = {
 				line = para_start_line,
 				label = fn_info.label,
 			}
 		end
-		self._pending_footnote_refs = nil
+		self.__state.pending_footnote_refs = nil
 	end
 
 	-- Update current line
-	self._current_line = self._current_line + lines_output
+	self.__state.current_line = self.__state.current_line + lines_output
 end
 
 -- Render heading
 local render_heading = function(self)
-	local content = self._heading_content
-	local level = self._heading_level
+	local content = self.__state.heading_content
+	local level = self.__state.heading_level
 
 	if content.plain == "" then
 		return
 	end
 
 	-- Track header for pager navigation
-	self._elements.headers[#self._elements.headers + 1] = {
-		line = self._current_line,
+	self.__state.elements.headers[#self.__state.elements.headers + 1] = {
+		line = self.__state.current_line,
 		level = level,
 		text = content.plain,
 	}
@@ -568,26 +521,26 @@ local render_heading = function(self)
 	-- Apply level-specific style to content using apply_sized
 	-- This properly handles inline styles within text-sized headings
 	local level_key = "h" .. tostring(level)
-	local result = self._tss:apply_sized({ "heading", "heading." .. level_key }, content)
+	local result = self.__state.tss:apply_sized({ "heading", "heading." .. level_key }, content)
 
 	-- When text-sizing is used with scale > 1, the scaled text occupies multiple
 	-- terminal rows, but the cursor remains on the original row. We need to add
 	-- extra newlines to move past the full height of the scaled content.
 	local extra_lines = result.height - 1
-	self._output:put(result.text, "\n", string.rep("\n", extra_lines), "\n")
+	self.__state.output:put(result.text, "\n", string.rep("\n", extra_lines), "\n")
 
 	-- Update current line (text + extra + 1 trailing newline)
-	self._current_line = self._current_line + 1 + extra_lines + 1
+	self.__state.current_line = self.__state.current_line + 1 + extra_lines + 1
 end
 
 -- Render code block
 local render_code_block = function(self)
-	local lang = self._code_block_lang
-	local lines = self._code_block_lines
+	local lang = self.__state.code_block_lang
+	local lines = self.__state.code_block_lines
 	local raw_content = table.concat(lines, "\n")
 
 	-- Record start line BEFORE rendering
-	local start_line = self._current_line
+	local start_line = self.__state.current_line
 
 	-- Ensure we have at least one line
 	if #lines == 0 then
@@ -596,50 +549,51 @@ local render_code_block = function(self)
 
 	-- Handle list item indentation
 	local indent = 0
-	if self._in_list_item and #self._list_stack > 0 then
-		local depth = self._list_item_depth
-		local list = self._list_stack[depth]
+	if self.__state.in_list_item and #self.__state.list_stack > 0 then
+		local depth = self.__state.list_item_depth
+		local list = self.__state.list_stack[depth]
 		if list then
-			if self._list_item_first_block then
+			if self.__state.list_item_first_block then
 				-- First block: calculate continuation indent like paragraphs do
-				local item_count = self._list_item_count[depth] or 1
+				local item_count = self.__state.list_item_count[depth] or 1
 				local item_num = list.ordered and (list.start + item_count - 1) or item_count
-				local list_block_indent = get_block_indent(self._tss, "list_item")
-				local indent_per_level = get_list_indent_per_level(self._tss)
+				local list_block_indent = get_block_indent(self.__state.tss, "list_item")
+				local indent_per_level = get_list_indent_per_level(self.__state.tss)
 				local raw_base_indent = string.rep(" ", indent_per_level * (depth - 1))
 				local marker_width
 				if list.ordered then
 					marker_width = list_block_indent + #raw_base_indent + #string.format("%d. ", item_num)
-				elseif self._list_item_task then
-					local _, obj =
-						self._tss:get(self._list_item_task.checked and "task_list.checked" or "task_list.unchecked")
-					local checkbox_content = obj.content or (self._list_item_task.checked and "☑ " or "☐ ")
+				elseif self.__state.list_item_task then
+					local _, obj = self.__state.tss:get(
+						self.__state.list_item_task.checked and "task_list.checked" or "task_list.unchecked"
+					)
+					local checkbox_content = obj.content or (self.__state.list_item_task.checked and "☑ " or "☐ ")
 					marker_width = list_block_indent + #raw_base_indent + std.utf.display_len(checkbox_content)
 				else
-					local _, obj = self._tss:get("list_item.ul")
+					local _, obj = self.__state.tss:get("list_item.ul")
 					local marker_content = obj.content or "- "
 					marker_width = list_block_indent + #raw_base_indent + std.utf.display_len(marker_content)
 				end
 				indent = marker_width
-				self._list_continuation_indent = string.rep(" ", marker_width)
-				self._list_item_first_block = false
+				self.__state.list_continuation_indent = string.rep(" ", marker_width)
+				self.__state.list_item_first_block = false
 			else
 				-- Subsequent blocks use stored continuation indent
-				indent = #self._list_continuation_indent
+				indent = #self.__state.list_continuation_indent
 			end
 		end
 	end
-	indent = indent + get_block_indent(self._tss, "code_block")
+	indent = indent + get_block_indent(self.__state.tss, "code_block")
 
 	-- Calculate inner block width (without left/right border glyphs)
-	local block_width = self._width - indent - 2
-	if #self._div_stack > 0 then
+	local block_width = self.__state.width - indent - 2
+	if #self.__state.div_stack > 0 then
 		block_width = block_width - 2
 	end
 	block_width = math.max(1, block_width)
 
 	-- Get padding from TSS
-	local _, code_obj = self._tss:get("code_block")
+	local _, code_obj = self.__state.tss:get("code_block")
 	local pad_value = (code_obj and code_obj.pad) or 0
 
 	-- Normalize tabs for stable terminal cell width accounting in bordered blocks
@@ -649,77 +603,78 @@ local render_code_block = function(self)
 	end
 
 	-- Render bordered block
-	local rendered = render_bordered_block(self._tss, "code_block", render_lines, block_width, lang, indent, pad_value)
+	local rendered =
+		render_bordered_block(self.__state.tss, "code_block", render_lines, block_width, lang, indent, pad_value)
 
 	-- Track element position
 	local lines_in_block = count_newlines(rendered)
 	-- Add extra newline for spacing (but not inside lists, matching paragraph behavior)
-	if not self._in_list_item then
+	if not self.__state.in_list_item then
 		lines_in_block = lines_in_block + 1
 	end
 	local end_line = start_line + lines_in_block - 1
-	self._elements.code_blocks[#self._elements.code_blocks + 1] = {
+	self.__state.elements.code_blocks[#self.__state.elements.code_blocks + 1] = {
 		start_line = start_line,
 		end_line = end_line,
 		raw = raw_content,
 		lang = lang,
 	}
 
-	self._output:put(rendered)
-	if not self._in_list_item then
-		self._output:put("\n")
+	self.__state.output:put(rendered)
+	if not self.__state.in_list_item then
+		self.__state.output:put("\n")
 	end
 
 	-- Update current line
-	self._current_line = self._current_line + lines_in_block
+	self.__state.current_line = self.__state.current_line + lines_in_block
 end
 
 -- Render thematic break
 local render_thematic_break = function(self)
 	-- Get thematic break style properties
-	local props, obj = self._tss:get("thematic_break")
+	local props, obj = self.__state.tss:get("thematic_break")
 
 	-- Calculate element width (respects w = 0.5 for 50% width)
-	local el_width = self._tss:calc_el_width(obj.w or 1, self._width)
+	local el_width = self.__state.tss:calc_el_width(obj.w or 1, self.__state.width)
 	if el_width == 0 then
-		el_width = self._width
+		el_width = self.__state.width
 	end
 
 	-- Thematic break pattern comes from thematic_break.content.
 	-- Width expansion is handled by core TSS fill semantics (fill = true).
 	local base_content = obj.content or "─"
 
-	-- Apply styling (TSS won't add alignment padding since tss.__window.w = content width,
+	-- Apply styling (TSS won't add alignment padding since layout width equals content width,
 	-- making effective_w = el_width, so there's no room for TSS to add padding)
-	local styled = self._tss:apply("thematic_break", base_content).text
+	local styled = self.__state.tss:apply("thematic_break", base_content).text
 
 	-- Manual alignment to center element within the content area
 	local align = props.align or "none"
 	local left_pad = ""
 	if align == "center" then
-		left_pad = string.rep(" ", math.floor((self._width - el_width) / 2))
+		left_pad = string.rep(" ", math.floor((self.__state.width - el_width) / 2))
 	elseif align == "right" then
-		left_pad = string.rep(" ", self._width - el_width)
+		left_pad = string.rep(" ", self.__state.width - el_width)
 	end
 
-	self._output:put(left_pad, styled, "\n\n")
+	self.__state.output:put(left_pad, styled, "\n\n")
 
 	-- Update current line (1 content line + 1 empty line)
-	self._current_line = self._current_line + 2
+	self.__state.current_line = self.__state.current_line + 2
 end
 
 -- Render a complete table
 local render_table = function(self)
-	local tbl = self._table_data
+	local tbl = self.__state.table_data
 	if not tbl or not tbl.rows or #tbl.rows == 0 then
 		return
 	end
-	local table_block_indent = get_block_indent(self._tss, "table")
+	local table_block_indent = get_block_indent(self.__state.tss, "table")
 	local table_indent_str = string.rep(" ", table_block_indent)
-	local table_available_width = math.max(1, self._width - table_block_indent)
+	local table_available_width = math.max(1, self.__state.width - table_block_indent)
+	local overflow_mode = table_layout.normalize_overflow(self.__state.tss:get_property("table", "overflow"))
 
-	-- Pre-calculate styled content for all cells
-	-- This allows accurate width calculation including before/after from TSS
+	-- Pre-calculate styled content for width fitting.
 	local styled_rows = {}
 	for row_idx, row in ipairs(tbl.rows) do
 		local base_style = row.header and { "table.header" } or { "table.cell" }
@@ -731,7 +686,7 @@ local render_table = function(self)
 				styled_text = build_styled_text(self, cell, base_style)
 			else
 				-- No inline styles - just apply base style
-				styled_text = self._tss:apply(base_style, cell.plain).text
+				styled_text = self.__state.tss:apply(base_style, cell.plain).text
 			end
 			styled_cells[i] = {
 				text = styled_text,
@@ -752,10 +707,10 @@ local render_table = function(self)
 		end
 	end
 
-	col_widths = fit_table_width(col_widths, table_available_width)
+	col_widths = table_layout.fit_table_width(col_widths, table_available_width)
 
 	-- Get border characters from TSS
-	local border = self._tss.__style.table and self._tss.__style.table.border or {}
+	local border = self.__state.tss:get_property("table", "border") or {}
 	local b = {
 		top_left = border.top_left or "┌",
 		top = border.top or "─",
@@ -774,7 +729,7 @@ local render_table = function(self)
 	}
 
 	local function styled_border(char)
-		return self._tss:apply({ "table.border" }, char).text
+		return self.__state.tss:apply({ "table.border" }, char).text
 	end
 
 	-- Build top border: ┌───┬───┬───┐
@@ -787,66 +742,163 @@ local render_table = function(self)
 	end
 	top_line = top_line .. styled_border(b.top_right)
 	top_line = clamp_display_width(top_line, table_available_width)
-	self._output:put(table_indent_str, top_line, "\n")
+	self.__state.output:put(table_indent_str, top_line, "\n")
 
-	-- Render rows using pre-calculated styled content
-	for row_idx, row in ipairs(styled_rows) do
-		local base_style = row.header and { "table.header" } or { "table.cell" }
-		-- Build data row: │ cell │ cell │ cell │
-		local row_line = styled_border(b.left)
-		for i, cell in ipairs(row.cells) do
-			local w = col_widths[i]
-			-- TSS alignment takes precedence over markdown column alignment when defined
-			local style_key = row.header and "table.header" or "table.cell"
-			local cell_props, _ = self._tss:get(style_key)
-			local align = cell_props.align or tbl.alignments[i] or "left"
+	local lines_count = 1 -- top border
 
-			local cell_text = cell.text
-			local cell_width = cell.width
-			if cell_width > w then
-				cell_text = clamp_display_width(cell_text, w)
-				cell_width = std.utf.cell_len(cell_text)
-			end
+	if overflow_mode == "clip" then
+		for row_idx, row in ipairs(styled_rows) do
+			local base_style = row.header and { "table.header" } or { "table.cell" }
+			local row_line = styled_border(b.left)
+			for i, cell in ipairs(row.cells) do
+				local w = col_widths[i]
+				local style_key = row.header and "table.header" or "table.cell"
+				local cell_props, _ = self.__state.tss:get(style_key)
+				local align = cell_props.align or tbl.alignments[i] or "left"
 
-			-- Apply alignment with padding (padding uses base cell style)
-			local left_pad = ""
-			local right_pad = ""
-			local total_pad = w - cell_width
+				local cell_text = cell.text
+				local cell_width = cell.width
+				if cell_width > w then
+					cell_text = clamp_display_width(cell_text, w)
+					cell_width = std.utf.cell_len(cell_text)
+				end
 
-			if total_pad > 0 then
-				if align == "right" then
-					left_pad = self._tss:apply(base_style, string.rep(" ", total_pad)).text
-				elseif align == "center" then
-					local lp = math.floor(total_pad / 2)
-					local rp = total_pad - lp
-					left_pad = self._tss:apply(base_style, string.rep(" ", lp)).text
-					right_pad = self._tss:apply(base_style, string.rep(" ", rp)).text
-				else -- left
-					right_pad = self._tss:apply(base_style, string.rep(" ", total_pad)).text
+				local pad_left, pad_right = table_layout.compute_padding(align, w, cell_width)
+				local left_pad = pad_left > 0 and self.__state.tss:apply(base_style, string.rep(" ", pad_left)).text
+					or ""
+				local right_pad = pad_right > 0 and self.__state.tss:apply(base_style, string.rep(" ", pad_right)).text
+					or ""
+
+				row_line = row_line .. " " .. left_pad .. cell_text .. right_pad .. " "
+				if i < #col_widths then
+					row_line = row_line .. styled_border(b.mid)
 				end
 			end
+			row_line = row_line .. styled_border(b.right)
+			row_line = clamp_display_width(row_line, table_available_width)
+			self.__state.output:put(table_indent_str, row_line, "\n")
+			lines_count = lines_count + 1
 
-			row_line = row_line .. " " .. left_pad .. cell_text .. right_pad .. " "
-			if i < #col_widths then
-				row_line = row_line .. styled_border(b.mid)
+			if row.header and row_idx < #styled_rows then
+				local sep_line = styled_border(b.mid_left)
+				for i, w in ipairs(col_widths) do
+					sep_line = sep_line .. styled_border(string.rep(b.bottom, w + 2))
+					if i < #col_widths then
+						sep_line = sep_line .. styled_border(b.mid_mid)
+					end
+				end
+				sep_line = sep_line .. styled_border(b.mid_right)
+				sep_line = clamp_display_width(sep_line, table_available_width)
+				self.__state.output:put(table_indent_str, sep_line, "\n")
+				lines_count = lines_count + 1
 			end
 		end
-		row_line = row_line .. styled_border(b.right)
-		row_line = clamp_display_width(row_line, table_available_width)
-		self._output:put(table_indent_str, row_line, "\n")
+	else
+		local function style_wrapped_cell_line(content, parts, base_style)
+			if not parts or #parts == 0 then
+				return "", 0
+			end
 
-		-- After header row, add separator: ├───┼───┼───┤
-		if row.header and row_idx < #styled_rows then
-			local sep_line = styled_border(b.mid_left)
-			for i, w in ipairs(col_widths) do
-				sep_line = sep_line .. styled_border(string.rep(b.bottom, w + 2))
-				if i < #col_widths then
-					sep_line = sep_line .. styled_border(b.mid_mid)
+			local line_content = { plain = "", ranges = {} }
+			local plain_parts = {}
+			for i, part in ipairs(parts) do
+				plain_parts[i] = part.text
+			end
+			line_content.plain = table.concat(plain_parts)
+
+			if content.ranges and #content.ranges > 0 then
+				local line_pos = 1
+				for _, part in ipairs(parts) do
+					local part_len = std.utf.len(part.text)
+					if part_len > 0 then
+						for _, r in ipairs(content.ranges) do
+							local overlap_start = math.max(part.start, r.start)
+							local overlap_stop = math.min(part.stop, r.stop)
+							if overlap_stop >= overlap_start then
+								line_content.ranges[#line_content.ranges + 1] = {
+									start = line_pos + (overlap_start - part.start),
+									stop = line_pos + (overlap_stop - part.start),
+									elements = r.elements,
+								}
+							end
+						end
+						line_pos = line_pos + part_len
+					end
 				end
 			end
-			sep_line = sep_line .. styled_border(b.mid_right)
-			sep_line = clamp_display_width(sep_line, table_available_width)
-			self._output:put(table_indent_str, sep_line, "\n")
+
+			local styled_text
+			if #line_content.ranges > 0 then
+				styled_text = build_styled_text(self, line_content, base_style)
+			else
+				styled_text = self.__state.tss:apply(base_style, line_content.plain).text
+			end
+			return styled_text, std.utf.cell_len(styled_text)
+		end
+
+		for row_idx, row in ipairs(tbl.rows) do
+			local style_key = row.header and "table.header" or "table.cell"
+			local base_style = { style_key }
+			local cell_props, _ = self.__state.tss:get(style_key)
+
+			local wrapped_cells = {}
+			local row_height = 1
+			for i = 1, #col_widths do
+				local cell_content = row.cells[i] or { plain = "", ranges = {} }
+				local lines = table_layout.wrap_text_with_spans(cell_content.plain, col_widths[i])
+				wrapped_cells[i] = lines
+				if #lines > row_height then
+					row_height = #lines
+				end
+			end
+
+			for line_idx = 1, row_height do
+				local row_line = styled_border(b.left)
+				for col_idx = 1, #col_widths do
+					local w = col_widths[col_idx]
+					local align = cell_props.align or tbl.alignments[col_idx] or "left"
+					local line_info = wrapped_cells[col_idx][line_idx]
+					local cell_text = ""
+					local cell_width = 0
+					if line_info then
+						cell_text, cell_width = style_wrapped_cell_line(
+							row.cells[col_idx] or { plain = "", ranges = {} },
+							line_info.parts,
+							base_style
+						)
+					end
+
+					local pad_left, pad_right = table_layout.compute_padding(align, w, cell_width)
+					local left_pad = pad_left > 0 and self.__state.tss:apply(base_style, string.rep(" ", pad_left)).text
+						or ""
+					local right_pad = pad_right > 0
+							and self.__state.tss:apply(base_style, string.rep(" ", pad_right)).text
+						or ""
+
+					row_line = row_line .. " " .. left_pad .. cell_text .. right_pad .. " "
+					if col_idx < #col_widths then
+						row_line = row_line .. styled_border(b.mid)
+					end
+				end
+				row_line = row_line .. styled_border(b.right)
+				row_line = clamp_display_width(row_line, table_available_width)
+				self.__state.output:put(table_indent_str, row_line, "\n")
+				lines_count = lines_count + 1
+			end
+
+			if row.header and row_idx < #tbl.rows then
+				local sep_line = styled_border(b.mid_left)
+				for i, w in ipairs(col_widths) do
+					sep_line = sep_line .. styled_border(string.rep(b.bottom, w + 2))
+					if i < #col_widths then
+						sep_line = sep_line .. styled_border(b.mid_mid)
+					end
+				end
+				sep_line = sep_line .. styled_border(b.mid_right)
+				sep_line = clamp_display_width(sep_line, table_available_width)
+				self.__state.output:put(table_indent_str, sep_line, "\n")
+				lines_count = lines_count + 1
+			end
 		end
 	end
 
@@ -860,19 +912,10 @@ local render_table = function(self)
 	end
 	bottom_line = bottom_line .. styled_border(b.bottom_right)
 	bottom_line = clamp_display_width(bottom_line, table_available_width)
-	self._output:put(table_indent_str, bottom_line, "\n\n")
-
-	-- Update current line: top border + rows + separators + bottom border + empty line
-	local lines_count = 1 -- top border
-	for row_idx, row in ipairs(styled_rows) do
-		lines_count = lines_count + 1 -- data row
-		if row.header and row_idx < #styled_rows then
-			lines_count = lines_count + 1 -- header separator
-		end
-	end
+	self.__state.output:put(table_indent_str, bottom_line, "\n\n")
 	lines_count = lines_count + 1 -- bottom border
 	lines_count = lines_count + 1 -- trailing empty line
-	self._current_line = self._current_line + lines_count
+	self.__state.current_line = self.__state.current_line + lines_count
 end
 
 -- Handle block start event
@@ -880,16 +923,16 @@ local handle_block_start = function(self, tag, attrs)
 	attrs = attrs or {}
 
 	if tag == "para" then
-		self._in_paragraph = true
-		self._paragraph_content = { plain = "", ranges = {} }
+		self.__state.in_paragraph = true
+		self.__state.paragraph_content = { plain = "", ranges = {} }
 	elseif tag == "heading" then
-		self._in_heading = true
-		self._heading_level = attrs.level or 1
-		self._heading_content = { plain = "", ranges = {} }
+		self.__state.in_heading = true
+		self.__state.heading_level = attrs.level or 1
+		self.__state.heading_content = { plain = "", ranges = {} }
 	elseif tag == "code_block" then
-		self._in_code_block = true
-		self._code_block_lang = attrs.lang
-		self._code_block_lines = {}
+		self.__state.in_code_block = true
+		self.__state.code_block_lang = attrs.lang
+		self.__state.code_block_lines = {}
 	elseif tag == "thematic_break" then
 		-- Thematic break is self-closing, render immediately
 		render_thematic_break(self)
@@ -898,44 +941,44 @@ local handle_block_start = function(self, tag, attrs)
 			ordered = attrs.ordered,
 			start = attrs.start or 1,
 			tight = attrs.tight,
-			depth = #self._list_stack + 1,
+			depth = #self.__state.list_stack + 1,
 		}
-		table.insert(self._list_stack, list_info)
-		self._list_item_count[list_info.depth] = 0
+		table.insert(self.__state.list_stack, list_info)
+		self.__state.list_item_count[list_info.depth] = 0
 	elseif tag == "list_item" then
-		local depth = #self._list_stack
-		self._list_item_count[depth] = (self._list_item_count[depth] or 0) + 1
-		self._in_list_item = true
-		self._list_item_depth = depth
-		self._list_item_first_block = true
+		local depth = #self.__state.list_stack
+		self.__state.list_item_count[depth] = (self.__state.list_item_count[depth] or 0) + 1
+		self.__state.in_list_item = true
+		self.__state.list_item_depth = depth
+		self.__state.list_item_first_block = true
 		-- Store task list info
 		if attrs.task then
-			self._list_item_task = { checked = attrs.checked }
+			self.__state.list_item_task = { checked = attrs.checked }
 		else
-			self._list_item_task = nil
+			self.__state.list_item_task = nil
 		end
 	elseif tag == "table" then
-		self._in_table = true
-		self._table_data = {
+		self.__state.in_table = true
+		self.__state.table_data = {
 			columns = attrs.columns or 0,
 			alignments = {},
 			rows = {},
 		}
 	elseif tag == "table_head" then
-		self._in_table_head = true
+		self.__state.in_table_head = true
 	elseif tag == "table_body" then
-		self._in_table_body = true
+		self.__state.in_table_body = true
 	elseif tag == "table_row" then
-		self._in_table_row = true
-		self._table_row_cells = {}
-		self._table_row_header = attrs.header or false
+		self.__state.in_table_row = true
+		self.__state.table_row_cells = {}
+		self.__state.table_row_header = attrs.header or false
 	elseif tag == "table_cell" then
-		self._in_table_cell = true
-		self._table_cell_content = { plain = "", ranges = {} }
-		self._table_cell_align = attrs.align or "left"
+		self.__state.in_table_cell = true
+		self.__state.table_cell_content = { plain = "", ranges = {} }
+		self.__state.table_cell_align = attrs.align or "left"
 		-- Record alignment
-		if self._table_data and #self._table_row_cells < #self._table_data.alignments + 1 then
-			self._table_data.alignments[#self._table_row_cells + 1] = attrs.align or "left"
+		if self.__state.table_data and #self.__state.table_row_cells < #self.__state.table_data.alignments + 1 then
+			self.__state.table_data.alignments[#self.__state.table_row_cells + 1] = attrs.align or "left"
 		end
 	elseif tag == "div" then
 		-- Fenced div - track nesting level, class, and capture output
@@ -943,71 +986,71 @@ local handle_block_start = function(self, tag, attrs)
 
 		-- Determine style base for width calculation
 		local style_base = "div." .. class
-		if not (self._tss.__style.div and self._tss.__style.div[class] and self._tss.__style.div[class].border) then
+		if not self.__state.tss:get_property(style_base, "border") then
 			style_base = "div.default"
 		end
 
 		-- Get div style properties for width and padding calculation
-		local _, div_obj = self._tss:get(style_base)
-		local _, default_obj = self._tss:get("div.default")
+		local _, div_obj = self.__state.tss:get(style_base)
+		local _, default_obj = self.__state.tss:get("div.default")
 		local w_value = (div_obj and div_obj.w) or (default_obj and default_obj.w) or 1
 		local pad_value = (div_obj and div_obj.pad) or (default_obj and default_obj.pad) or 0
 
 		-- Calculate content width (accounting for borders)
-		local available_width = self._width - 2 -- Account for border characters
-		local el_width = self._tss:calc_el_width(w_value, available_width)
+		local available_width = self.__state.width - 2 -- Account for border characters
+		local el_width = self.__state.tss:calc_el_width(w_value, available_width)
 		if el_width == 0 then
 			el_width = available_width
 		end
 
 		local div_info = {
 			class = class,
-			depth = #self._div_stack + 1,
-			saved_output = self._output, -- Save current output buffer
-			saved_width = self._width, -- Save original width
-			saved_tss_window_w = self._tss.__window.w, -- Save TSS layout width
-			saved_supports_ts = self._tss.__supports_ts, -- Save ts capability gate
-			start_line = self._current_line,
+			depth = #self.__state.div_stack + 1,
+			saved_output = self.__state.output, -- Save current output buffer
+			saved_width = self.__state.width, -- Save original width
+			saved_tss_window_w = self.__state.tss:get_window_width(), -- Save TSS layout width
+			saved_supports_ts = self.__state.tss:get_supports_ts(), -- Save ts capability gate
+			start_line = self.__state.current_line,
 			el_width = el_width, -- Store calculated width for block_end
 			pad = pad_value, -- Store padding for block_end
 		}
-		table.insert(self._div_stack, div_info)
+		table.insert(self.__state.div_stack, div_info)
 		-- Create new buffer to capture div content
-		self._output = buffer.new()
+		self.__state.output = buffer.new()
 		-- Set narrower width for content inside the div (minus padding)
-		self._width = el_width - pad_value
-		self._tss.__window.w = math.max(1, self._width)
+		self.__state.width = el_width - pad_value
+		self.__state.tss:set_window_width(math.max(1, self.__state.width))
 		-- Intentionally disable text sizing in bordered div content.
 		-- Kitty/foot diverge on scaled multicell cursor behavior around box glyphs,
 		-- which causes persistent right-border misalignment artifacts.
-		self._tss.__supports_ts = false
+		self.__state.tss:set_supports_ts(false)
 	elseif tag == "blockquote" then
 		-- Blockquote - track nesting and capture output
 		local bq_info = {
-			depth = #self._blockquote_stack + 1,
-			saved_output = self._output, -- Save current output buffer
-			start_line = self._current_line,
+			depth = #self.__state.blockquote_stack + 1,
+			saved_output = self.__state.output, -- Save current output buffer
+			start_line = self.__state.current_line,
 		}
-		table.insert(self._blockquote_stack, bq_info)
+		table.insert(self.__state.blockquote_stack, bq_info)
 		-- Create new buffer to capture blockquote content
-		self._output = buffer.new()
+		self.__state.output = buffer.new()
 	elseif tag == "footnotes" then
 		-- Footnotes section
-		self._in_footnotes = true
+		self.__state.in_footnotes = true
 		-- Render separator line before footnotes
-		local sep = string.rep("─", math.floor(self._width * 0.3))
-		local styled_sep = self._tss:apply({ "footnotes.separator" }, sep).text
-		self._output:put("\n", styled_sep, "\n")
+		local sep = string.rep("─", math.floor(self.__state.width * 0.3))
+		local styled_sep = self.__state.tss:apply({ "footnotes.separator" }, sep).text
+		self.__state.output:put("\n", styled_sep, "\n")
 		-- Update current line (empty line + separator)
-		self._current_line = self._current_line + 2
+		self.__state.current_line = self.__state.current_line + 2
 	elseif tag == "footnote" then
 		-- Individual footnote
-		self._in_footnote = true
-		self._footnote_label = attrs.label
-		self._footnote_index = attrs.index
-		self._footnote_content = { plain = "", ranges = {} }
+		self.__state.in_footnote = true
+		self.__state.footnote_label = attrs.label
+		self.__state.footnote_index = attrs.index
+		self.__state.footnote_content = { plain = "", ranges = {} }
 		-- Track footnote definition start line for pager navigation
-		self._footnote_start_line = self._current_line
+		self.__state.footnote_start_line = self.__state.current_line
 	end
 end
 
@@ -1015,104 +1058,105 @@ end
 local handle_block_end = function(self, tag)
 	if tag == "para" then
 		render_paragraph(self)
-		self._in_paragraph = false
-		self._paragraph_content = { plain = "", ranges = {} }
+		self.__state.in_paragraph = false
+		self.__state.paragraph_content = { plain = "", ranges = {} }
 		-- Track previous block only for top-level paragraphs (not inside lists)
-		if not self._in_list_item then
-			self._previous_block = "para"
+		if not self.__state.in_list_item then
+			self.__state.previous_block = "para"
 		end
 	elseif tag == "heading" then
 		render_heading(self)
-		self._in_heading = false
-		self._heading_level = 0
-		self._heading_content = { plain = "", ranges = {} }
-		self._previous_block = "heading"
+		self.__state.in_heading = false
+		self.__state.heading_level = 0
+		self.__state.heading_content = { plain = "", ranges = {} }
+		self.__state.previous_block = "heading"
 	elseif tag == "code_block" then
 		render_code_block(self)
-		self._in_code_block = false
-		self._code_block_lang = nil
-		self._code_block_lines = {}
-		self._previous_block = "code_block"
+		self.__state.in_code_block = false
+		self.__state.code_block_lang = nil
+		self.__state.code_block_lines = {}
+		self.__state.previous_block = "code_block"
 	elseif tag == "list" then
-		local depth = #self._list_stack
-		self._list_item_count[depth] = nil
-		table.remove(self._list_stack)
+		local depth = #self.__state.list_stack
+		self.__state.list_item_count[depth] = nil
+		table.remove(self.__state.list_stack)
 		-- Update _in_list_item based on remaining stack
-		self._in_list_item = (#self._list_stack > 0)
+		self.__state.in_list_item = (#self.__state.list_stack > 0)
 		-- Track previous block and add trailing newline only for top-level lists
-		if #self._list_stack == 0 then
-			self._output:put("\n")
-			self._current_line = self._current_line + 1
-			self._previous_block = "list"
+		if #self.__state.list_stack == 0 then
+			self.__state.output:put("\n")
+			self.__state.current_line = self.__state.current_line + 1
+			self.__state.previous_block = "list"
 		end
 	elseif tag == "list_item" then
-		self._in_list_item = (#self._list_stack > 0)
-		self._list_item_depth = #self._list_stack
-		self._list_item_first_block = false
-		self._list_continuation_indent = ""
-		self._list_item_task = nil
+		self.__state.in_list_item = (#self.__state.list_stack > 0)
+		self.__state.list_item_depth = #self.__state.list_stack
+		self.__state.list_item_first_block = false
+		self.__state.list_continuation_indent = ""
+		self.__state.list_item_task = nil
 	elseif tag == "thematic_break" then
-		self._previous_block = "thematic_break"
+		self.__state.previous_block = "thematic_break"
 	elseif tag == "table" then
 		render_table(self)
-		self._in_table = false
-		self._table_data = nil
-		self._previous_block = "table"
+		self.__state.in_table = false
+		self.__state.table_data = nil
+		self.__state.previous_block = "table"
 	elseif tag == "table_head" then
-		self._in_table_head = false
+		self.__state.in_table_head = false
 	elseif tag == "table_body" then
-		self._in_table_body = false
+		self.__state.in_table_body = false
 	elseif tag == "table_row" then
 		-- Add row to table data
-		if self._table_data then
-			self._table_data.rows[#self._table_data.rows + 1] = {
-				cells = self._table_row_cells,
-				header = self._table_row_header,
+		if self.__state.table_data then
+			self.__state.table_data.rows[#self.__state.table_data.rows + 1] = {
+				cells = self.__state.table_row_cells,
+				header = self.__state.table_row_header,
 			}
 		end
-		self._in_table_row = false
-		self._table_row_cells = {}
+		self.__state.in_table_row = false
+		self.__state.table_row_cells = {}
 	elseif tag == "table_cell" then
 		-- Add cell to current row
-		if self._table_row_cells then
-			self._table_row_cells[#self._table_row_cells + 1] = self._table_cell_content
+		if self.__state.table_row_cells then
+			self.__state.table_row_cells[#self.__state.table_row_cells + 1] = self.__state.table_cell_content
 		end
-		self._in_table_cell = false
-		self._table_cell_content = { plain = "", ranges = {} }
+		self.__state.in_table_cell = false
+		self.__state.table_cell_content = { plain = "", ranges = {} }
 	elseif tag == "div" then
 		-- Close fenced div and render with borders
-		if #self._div_stack > 0 then
-			local div_info = table.remove(self._div_stack)
+		if #self.__state.div_stack > 0 then
+			local div_info = table.remove(self.__state.div_stack)
 			local class = div_info.class or "default"
 
 			-- Get captured content and trim trailing whitespace
-			local content = self._output:get():gsub("%s+$", "")
+			local content = self.__state.output:get():gsub("%s+$", "")
 			-- Restore original output buffer and width
-			self._output = div_info.saved_output
-			self._width = div_info.saved_width
-			self._tss.__window.w = div_info.saved_tss_window_w
-			self._tss.__supports_ts = div_info.saved_supports_ts
+			self.__state.output = div_info.saved_output
+			self.__state.width = div_info.saved_width
+			self.__state.tss:set_window_width(div_info.saved_tss_window_w)
+			self.__state.tss:set_supports_ts(div_info.saved_supports_ts)
 
 			-- Determine style base for this div class
 			local style_base = "div." .. class
 			-- Fall back to div.default if class-specific style doesn't have border
-			if not (self._tss.__style.div and self._tss.__style.div[class] and self._tss.__style.div[class].border) then
+			if not self.__state.tss:get_property(style_base, "border") then
 				style_base = "div.default"
 			end
-			local div_block_indent = get_block_indent(self._tss, style_base)
+			local div_block_indent = get_block_indent(self.__state.tss, style_base)
 
 			-- Use pre-calculated width from block_start
 			local el_width = div_info.el_width
-			local available_width = self._width - 2 -- For alignment calculation
+			local available_width = self.__state.width - 2 -- For alignment calculation
 
 			-- Get alignment from style
-			local _, div_obj = self._tss:get(style_base)
-			local _, default_obj = self._tss:get("div.default")
+			local _, div_obj = self.__state.tss:get(style_base)
+			local _, default_obj = self.__state.tss:get("div.default")
 			local align_value = (div_obj and div_obj.align) or (default_obj and default_obj.align) or "none"
 
 			-- Render div content with borders at calculated width
 			local label = class ~= "default" and class or nil
-			local rendered = render_bordered_content(self._tss, style_base, content, el_width, label, 0, div_info.pad)
+			local rendered =
+				render_bordered_content(self.__state.tss, style_base, content, el_width, label, 0, div_info.pad)
 
 			-- Handle alignment for narrower divs
 			local align = align_value
@@ -1136,45 +1180,44 @@ local handle_block_end = function(self, tag)
 			-- Track start line
 			local start_line = div_info.start_line
 
-			self._output:put(rendered, "\n")
+			self.__state.output:put(rendered, "\n")
 
 			-- Update current line count
 			local lines_in_block = count_newlines(rendered) + 1
-			self._current_line = start_line + lines_in_block
+			self.__state.current_line = start_line + lines_in_block
 
 			-- Mark elements inside this div with the div's line range for focus highlighting
 			local end_line = start_line + lines_in_block - 1
-			for _, link in ipairs(self._elements.links) do
+			for _, link in ipairs(self.__state.elements.links) do
 				if link.line >= start_line and link.line <= end_line and not link.container then
 					link.container = { start_line = start_line, end_line = end_line }
 				end
 			end
-			for _, fn in ipairs(self._elements.footnote_refs) do
+			for _, fn in ipairs(self.__state.elements.footnote_refs) do
 				if fn.line >= start_line and fn.line <= end_line and not fn.container then
 					fn.container = { start_line = start_line, end_line = end_line }
 				end
 			end
 
-			self._previous_block = "div"
+			self.__state.previous_block = "div"
 		end
 	elseif tag == "blockquote" then
 		-- Close blockquote and render with left bar
-		if #self._blockquote_stack > 0 then
-			local bq_info = table.remove(self._blockquote_stack)
+		if #self.__state.blockquote_stack > 0 then
+			local bq_info = table.remove(self.__state.blockquote_stack)
 
 			-- Get captured content
-			local content = self._output:get()
+			local content = self.__state.output:get()
 			-- Restore original output buffer
-			self._output = bq_info.saved_output
+			self.__state.output = bq_info.saved_output
 
 			-- Trim trailing whitespace/newlines from content
 			content = content:gsub("%s+$", "")
 
 			-- Get blockquote bar style
-			local bar_style = self._tss.__style.blockquote and self._tss.__style.blockquote.bar
-			local bar_char = bar_style and bar_style.content or "┃ "
-			local styled_bar = self._tss:apply({ "blockquote.bar" }, bar_char).text
-			local bq_block_indent = get_block_indent(self._tss, "blockquote")
+			local bar_char = self.__state.tss:get_property("blockquote.bar", "content") or "┃ "
+			local styled_bar = self.__state.tss:apply({ "blockquote.bar" }, bar_char).text
+			local bq_block_indent = get_block_indent(self.__state.tss, "blockquote")
 			local bq_indent_str = string.rep(" ", bq_block_indent)
 
 			-- Split content into lines and add bar prefix to non-empty lines
@@ -1205,40 +1248,40 @@ local handle_block_end = function(self, tag)
 			-- Track start line
 			local start_line = bq_info.start_line
 
-			self._output:put(rendered, "\n\n")
+			self.__state.output:put(rendered, "\n\n")
 
 			-- Update current line count
 			local lines_in_block = count_newlines(rendered) + 2 -- +2 for trailing newlines
-			self._current_line = start_line + lines_in_block
+			self.__state.current_line = start_line + lines_in_block
 
-			self._previous_block = "blockquote"
+			self.__state.previous_block = "blockquote"
 		end
 	elseif tag == "footnotes" then
-		self._in_footnotes = false
-		self._output:put("\n")
-		self._current_line = self._current_line + 1
+		self.__state.in_footnotes = false
+		self.__state.output:put("\n")
+		self.__state.current_line = self.__state.current_line + 1
 	elseif tag == "footnote" then
 		-- Record footnote definition for pager navigation
-		if self._footnote_label and self._footnote_start_line then
-			self._elements.footnote_defs[#self._elements.footnote_defs + 1] = {
-				start_line = self._footnote_start_line,
-				label = self._footnote_label,
+		if self.__state.footnote_label and self.__state.footnote_start_line then
+			self.__state.elements.footnote_defs[#self.__state.elements.footnote_defs + 1] = {
+				start_line = self.__state.footnote_start_line,
+				label = self.__state.footnote_label,
 			}
 		end
 		-- Render footnote
-		if self._footnote_content then
-			local marker = "[" .. self._footnote_label .. "]"
-			local styled_marker = self._tss:apply({ "footnote.marker" }, marker).text
-			local styled_text = build_styled_text(self, self._footnote_content, { "footnote.content" })
-			self._output:put(styled_marker, " ", styled_text, "\n")
+		if self.__state.footnote_content then
+			local marker = "[" .. self.__state.footnote_label .. "]"
+			local styled_marker = self.__state.tss:apply({ "footnote.marker" }, marker).text
+			local styled_text = build_styled_text(self, self.__state.footnote_content, { "footnote.content" })
+			self.__state.output:put(styled_marker, " ", styled_text, "\n")
 			-- Update current line
-			self._current_line = self._current_line + 1
+			self.__state.current_line = self.__state.current_line + 1
 		end
-		self._in_footnote = false
-		self._footnote_label = nil
-		self._footnote_index = nil
-		self._footnote_content = nil
-		self._footnote_start_line = nil
+		self.__state.in_footnote = false
+		self.__state.footnote_label = nil
+		self.__state.footnote_index = nil
+		self.__state.footnote_content = nil
+		self.__state.footnote_start_line = nil
 	end
 end
 
@@ -1264,8 +1307,8 @@ local handle_inline_start = function(self, tag, attrs)
 			})
 
 			-- Track footnote ref for pager navigation (resolve position in render_paragraph)
-			self._pending_footnote_refs = self._pending_footnote_refs or {}
-			self._pending_footnote_refs[#self._pending_footnote_refs + 1] = {
+			self.__state.pending_footnote_refs = self.__state.pending_footnote_refs or {}
+			self.__state.pending_footnote_refs[#self.__state.pending_footnote_refs + 1] = {
 				label = label,
 			}
 		end
@@ -1281,17 +1324,17 @@ local handle_inline_start = function(self, tag, attrs)
 		attrs = attrs,
 		start_pos = start_pos,
 	}
-	self._inline_stack[#self._inline_stack + 1] = style_info
+	self.__state.inline_stack[#self.__state.inline_stack + 1] = style_info
 end
 
 -- Handle inline end event
 local handle_inline_end = function(self, tag)
 	-- Pop from stack
 	local style_info = nil
-	for i = #self._inline_stack, 1, -1 do
-		if self._inline_stack[i].tag == tag then
-			style_info = self._inline_stack[i]
-			table.remove(self._inline_stack, i)
+	for i = #self.__state.inline_stack, 1, -1 do
+		if self.__state.inline_stack[i].tag == tag then
+			style_info = self.__state.inline_stack[i]
+			table.remove(self.__state.inline_stack, i)
 			break
 		end
 	end
@@ -1339,14 +1382,14 @@ local handle_inline_end = function(self, tag)
 			local url = style_info.attrs and style_info.attrs.href
 			if url then
 				-- Track link for pager navigation (resolve position later in render_paragraph)
-				self._pending_links = self._pending_links or {}
-				self._pending_links[#self._pending_links + 1] = {
+				self.__state.pending_links = self.__state.pending_links or {}
+				self.__state.pending_links[#self.__state.pending_links + 1] = {
 					url = url,
 					title = style_info.attrs and style_info.attrs.title,
 				}
 
 				-- Only add URL to rendered content if not hiding
-				if not self._hide_link_urls then
+				if not self.cfg.hide_link_urls then
 					-- Record URL range (raw URL only, decorators applied during rendering)
 					local url_start = std.utf.len(content.plain) + 1
 					content.plain = content.plain .. url
@@ -1369,15 +1412,18 @@ local handle_text = function(self, text)
 		return
 	end
 
-	if self._in_code_block then
+	if self.__state.in_code_block then
 		-- Code blocks: collect raw text, split into lines
 		-- Text in code blocks comes as-is, may contain newlines
 		for line in (text .. "\n"):gmatch("([^\n]*)\n") do
-			self._code_block_lines[#self._code_block_lines + 1] = line
+			self.__state.code_block_lines[#self.__state.code_block_lines + 1] = line
 		end
 		-- Remove the extra empty line we added
-		if #self._code_block_lines > 0 and self._code_block_lines[#self._code_block_lines] == "" then
-			self._code_block_lines[#self._code_block_lines] = nil
+		if
+			#self.__state.code_block_lines > 0
+			and self.__state.code_block_lines[#self.__state.code_block_lines] == ""
+		then
+			self.__state.code_block_lines[#self.__state.code_block_lines] = nil
 		end
 	else
 		-- Append plain text to current content buffer
@@ -1418,63 +1464,63 @@ end
 
 -- Finalize and return output
 local finish = function(self)
-	local result = self._output:get()
+	local result = self.__state.output:get()
 
 	-- Apply global indent if configured
-	if self._indent > 0 then
-		result = std.txt.indent(result, self._indent)
+	if self.cfg.indent > 0 then
+		result = std.txt.indent(result, self.cfg.indent)
 	end
 
 	return {
 		rendered = result,
-		elements = self._elements,
+		elements = self.__state.elements,
 	}
 end
 
 -- Reset renderer state for reuse
 local reset = function(self)
-	self._output = buffer.new()
-	self._in_code_block = false
-	self._code_block_lang = nil
-	self._code_block_lines = {}
-	self._in_paragraph = false
-	self._paragraph_content = { plain = "", ranges = {} }
-	self._in_heading = false
-	self._heading_level = 0
-	self._heading_content = { plain = "", ranges = {} }
-	self._inline_stack = {}
-	self._list_stack = {}
-	self._list_item_count = {}
-	self._in_list_item = false
-	self._list_item_depth = 0
-	self._list_item_first_block = false
-	self._list_continuation_indent = ""
-	self._list_item_task = nil
-	self._in_table = false
-	self._table_data = nil
-	self._in_table_head = false
-	self._in_table_body = false
-	self._in_table_row = false
-	self._table_row_cells = {}
-	self._table_row_header = false
-	self._in_table_cell = false
-	self._table_cell_content = { plain = "", ranges = {} }
-	self._table_cell_align = "left"
-	self._previous_block = nil
+	self.__state.output = buffer.new()
+	self.__state.in_code_block = false
+	self.__state.code_block_lang = nil
+	self.__state.code_block_lines = {}
+	self.__state.in_paragraph = false
+	self.__state.paragraph_content = { plain = "", ranges = {} }
+	self.__state.in_heading = false
+	self.__state.heading_level = 0
+	self.__state.heading_content = { plain = "", ranges = {} }
+	self.__state.inline_stack = {}
+	self.__state.list_stack = {}
+	self.__state.list_item_count = {}
+	self.__state.in_list_item = false
+	self.__state.list_item_depth = 0
+	self.__state.list_item_first_block = false
+	self.__state.list_continuation_indent = ""
+	self.__state.list_item_task = nil
+	self.__state.in_table = false
+	self.__state.table_data = nil
+	self.__state.in_table_head = false
+	self.__state.in_table_body = false
+	self.__state.in_table_row = false
+	self.__state.table_row_cells = {}
+	self.__state.table_row_header = false
+	self.__state.in_table_cell = false
+	self.__state.table_cell_content = { plain = "", ranges = {} }
+	self.__state.table_cell_align = "left"
+	self.__state.previous_block = nil
 	-- Phase 6 state
-	self._div_stack = {}
-	self._blockquote_stack = {}
-	self._in_footnotes = false
-	self._in_footnote = false
-	self._footnote_label = nil
-	self._footnote_index = nil
-	self._footnote_content = nil
-	self._footnote_start_line = nil
+	self.__state.div_stack = {}
+	self.__state.blockquote_stack = {}
+	self.__state.in_footnotes = false
+	self.__state.in_footnote = false
+	self.__state.footnote_label = nil
+	self.__state.footnote_index = nil
+	self.__state.footnote_content = nil
+	self.__state.footnote_start_line = nil
 	-- Element tracking state
-	self._elements = { code_blocks = {}, links = {}, footnote_refs = {}, footnote_defs = {}, headers = {} }
-	self._current_line = 1
-	self._pending_links = nil
-	self._pending_footnote_refs = nil
+	self.__state.elements = { code_blocks = {}, links = {}, footnote_refs = {}, footnote_defs = {}, headers = {} }
+	self.__state.current_line = 1
+	self.__state.pending_links = nil
+	self.__state.pending_footnote_refs = nil
 end
 
 -- Create a new static renderer instance
@@ -1482,91 +1528,94 @@ local new = function(options)
 	options = options or {}
 
 	-- Create TSS instance
-	local rss = options.tss or DEFAULT_RSS
+	local rss = options.rss or DEFAULT_RSS
+	local width = options.width or 80
 	local tss = tss_mod.merge(DEFAULT_RSS, rss, { supports_ts = options.supports_ts })
 	-- Override TSS window width to match content width so all width/alignment
 	-- calculations (especially in apply()) use content width, not terminal width
-	tss.__window.w = options.width or 80
+	tss:set_window_width(width)
 
 	local renderer = {
-		-- Output buffer
-		_output = buffer.new(),
-
-		-- Configuration
-		_width = options.width or 80,
-		_indent = options.indent or 0,
-		_hide_link_urls = options.hide_link_urls or false,
-
-		-- TSS instance
-		_tss = tss,
-
-		-- Element tracking for pager navigation
-		_elements = {
-			code_blocks = {}, -- { start_line, end_line, raw, lang }
-			links = {}, -- { line, url, title }
-			footnote_refs = {}, -- { line, label }
-			footnote_defs = {}, -- { start_line, label }
-			headers = {}, -- { line, level, text }
+		cfg = {
+			width = width,
+			indent = options.indent or 0,
+			hide_link_urls = options.hide_link_urls or false,
+			rss = rss,
+			supports_ts = options.supports_ts,
 		},
-		_current_line = 1, -- Track current rendered line number
-		_pending_links = nil, -- Pending links to resolve after paragraph wrapping
-		_pending_footnote_refs = nil, -- Pending footnote refs to resolve
+		__state = {
+			output = buffer.new(),
+			width = width,
+			tss = tss,
 
-		-- Block state
-		_in_code_block = false,
-		_code_block_lang = nil,
-		_code_block_lines = {},
+			-- Element tracking for pager navigation
+			elements = {
+				code_blocks = {}, -- { start_line, end_line, raw, lang }
+				links = {}, -- { line, url, title }
+				footnote_refs = {}, -- { line, label }
+				footnote_defs = {}, -- { start_line, label }
+				headers = {}, -- { line, level, text }
+			},
+			current_line = 1, -- Track current rendered line number
+			pending_links = nil, -- Pending links to resolve after paragraph wrapping
+			pending_footnote_refs = nil, -- Pending footnote refs to resolve
 
-		_in_paragraph = false,
-		-- Styled content buffer: { plain = "", ranges = {} }
-		-- ranges: list of { start, stop, elements }
-		_paragraph_content = { plain = "", ranges = {} },
+			-- Block state
+			in_code_block = false,
+			code_block_lang = nil,
+			code_block_lines = {},
 
-		_in_heading = false,
-		_heading_level = 0,
-		_heading_content = { plain = "", ranges = {} },
+			in_paragraph = false,
+			-- Styled content buffer: { plain = "", ranges = {} }
+			-- ranges: list of { start, stop, elements }
+			paragraph_content = { plain = "", ranges = {} },
 
-		-- Inline state - stack of active styles with start positions
-		-- Each entry: { tag, attrs, start_pos }
-		_inline_stack = {},
+			in_heading = false,
+			heading_level = 0,
+			heading_content = { plain = "", ranges = {} },
 
-		-- List state
-		_list_stack = {}, -- Stack of { ordered, start, tight, depth }
-		_list_item_count = {}, -- Item count at each nesting level
-		_in_list_item = false,
-		_list_item_depth = 0,
-		_list_item_first_block = false,
-		_list_continuation_indent = "",
-		_list_item_task = nil, -- { checked = bool } for task list items
+			-- Inline state - stack of active styles with start positions
+			-- Each entry: { tag, attrs, start_pos }
+			inline_stack = {},
 
-		-- Table state (GFM)
-		_in_table = false,
-		_table_data = nil, -- { columns, alignments, rows }
-		_in_table_head = false,
-		_in_table_body = false,
-		_in_table_row = false,
-		_table_row_cells = {},
-		_table_row_header = false,
-		_in_table_cell = false,
-		_table_cell_content = { plain = "", ranges = {} },
-		_table_cell_align = "left",
+			-- List state
+			list_stack = {}, -- Stack of { ordered, start, tight, depth }
+			list_item_count = {}, -- Item count at each nesting level
+			in_list_item = false,
+			list_item_depth = 0,
+			list_item_first_block = false,
+			list_continuation_indent = "",
+			list_item_task = nil, -- { checked = bool } for task list items
 
-		-- Block spacing state (tracks last completed block for newline insertion)
-		_previous_block = nil,
+			-- Table state (GFM)
+			in_table = false,
+			table_data = nil, -- { columns, alignments, rows }
+			in_table_head = false,
+			in_table_body = false,
+			in_table_row = false,
+			table_row_cells = {},
+			table_row_header = false,
+			in_table_cell = false,
+			table_cell_content = { plain = "", ranges = {} },
+			table_cell_align = "left",
 
-		-- Phase 6: Div state
-		_div_stack = {},
+			-- Block spacing state (tracks last completed block for newline insertion)
+			previous_block = nil,
 
-		-- Blockquote state
-		_blockquote_stack = {},
+			-- Phase 6: Div state
+			div_stack = {},
 
-		-- Phase 6: Footnote state
-		_in_footnotes = false,
-		_in_footnote = false,
-		_footnote_label = nil,
-		_footnote_index = nil,
-		_footnote_content = nil,
-		_footnote_start_line = nil,
+			-- Blockquote state
+			blockquote_stack = {},
+
+			-- Phase 6: Footnote state
+			in_footnotes = false,
+			in_footnote = false,
+			footnote_label = nil,
+			footnote_index = nil,
+			footnote_content = nil,
+			footnote_start_line = nil,
+		},
 
 		-- Methods
 		render_event = render_event,

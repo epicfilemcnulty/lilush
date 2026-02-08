@@ -11,7 +11,7 @@ testify:that("waits on any child and drains exited siblings when primary exits",
 	helpers.clear_modules({
 		"std",
 		"cjson.safe",
-		"web_server",
+		"web.server",
 		"reliw",
 		"reliw.handle",
 		"reliw.metrics",
@@ -113,7 +113,7 @@ testify:that("waits on any child and drains exited siblings when primary exits",
 		end,
 	})
 
-	helpers.stub_module("web_server", {
+	helpers.stub_module("web.server", {
 		new = function(cfg, handler)
 			return {
 				serve = function(self)
@@ -134,6 +134,7 @@ testify:that("waits on any child and drains exited siblings when primary exits",
 	local reliw = helpers.load_module_from_src("reliw", "src/reliw/reliw.lua")
 	local app, err = reliw.new()
 	testimony.assert_not_nil(app, err)
+	testimony.assert_equal(false, app:has_child_pid(101))
 
 	app:run()
 
@@ -143,10 +144,12 @@ testify:that("waits on any child and drains exited siblings when primary exits",
 	testimony.assert_true(#waitpid_args >= 1)
 	testimony.assert_equal(-1, waitpid_args[1])
 	testimony.assert_equal(0, serve_calls)
-	testimony.assert_nil(app.child_pids[101])
-	testimony.assert_nil(app.child_pids[202])
-	testimony.assert_nil(app.child_pids[301])
-	testimony.assert_equal(2, decode_calls)
+	testimony.assert_equal(false, app:has_child_pid(101))
+	testimony.assert_equal(false, app:has_child_pid(202))
+	testimony.assert_equal(false, app:has_child_pid(301))
+	local child_pids = app:list_child_pids()
+	testimony.assert_nil(next(child_pids))
+	testimony.assert_equal(1, decode_calls)
 end)
 
 testify:conclude()

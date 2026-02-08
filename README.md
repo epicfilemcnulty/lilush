@@ -64,46 +64,51 @@ suprisingly called _Lilush Shell_, which
 
 # Installation
 
-## With docker
+Download the `lilush` binary and matching `lilush.sig` signature file from
+[GitHub Releases](https://github.com/epicfilemcnulty/lilush/releases).
 
-Get the official Lilush image and run it as a docker container:
+## Verify release signature
 
+Lilush release binaries are signed with an SSH key (`namespace=file`).
+
+```bash
+# Example: download one release (adjust tag if needed)
+TAG=X.Y.Z
+curl -fLO "https://github.com/epicfilemcnulty/lilush/releases/download/${TAG}/lilush"
+curl -fLO "https://github.com/epicfilemcnulty/lilush/releases/download/${TAG}/lilush.sig"
+
+# Create allowed signers file with the release signing key
+cat > allowed_signers <<'EOF'
+vladimir@deviant.guru ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICEWU0xshVgOIyjzQEOKtjG8sU8sWJPh25CP/ISfJRey
+EOF
+
+# Verify signature
+ssh-keygen -Y verify \
+  -f allowed_signers \
+  -I vladimir@deviant.guru \
+  -n file \
+  -s lilush.sig < lilush
 ```
-docker pull sjc.vultrcr.com/lilush/lilush:latest
-docker run -it --rm sjc.vultrcr.com/lilush/lilush:latest
+
+If verification succeeds, `ssh-keygen` prints `Good "file" signature for
+vladimir@deviant.guru ...`.
+
+## Install binary
+
+```bash
+chmod +x lilush
+install -Dm755 lilush ~/.local/bin/lilush
 ```
 
-Or copy the binary from the container to the host system.
+Make sure `~/.local/bin` is in your `PATH`.
 
 ## Building from source
 
-The easiest way is just to build with docker and then copy
-the binary from the container:
-
-```
-git clone https://github.com/epicfilemcnulty/lilush
-cd lilush
-ln -s dockerfiles/lilush Dockerfile
-docker build -t lilush .
-docker cp $(docker create --name lilush lilush):/usr/bin/lilush .
-docker rm lilush
-```
-If you want to build on a host system, see the [Dockerfile](https://github.com/epicfilemcnulty/lilush/blob/master/dockerfiles/lilush)
-as a reference for building details.
+See [BUILDING.md](docs/BUILDING.md)
 
 # Status
 
 Right now the project is certainly in beta. 
-
-- [ ] Not all planned features have been implemented
-- [ ] Documentation is lagging behind
-- [ ] Test coverage is minimal
-- [ ] There are known bugs
-- [ ] There are most certainly yet undiscovered bugs, because no proper testing has been done.
-
-When most of the above issues are resolved, the `1.0.0` version will be released.
-But quite a lot of things might be heavily refactored or removed along the way to the `1.0.0` version,
-so beware and use at your own risk.
 
 After `1.0.0` version release the project will abide by the semantic versioning promises,
 but until then all bets are off. Meaning that there might be breaking changes of the core 

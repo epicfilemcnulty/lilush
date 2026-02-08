@@ -1,18 +1,18 @@
-// SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+// SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+// Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <locale.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <wchar.h>
-#include <locale.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -22,6 +22,7 @@
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
+#include <wchar.h>
 
 #include <lauxlib.h>
 #include <lua.h>
@@ -88,41 +89,40 @@ static size_t skip_st_terminated_sequence(const char *str, size_t i, size_t len)
 }
 
 // Parse OSC sequence and extract OSC 66 metadata + payload if present.
-static int parse_osc_sequence(const char *str, size_t i, size_t len, size_t *next_i,
-                              size_t *meta_start, size_t *meta_end,
-                              size_t *payload_start, size_t *payload_end) {
-    size_t j = i + 2;
-    size_t terminator = len;
+static int parse_osc_sequence(const char *str, size_t i, size_t len, size_t *next_i, size_t *meta_start,
+                              size_t *meta_end, size_t *payload_start, size_t *payload_end) {
+    size_t j              = i + 2;
+    size_t terminator     = len;
     size_t terminator_len = 0;
 
     while (j < len) {
         unsigned char b = (unsigned char)str[j];
         if (b == 0x07) {
-            terminator = j;
+            terminator     = j;
             terminator_len = 1;
             break;
         }
         if (b == 0x1B && j + 1 < len && str[j + 1] == '\\') {
-            terminator = j;
+            terminator     = j;
             terminator_len = 2;
             break;
         }
         j++;
     }
 
-    *next_i = terminator == len ? len : terminator + terminator_len;
-    *meta_start = 0;
-    *meta_end = 0;
+    *next_i        = terminator == len ? len : terminator + terminator_len;
+    *meta_start    = 0;
+    *meta_end      = 0;
     *payload_start = 0;
-    *payload_end = 0;
+    *payload_end   = 0;
 
     if (terminator <= i + 2) {
         return 0;
     }
 
     size_t content_start = i + 2;
-    size_t content_end = terminator; // exclusive
-    size_t content_len = content_end - content_start;
+    size_t content_end   = terminator; // exclusive
+    size_t content_len   = content_end - content_start;
     if (content_len < 3) {
         return 0;
     }
@@ -144,10 +144,10 @@ static int parse_osc_sequence(const char *str, size_t i, size_t len, size_t *nex
         return 0;
     }
 
-    *meta_start = content_start + 3;
-    *meta_end = second_sep;
+    *meta_start    = content_start + 3;
+    *meta_end      = second_sep;
     *payload_start = second_sep + 1;
-    *payload_end = content_end;
+    *payload_end   = content_end;
     return 1;
 }
 
@@ -160,9 +160,9 @@ static int parse_meta_uint_param(const char *meta, size_t len, char key, int min
         }
         size_t token_len = i - token_start;
         if (token_len >= 3 && meta[token_start] == key && meta[token_start + 1] == '=') {
-            int value = 0;
+            int value     = 0;
             int has_digit = 0;
-            int valid = 1;
+            int valid     = 1;
             for (size_t k = token_start + 2; k < token_start + token_len; k++) {
                 unsigned char c = (unsigned char)meta[k];
                 if (!isdigit(c)) {
@@ -170,7 +170,7 @@ static int parse_meta_uint_param(const char *meta, size_t len, char key, int min
                     break;
                 }
                 has_digit = 1;
-                value = (value * 10) + (int)(c - '0');
+                value     = (value * 10) + (int)(c - '0');
             }
             if (valid && has_digit && value >= min && value <= max) {
                 *out = value;
@@ -185,8 +185,8 @@ static int parse_meta_uint_param(const char *meta, size_t len, char key, int min
 }
 
 static int display_len_bytes(const char *str, size_t len) {
- size_t i = 0;
- int width = 0;
+    size_t i  = 0;
+    int width = 0;
     mbstate_t st;
     memset(&st, 0, sizeof(st));
 
@@ -203,12 +203,13 @@ static int display_len_bytes(const char *str, size_t len) {
             if (next_b == '[') {
                 i = skip_csi_sequence(str, i, len);
             } else if (next_b == ']') {
-                size_t next_i = len;
-                size_t meta_start = 0;
-                size_t meta_end = 0;
+                size_t next_i        = len;
+                size_t meta_start    = 0;
+                size_t meta_end      = 0;
                 size_t payload_start = 0;
-                size_t payload_end = 0;
-                int has_payload = parse_osc_sequence(str, i, len, &next_i, &meta_start, &meta_end, &payload_start, &payload_end);
+                size_t payload_end   = 0;
+                int has_payload =
+                    parse_osc_sequence(str, i, len, &next_i, &meta_start, &meta_end, &payload_start, &payload_end);
                 if (has_payload && payload_end > payload_start) {
                     width += display_len_bytes(str + payload_start, payload_end - payload_start);
                 }
@@ -253,7 +254,7 @@ static int display_len_bytes(const char *str, size_t len) {
 }
 
 static int cell_len_bytes(const char *str, size_t len) {
-    size_t i = 0;
+    size_t i  = 0;
     int width = 0;
     mbstate_t st;
     memset(&st, 0, sizeof(st));
@@ -271,24 +272,24 @@ static int cell_len_bytes(const char *str, size_t len) {
             if (next_b == '[') {
                 i = skip_csi_sequence(str, i, len);
             } else if (next_b == ']') {
-                size_t next_i = len;
-                size_t meta_start = 0;
-                size_t meta_end = 0;
+                size_t next_i        = len;
+                size_t meta_start    = 0;
+                size_t meta_end      = 0;
                 size_t payload_start = 0;
-                size_t payload_end = 0;
+                size_t payload_end   = 0;
                 int has_payload =
                     parse_osc_sequence(str, i, len, &next_i, &meta_start, &meta_end, &payload_start, &payload_end);
 
                 if (has_payload) {
                     int payload_cells = 0;
-                    int s = 0;
-                    int w = 0;
-                    int n = 0;
-                    int d = 0;
-                    int has_s = 0;
-                    int has_w = 0;
-                    int has_n = 0;
-                    int has_d = 0;
+                    int s             = 0;
+                    int w             = 0;
+                    int n             = 0;
+                    int d             = 0;
+                    int has_s         = 0;
+                    int has_w         = 0;
+                    int has_n         = 0;
+                    int has_d         = 0;
 
                     if (payload_end > payload_start) {
                         payload_cells = cell_len_bytes(str + payload_start, payload_end - payload_start);
@@ -296,11 +297,11 @@ static int cell_len_bytes(const char *str, size_t len) {
 
                     if (meta_end > meta_start) {
                         const char *meta = str + meta_start;
-                        size_t meta_len = meta_end - meta_start;
-                        has_s = parse_meta_uint_param(meta, meta_len, 's', 1, 7, &s);
-                        has_w = parse_meta_uint_param(meta, meta_len, 'w', 0, 7, &w);
-                        has_n = parse_meta_uint_param(meta, meta_len, 'n', 0, 15, &n);
-                        has_d = parse_meta_uint_param(meta, meta_len, 'd', 0, 15, &d);
+                        size_t meta_len  = meta_end - meta_start;
+                        has_s            = parse_meta_uint_param(meta, meta_len, 's', 1, 7, &s);
+                        has_w            = parse_meta_uint_param(meta, meta_len, 'w', 0, 7, &w);
+                        has_n            = parse_meta_uint_param(meta, meta_len, 'n', 0, 15, &n);
+                        has_d            = parse_meta_uint_param(meta, meta_len, 'd', 0, 15, &d);
                     }
 
                     if (has_w && w > 0) {
@@ -364,7 +365,7 @@ static int cell_len_bytes(const char *str, size_t len) {
 }
 
 static int cell_height_bytes(const char *str, size_t len) {
-    size_t i = 0;
+    size_t i   = 0;
     int height = 1;
     mbstate_t st;
     memset(&st, 0, sizeof(st));
@@ -382,19 +383,19 @@ static int cell_height_bytes(const char *str, size_t len) {
             if (next_b == '[') {
                 i = skip_csi_sequence(str, i, len);
             } else if (next_b == ']') {
-                size_t next_i = len;
-                size_t meta_start = 0;
-                size_t meta_end = 0;
+                size_t next_i        = len;
+                size_t meta_start    = 0;
+                size_t meta_end      = 0;
                 size_t payload_start = 0;
-                size_t payload_end = 0;
+                size_t payload_end   = 0;
                 int has_payload =
                     parse_osc_sequence(str, i, len, &next_i, &meta_start, &meta_end, &payload_start, &payload_end);
 
                 if (has_payload) {
                     int payload_height = 1;
-                    int seg_height = 1;
-                    int s = 0;
-                    int has_s = 0;
+                    int seg_height     = 1;
+                    int s              = 0;
+                    int has_s          = 0;
 
                     if (payload_end > payload_start) {
                         payload_height = cell_height_bytes(str + payload_start, payload_end - payload_start);
@@ -402,8 +403,8 @@ static int cell_height_bytes(const char *str, size_t len) {
 
                     if (meta_end > meta_start) {
                         const char *meta = str + meta_start;
-                        size_t meta_len = meta_end - meta_start;
-                        has_s = parse_meta_uint_param(meta, meta_len, 's', 1, 7, &s);
+                        size_t meta_len  = meta_end - meta_start;
+                        has_s            = parse_meta_uint_param(meta, meta_len, 's', 1, 7, &s);
                     }
 
                     seg_height = has_s ? payload_height * s : payload_height;
@@ -452,8 +453,8 @@ static int cell_height_bytes(const char *str, size_t len) {
 
 static int deviant_display_len(lua_State *L) {
     static int locale_set = 0;
-    size_t len = 0;
-    const char *str = luaL_checklstring(L, 1, &len);
+    size_t len            = 0;
+    const char *str       = luaL_checklstring(L, 1, &len);
 
     if (!locale_set) {
         setlocale(LC_CTYPE, "");
@@ -466,8 +467,8 @@ static int deviant_display_len(lua_State *L) {
 
 static int deviant_cell_len(lua_State *L) {
     static int locale_set = 0;
-    size_t len = 0;
-    const char *str = luaL_checklstring(L, 1, &len);
+    size_t len            = 0;
+    const char *str       = luaL_checklstring(L, 1, &len);
 
     if (!locale_set) {
         setlocale(LC_CTYPE, "");
@@ -480,8 +481,8 @@ static int deviant_cell_len(lua_State *L) {
 
 static int deviant_cell_height(lua_State *L) {
     static int locale_set = 0;
-    size_t len = 0;
-    const char *str = luaL_checklstring(L, 1, &len);
+    size_t len            = 0;
+    const char *str       = luaL_checklstring(L, 1, &len);
 
     if (!locale_set) {
         setlocale(LC_CTYPE, "");

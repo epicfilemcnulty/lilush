@@ -1,5 +1,6 @@
--- SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 --[[
 Conversation management for the agent.
@@ -13,90 +14,8 @@ Handles:
 local std = require("std")
 local json = require("cjson.safe")
 
--- Get the system prompt
-local get_system_prompt = function(self)
-	return self._system_prompt
-end
-
--- Set/update the system prompt
-local set_system_prompt = function(self, prompt)
-	self._system_prompt = prompt
-end
-
--- Add a user message
-local add_user = function(self, content)
-	local msg = { role = "user", content = content }
-	table.insert(self._messages, msg)
-	self._metadata.updated_at = os.time()
-	return msg
-end
-
--- Add an assistant message
-local add_assistant = function(self, content, tool_calls)
-	local msg = { role = "assistant", content = content }
-	if tool_calls and #tool_calls > 0 then
-		msg.tool_calls = tool_calls
-	end
-	table.insert(self._messages, msg)
-	self._metadata.updated_at = os.time()
-	return msg
-end
-
--- Add a tool result message (OpenAI style)
-local add_tool_result = function(self, tool_call_id, content)
-	local msg = { role = "tool", tool_call_id = tool_call_id, content = content }
-	table.insert(self._messages, msg)
-	self._metadata.updated_at = os.time()
-	return msg
-end
-
--- Add a raw message (for flexibility)
-local add_message = function(self, msg)
-	table.insert(self._messages, msg)
-	self._metadata.updated_at = os.time()
-	return msg
-end
-
--- Get all messages (for sending to LLM)
--- Returns messages with system prompt prepended
-local get_messages = function(self)
-	local messages = {}
-	if self._system_prompt then
-		table.insert(messages, { role = "system", content = self._system_prompt })
-	end
-	for _, msg in ipairs(self._messages) do
-		table.insert(messages, msg)
-	end
-	return messages
-end
-
--- Get raw messages (without system prompt)
-local get_raw_messages = function(self)
-	return self._messages
-end
-
--- Get the last message
-local last = function(self)
-	return self._messages[#self._messages]
-end
-
--- Get message count (excluding system)
-local count = function(self)
-	return #self._messages
-end
-
--- Get real token count from API responses (input + output)
--- Returns 0 until first API response is received
-local tokens = function(self)
-	return self._cost.input_tokens + self._cost.output_tokens
-end
-
--- Clear all messages (keeps system prompt)
--- Also resets cost tracking for new session
-local clear = function(self)
-	self._messages = {}
-	self._metadata.updated_at = os.time()
-	self._cost = {
+local new_cost = function()
+	return {
 		input_tokens = 0,
 		output_tokens = 0,
 		cached_tokens = 0,
@@ -105,19 +24,114 @@ local clear = function(self)
 	}
 end
 
+-- Get the system prompt
+local get_system_prompt = function(self)
+	return self.__state.system_prompt
+end
+
+-- Set/update the system prompt
+local set_system_prompt = function(self, prompt)
+	self.__state.system_prompt = prompt
+end
+
+-- Add a user message
+local add_user = function(self, content)
+	local state = self.__state
+	local msg = { role = "user", content = content }
+	table.insert(state.messages, msg)
+	state.metadata.updated_at = os.time()
+	return msg
+end
+
+-- Add an assistant message
+local add_assistant = function(self, content, tool_calls)
+	local state = self.__state
+	local msg = { role = "assistant", content = content }
+	if tool_calls and #tool_calls > 0 then
+		msg.tool_calls = tool_calls
+	end
+	table.insert(state.messages, msg)
+	state.metadata.updated_at = os.time()
+	return msg
+end
+
+-- Add a tool result message (OpenAI style)
+local add_tool_result = function(self, tool_call_id, content)
+	local state = self.__state
+	local msg = { role = "tool", tool_call_id = tool_call_id, content = content }
+	table.insert(state.messages, msg)
+	state.metadata.updated_at = os.time()
+	return msg
+end
+
+-- Add a raw message (for flexibility)
+local add_message = function(self, msg)
+	local state = self.__state
+	table.insert(state.messages, msg)
+	state.metadata.updated_at = os.time()
+	return msg
+end
+
+-- Get all messages (for sending to LLM)
+-- Returns messages with system prompt prepended
+local get_messages = function(self)
+	local state = self.__state
+	local messages = {}
+	if state.system_prompt then
+		table.insert(messages, { role = "system", content = state.system_prompt })
+	end
+	for _, msg in ipairs(state.messages) do
+		table.insert(messages, msg)
+	end
+	return messages
+end
+
+-- Get raw messages (without system prompt)
+local get_raw_messages = function(self)
+	return self.__state.messages
+end
+
+-- Get the last message
+local last = function(self)
+	local state = self.__state
+	return state.messages[#state.messages]
+end
+
+-- Get message count (excluding system)
+local count = function(self)
+	return #self.__state.messages
+end
+
+-- Get real token count from API responses (input + output)
+-- Returns 0 until first API response is received
+local tokens = function(self)
+	local cost = self.__state.cost
+	return cost.input_tokens + cost.output_tokens
+end
+
+-- Clear all messages (keeps system prompt)
+-- Also resets cost tracking for new session
+local clear = function(self)
+	local state = self.__state
+	state.messages = {}
+	state.metadata.updated_at = os.time()
+	state.cost = new_cost()
+end
+
 -- Set conversation name (for save/load)
 local set_name = function(self, name)
-	self._metadata.name = name
+	self.__state.metadata.name = name
 end
 
 -- Get conversation name
 local get_name = function(self)
-	return self._metadata.name
+	return self.__state.metadata.name
 end
 
 -- Save conversation to file
 local save = function(self, name)
-	name = name or self._metadata.name
+	local state = self.__state
+	name = name or state.metadata.name
 	if not name then
 		return nil, "conversation name required"
 	end
@@ -131,9 +145,9 @@ local save = function(self, name)
 
 	local data = {
 		name = name,
-		system_prompt = self._system_prompt,
-		messages = self._messages,
-		metadata = self._metadata,
+		system_prompt = state.system_prompt,
+		messages = state.messages,
+		metadata = state.metadata,
 	}
 
 	local content = json.encode(data)
@@ -146,12 +160,13 @@ local save = function(self, name)
 		return nil, err
 	end
 
-	self._metadata.name = name
+	state.metadata.name = name
 	return filepath
 end
 
 -- Load conversation from file
 local load = function(self, name)
+	local state = self.__state
 	local home = os.getenv("HOME") or "/tmp"
 	local save_dir = home .. "/.local/share/lilush/agent/conversations"
 
@@ -168,10 +183,10 @@ local load = function(self, name)
 		return nil, "failed to parse conversation: " .. tostring(err)
 	end
 
-	self._system_prompt = data.system_prompt
-	self._messages = data.messages or {}
-	self._metadata = data.metadata or { created_at = os.time(), updated_at = os.time() }
-	self._metadata.name = name
+	state.system_prompt = data.system_prompt
+	state.messages = data.messages or {}
+	state.metadata = data.metadata or { created_at = os.time(), updated_at = os.time() }
+	state.metadata.name = name
 
 	return true
 end
@@ -183,19 +198,20 @@ end
 -- cached_tokens: number of cached tokens (optional)
 local add_usage = function(self, model, input_tokens, output_tokens, cached_tokens)
 	local pricing = require("llm.pricing")
+	local cost = self.__state.cost
 
 	input_tokens = input_tokens or 0
 	output_tokens = output_tokens or 0
 	cached_tokens = cached_tokens or 0
 
-	self._cost.input_tokens = self._cost.input_tokens + input_tokens
-	self._cost.output_tokens = self._cost.output_tokens + output_tokens
-	self._cost.cached_tokens = self._cost.cached_tokens + cached_tokens
-	self._cost.request_count = self._cost.request_count + 1
+	cost.input_tokens = cost.input_tokens + input_tokens
+	cost.output_tokens = cost.output_tokens + output_tokens
+	cost.cached_tokens = cost.cached_tokens + cached_tokens
+	cost.request_count = cost.request_count + 1
 
 	local request_cost = pricing.calculate_cost(model, input_tokens, output_tokens, cached_tokens)
 	if request_cost then
-		self._cost.total_cost = self._cost.total_cost + request_cost
+		cost.total_cost = cost.total_cost + request_cost
 	end
 
 	return request_cost
@@ -203,18 +219,19 @@ end
 
 -- Get current cost tracking data
 local get_cost = function(self)
+	local cost = self.__state.cost
 	return {
-		input_tokens = self._cost.input_tokens,
-		output_tokens = self._cost.output_tokens,
-		cached_tokens = self._cost.cached_tokens,
-		total_cost = self._cost.total_cost,
-		request_count = self._cost.request_count,
+		input_tokens = cost.input_tokens,
+		output_tokens = cost.output_tokens,
+		cached_tokens = cost.cached_tokens,
+		total_cost = cost.total_cost,
+		request_count = cost.request_count,
 	}
 end
 
 -- Get just the total cost (convenience method)
 local get_total_cost = function(self)
-	return self._cost.total_cost
+	return self.__state.cost.total_cost
 end
 
 -- List saved conversations
@@ -268,21 +285,18 @@ end
 
 -- Create a new conversation object
 local new = function(system_prompt)
-	local conversation = {
-		_messages = {},
-		_system_prompt = system_prompt,
-		_metadata = {
-			created_at = os.time(),
-			updated_at = os.time(),
-			name = nil,
-		},
-		-- Cost tracking for the session (uses real token counts from API responses)
-		_cost = {
-			input_tokens = 0,
-			output_tokens = 0,
-			cached_tokens = 0,
-			total_cost = 0,
-			request_count = 0,
+	local instance = {
+		cfg = {},
+		__state = {
+			messages = {},
+			system_prompt = system_prompt,
+			metadata = {
+				created_at = os.time(),
+				updated_at = os.time(),
+				name = nil,
+			},
+			-- Cost tracking for the session (uses real token counts from API responses)
+			cost = new_cost(),
 		},
 		-- Methods
 		get_system_prompt = get_system_prompt,
@@ -306,7 +320,7 @@ local new = function(system_prompt)
 		get_total_cost = get_total_cost,
 	}
 
-	return conversation
+	return instance
 end
 
 return {

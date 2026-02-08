@@ -1,5 +1,7 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local std = require("std")
 local style = require("term.tss")
 
@@ -8,27 +10,97 @@ local rss = {
 }
 local tss = style.new(rss)
 
+local sync_from_legacy = function(self)
+	if self.__candidates ~= self.__state.candidates then
+		self.__state.candidates = self.__candidates or {}
+	end
+	if self.__sources ~= self.__state.sources then
+		self.__state.sources = self.__sources or {}
+	end
+	if self.__meta ~= self.__state.meta then
+		self.__state.meta = self.__meta or {}
+	end
+	if self.__chosen ~= self.__state.chosen then
+		self.__state.chosen = self.__chosen or 0
+	end
+end
+
+local sync_to_legacy = function(self)
+	self.__candidates = self.__state.candidates
+	self.__sources = self.__state.sources
+	self.__meta = self.__state.meta
+	self.__chosen = self.__state.chosen
+end
+
 local flush = function(self)
-	self.__candidates = {}
-	self.__chosen = 0
-	self.__meta.replace_args = false
-	self.__meta.exec_on_prom = false
+	sync_from_legacy(self)
+	self.__state.candidates = {}
+	self.__state.chosen = 0
+	self.__state.meta = {
+		replace_args = false,
+		exec_on_prom = false,
+	}
+	sync_to_legacy(self)
 end
 
 local available = function(self)
-	if #self.__candidates > 0 then
-		if self.__chosen == 0 then
-			self.__chosen = 1
+	sync_from_legacy(self)
+	if #self.__state.candidates > 0 then
+		if self.__state.chosen == 0 then
+			self.__state.chosen = 1
+			sync_to_legacy(self)
 		end
 		return true
 	end
 	return false
 end
 
+local count = function(self)
+	sync_from_legacy(self)
+	return #self.__state.candidates
+end
+
+local chosen_index = function(self)
+	sync_from_legacy(self)
+	return self.__state.chosen
+end
+
+local set_chosen_index = function(self, idx)
+	sync_from_legacy(self)
+	if type(idx) ~= "number" then
+		return
+	end
+	local total = #self.__state.candidates
+	if total == 0 then
+		self.__state.chosen = 0
+	else
+		idx = math.floor(idx)
+		if idx < 1 then
+			idx = 1
+		elseif idx > total then
+			idx = total
+		end
+		self.__state.chosen = idx
+	end
+	sync_to_legacy(self)
+end
+
+local meta_at = function(self, idx)
+	sync_from_legacy(self)
+	return self.__state.meta[idx]
+end
+
+local source = function(self, name)
+	sync_from_legacy(self)
+	return self.__state.sources[name]
+end
+
 local get = function(self, promoted)
-	if #self.__candidates > 0 then
-		if self.__chosen <= #self.__candidates then
-			local variant = self.__candidates[self.__chosen]
+	sync_from_legacy(self)
+	if #self.__state.candidates > 0 then
+		local idx = self.__state.chosen
+		if idx <= #self.__state.candidates and idx > 0 then
+			local variant = self.__state.candidates[idx]
 			if promoted then
 				return variant
 			end
@@ -39,15 +111,30 @@ local get = function(self, promoted)
 end
 
 local update = function(self)
-	for _, source in pairs(self.__sources) do
-		if source.update then
-			source:update()
+	sync_from_legacy(self)
+	for _, src in pairs(self.__state.sources) do
+		if src.update then
+			src:update()
 		end
 	end
 end
 
 local provide = function(self, candidates)
-	self.candidates = candidates or {}
+	sync_from_legacy(self)
+	self.__state.candidates = candidates or {}
+	local total = #self.__state.candidates
+	if total == 0 then
+		self.__state.chosen = 0
+	elseif self.__state.chosen > total then
+		self.__state.chosen = total
+	end
+	sync_to_legacy(self)
+end
+
+local set_meta = function(self, metadata)
+	sync_from_legacy(self)
+	self.__state.meta = metadata or {}
+	sync_to_legacy(self)
 end
 
 -- Creates a new instance of a completion object
@@ -61,22 +148,37 @@ local new = function(config)
 	local mod = require(config.path)
 
 	local completion = {
-		-- DATA
-		__candidates = {},
-		__sources = {},
+		cfg = config,
+		__state = {
+			candidates = {},
+			sources = {},
+			chosen = 0,
+			meta = {},
+		},
+		-- Legacy aliases kept for compatibility with completion provider modules.
+		__candidates = nil,
+		__sources = nil,
 		__chosen = 0,
 		-- meta provides metadata for a candidate at the same index.
 		-- It must provide the name of the source for each candidate,
 		-- and may provide additional information
-		__meta = {},
+		__meta = nil,
 		-- METHODS
 		search = mod.search,
 		available = available,
+		count = count,
+		chosen_index = chosen_index,
+		set_chosen_index = set_chosen_index,
+		meta_at = meta_at,
+		source = source,
 		get = mod.get or get,
 		flush = flush,
 		update = update,
 		provide = provide,
+		set_meta = set_meta,
 	}
+	sync_to_legacy(completion)
+
 	if config.sources then
 		for _, path in ipairs(config.sources) do
 			if not std.module_available(path) then
@@ -84,7 +186,7 @@ local new = function(config)
 			end
 			local s = require(path)
 			local name = path:match("[^.]+$")
-			completion.__sources[name] = s.new()
+			completion.__state.sources[name] = s.new()
 		end
 	end
 	completion:update()

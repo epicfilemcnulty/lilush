@@ -1,6 +1,6 @@
--- SPDX-FileCopyrightText: © 2026 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: OWL-1.0 or later
--- Licensed under the Open Weights License v1.0. See LICENSE for details.
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 --[[
     ZX Spectrum Screen Renderer
@@ -83,8 +83,12 @@ local function anim_init(out, image_id, shm_name_a, shm_name_b, data, opts, row,
 
 	-- Create two additional frames (2 and 3) for double-buffering.
 	-- We never edit/display the root frame directly.
-	out:put(build_shm_or_data(shm_name_a, data, { a = "f", i = image_id, f = opts.f, s = opts.s, v = opts.v, q = 2, X = 1 }))
-	out:put(build_shm_or_data(shm_name_b, data, { a = "f", i = image_id, f = opts.f, s = opts.s, v = opts.v, q = 2, X = 1 }))
+	out:put(
+		build_shm_or_data(shm_name_a, data, { a = "f", i = image_id, f = opts.f, s = opts.s, v = opts.v, q = 2, X = 1 })
+	)
+	out:put(
+		build_shm_or_data(shm_name_b, data, { a = "f", i = image_id, f = opts.f, s = opts.s, v = opts.v, q = 2, X = 1 })
+	)
 
 	-- Show frame 2 initially
 	anim_show_frame(out, image_id, 2)
@@ -523,7 +527,7 @@ function Screen:render_fast(scr_data, scale, row, col, offset_x, offset_y)
 	local opts = { f = 24, s = width, v = height }
 	self.initialized = true
 
-	local need_init = (not self.anim_main_initialized)
+	local need_init = not self.anim_main_initialized
 		or (self.anim_main_scale ~= scale)
 		or (self.anim_main_row ~= row)
 		or (self.anim_main_col ~= col)
@@ -703,7 +707,7 @@ function Screen:render_with_border(scr_data, border_lines, scale, show_stripes, 
 	local pixel_data = out:get()
 	local cmd = sbuf.new(#pixel_data + 1024)
 	cmd:put(SYNC_START)
-	local need_init = (not self.anim_border_initialized)
+	local need_init = not self.anim_border_initialized
 		or (self.anim_border_scale ~= scale)
 		or (self.anim_border_row ~= row)
 		or (self.anim_border_col ~= col)

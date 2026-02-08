@@ -4,7 +4,7 @@ This guide documents the current RELIW behavior implemented in:
 
 - `src/reliw/reliw.lua`
 - `src/reliw/reliw/*.lua`
-- `src/luasocket/web_server.lua`
+- `src/web/server.lua`
 
 It is intended for both operators (deployment and troubleshooting) and developers (schema, routing, and failure semantics).
 
@@ -63,9 +63,19 @@ Request:
 curl -H 'Host: example.com' http://127.0.0.1:8080/
 ```
 
+### 1.5 Manager inspection API
+
+The `reliw.new()` manager object exposes read-only inspection helpers:
+
+- `has_child_pid(pid)` -> boolean
+- `list_child_pids()` -> map of `pid -> process_name`
+- `get_process_pids()` -> `{ ipv4 = pid|nil, ipv6 = pid|nil, metrics = pid|nil }`
+
+These are intended for runtime introspection and tests, replacing direct reads of internal state tables.
+
 ## 2. Full Configuration Reference
 
-RELIW combines defaults from `src/reliw/reliw.lua` and `src/luasocket/web_server.lua`.
+RELIW combines defaults from `src/reliw/reliw.lua` and `src/web/server.lua`.
 
 ### 2.1 Top-level server config
 
@@ -97,7 +107,7 @@ Compression defaults:
 - `compression.enabled = true`
 - `compression.min_size = 4096`
 - `compression.types` includes `text/html`, `text/plain`, `text/css`, `text/javascript`, `image/svg+xml`, `application/json`, `application/rss+xml`
-- Current runtime status: no deflate/gzip output is emitted yet; the compression block is a placeholder in `web_server.lua` pending implementation.
+- Current runtime status: no deflate/gzip output is emitted yet; the compression block is a placeholder in `src/web/server.lua` pending implementation.
 
 ### 2.2 Redis config (`redis`)
 
@@ -126,6 +136,7 @@ Metrics process behavior:
 - spawned by manager as a dedicated process
 - uses `reliw.metrics.show`
 - forces `ssl = nil` and `log_level = 100`
+- reuses manager-loaded config in memory (no second config-file read during spawn)
 
 ### 2.4 TLS config (`ssl`)
 
@@ -185,6 +196,7 @@ Common metadata fields:
 - `${PREFIX}:DATA:<host>:<name>` (string)
   - user data; fallback key: `${PREFIX}:DATA:__:<name>`
   - `template.lua` is used as page template override if present
+  - ACME HTTP-01 challenge payloads can be provisioned at `${PREFIX}:DATA:<host>:.well-known/acme-challenge/<token>`
 
 ### 3.3 Auth/session keys
 
@@ -393,6 +405,7 @@ Current RELIW regression tests:
 - `tests/reliw/test_manager_reaping.lua`
 - `tests/reliw/test_metrics_scan.lua`
 - `tests/reliw/test_auth_malformed_body.lua`
+- `tests/reliw/test_store_acme_challenge.lua`
 
 Examples covered by tests:
 

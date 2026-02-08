@@ -1,5 +1,6 @@
--- SPDX-FileCopyrightText: © 2024 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
 
 --[[
 LLM Pricing module.
@@ -55,52 +56,100 @@ local default_prices = {
 
 -- Custom prices (set by user, merged on top of defaults)
 local custom_prices = {}
+local TOKENS_PER_MILLION = 1000000
+
+local clamp_non_negative_number = function(value)
+	local n = tonumber(value)
+	if not n or n < 0 then
+		return nil
+	end
+	return n
+end
+
+local normalize_price_entry = function(prices)
+	if type(prices) ~= "table" then
+		return nil
+	end
+
+	local input_price = clamp_non_negative_number(prices.input)
+	local output_price = clamp_non_negative_number(prices.output)
+	local cached_price = clamp_non_negative_number(prices.cached)
+
+	local normalized = {
+		input = input_price or 0,
+		output = output_price or 0,
+	}
+	if cached_price ~= nil then
+		normalized.cached = cached_price
+	end
+
+	return normalized
+end
+
+local copy_price_entry = function(prices)
+	if type(prices) ~= "table" then
+		return nil
+	end
+	return {
+		input = prices.input,
+		output = prices.output,
+		cached = prices.cached,
+	}
+end
 
 -- Get price for a model
 -- Returns { input, output, cached } or nil if model not found
-local function get_price(model)
-	if custom_prices[model] then
-		return custom_prices[model]
+local get_price = function(model)
+	if type(model) ~= "string" or model == "" then
+		return nil
 	end
-	return default_prices[model]
+	if custom_prices[model] then
+		return copy_price_entry(custom_prices[model])
+	end
+	return copy_price_entry(default_prices[model])
 end
 
 -- Calculate cost for a request
 -- Returns cost in dollars, or nil if model has no pricing
-local function calculate_cost(model, input_tokens, output_tokens, cached_tokens)
+local calculate_cost = function(model, input_tokens, output_tokens, cached_tokens)
 	local prices = get_price(model)
 	if not prices then
 		return nil
 	end
 
-	input_tokens = input_tokens or 0
-	output_tokens = output_tokens or 0
-	cached_tokens = cached_tokens or 0
+	input_tokens = clamp_non_negative_number(input_tokens) or 0
+	output_tokens = clamp_non_negative_number(output_tokens) or 0
+	cached_tokens = clamp_non_negative_number(cached_tokens) or 0
 
 	local cost = 0
-	cost = cost + (input_tokens * (prices.input or 0)) / 1000000
-	cost = cost + (output_tokens * (prices.output or 0)) / 1000000
-	cost = cost + (cached_tokens * (prices.cached or 0)) / 1000000
+	cost = cost + (input_tokens * (prices.input or 0)) / TOKENS_PER_MILLION
+	cost = cost + (output_tokens * (prices.output or 0)) / TOKENS_PER_MILLION
+	cost = cost + (cached_tokens * (prices.cached or 0)) / TOKENS_PER_MILLION
 
 	return cost
 end
 
 -- Set custom prices (merges with existing)
 -- prices_table: { ["model-name"] = { input = $, output = $, cached = $ }, ... }
-local function set_custom_prices(prices_table)
+local set_custom_prices = function(prices_table)
 	for model, prices in pairs(prices_table or {}) do
-		custom_prices[model] = prices
+		if type(model) == "string" and model ~= "" then
+			local normalized = normalize_price_entry(prices)
+			if normalized then
+				custom_prices[model] = normalized
+			end
+		end
 	end
 end
 
 -- Clear custom prices
-local function clear_custom_prices()
+local clear_custom_prices = function()
 	custom_prices = {}
 end
 
 -- Format cost for display
 -- Returns string like "$0.00", "$0.12", "$1.23"
-local function format_cost(cost)
+local format_cost = function(cost)
 	if not cost or cost < 0 then
 		return "$0.00"
 	end
@@ -111,15 +160,13 @@ local function format_cost(cost)
 			return string.format("$%.4f", cost)
 		end
 		return string.format("$%.3f", cost)
-	elseif cost < 10 then
-		return string.format("$%.2f", cost)
-	else
-		return string.format("$%.2f", cost)
 	end
+
+	return string.format("$%.2f", cost)
 end
 
 -- List all known models with pricing
-local function list_models()
+local list_models = function()
 	local models = {}
 	for model, _ in pairs(default_prices) do
 		table.insert(models, model)
@@ -134,7 +181,7 @@ local function list_models()
 end
 
 -- Check if a model is free
-local function is_free(model)
+local is_free = function(model)
 	local prices = get_price(model)
 	if not prices then
 		return false

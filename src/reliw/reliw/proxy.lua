@@ -1,7 +1,9 @@
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local socket = require("socket")
 local ssl = require("ssl")
-
-local proxy = {}
 
 local function read_chunk(upstream)
 	local line = upstream:receive("*l")
@@ -137,7 +139,7 @@ local function connect_upstream(target)
 	return tls_sock, nil
 end
 
-function proxy.handle(client, method, path, headers, body, target)
+local handle = function(client, method, path, headers, body, target)
 	local port = target.port or (target.scheme == "https" and 443 or 80)
 	local original_host = headers.host -- Save the original host
 	local original_origin = headers.origin -- Save the original origin
@@ -289,4 +291,6 @@ function proxy.handle(client, method, path, headers, body, target)
 	return final_content, status, response_headers
 end
 
-return proxy
+return {
+	handle = handle,
+}

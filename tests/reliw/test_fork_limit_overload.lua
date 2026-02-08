@@ -5,10 +5,10 @@
 local testimony = require("testimony")
 local helpers = require("tests.reliw._helpers")
 
-local testify = testimony.new("== web_server fork limit overload handling ==")
+local testify = testimony.new("== web.server fork limit overload handling ==")
 
 testify:that("accepts and closes overloaded clients with 503", function()
-	helpers.clear_modules({ "std", "socket", "ssl", "web_server" })
+	helpers.clear_modules({ "std", "socket", "ssl", "web.server" })
 
 	local sent_payload = ""
 	local client_close_count = 0
@@ -118,7 +118,7 @@ testify:that("accepts and closes overloaded clients with 503", function()
 
 	helpers.stub_module("ssl", {})
 
-	local web_server = helpers.load_module_from_src("web_server", "src/luasocket/web_server.lua")
+	local web_server = helpers.load_module_from_src("web.server", "src/web/server.lua")
 	local srv, err = web_server.new({ fork_limit = 0, log_level = 100 }, function()
 		return "ok", 200, { ["content-type"] = "text/plain" }
 	end)

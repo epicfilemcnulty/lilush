@@ -1,8 +1,11 @@
--- SPDX-FileCopyrightText: © 2023 Vladimir Zorin <vladimir@deviant.guru>
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-FileCopyrightText: © 2022—2026 Vladimir Zorin <vladimir@deviant.guru>
+-- SPDX-License-Identifier: LicenseRef-OWL-1.0-or-later OR GPL-3.0-or-later
+-- Dual-licensed under OWL v1.0+ and GPLv3+. See LICENSE and LICENSE-GPL3.
+
 local std = require("std")
 local term = require("term")
 local style = require("term.tss")
+local input = require("term.input")
 
 local default_rss = {
 	align = "center",
@@ -322,7 +325,8 @@ local form = function(content, opts)
 			local display_label = w.tss:apply("form.label", label)
 			local y = w.l + w.content_start + w.idx - 1
 			local x = w.c + 1 + display_label.width
-			local form_rss = std.tbl.copy(w.tss.__style.form or {})
+			local tss_snapshot = w.tss.style_snapshot and w.tss:style_snapshot() or { form = {} }
+			local form_rss = std.tbl.copy(tss_snapshot.form or {})
 			form_rss.input = form_rss.input or {}
 			if w.meta[label] and w.meta[label].secret then
 				form_rss.input.content = "*"
@@ -336,7 +340,7 @@ local form = function(content, opts)
 			while true do
 				local event = buf:run({ execute = true, exit = true })
 				if event == "execute" then
-					w.results[label] = buf:render()
+					w.results[label] = buf:get_content()
 					break
 				elseif event == "exit" then
 					break
@@ -361,107 +365,8 @@ local form = function(content, opts)
 	return w.results
 end
 
---[==[
- TODO: refactor this
-
-local file_chooser = function(title, start_dir, rss, patterns)
-	local state = term.alt_screen()
-	local invoke_dir = std.fs.cwd()
-	local title = title or "Select a file/dir"
-	local patterns = patterns or { mode = "[fdl]", select = "[fdl]" }
-	local tss = style.merge(default_widgets_rss, rss)
-	local start_dir = start_dir or invoke_dir
-	local last_dir = os.getenv("LILUSH_FC_LASTDIR") or start_dir
-	local cur_dir
-	if last_dir:match("^" .. start_dir) then
-		cur_dir = last_dir
-	else
-		cur_dir = start_dir
-	end
-	local w_y, w_x = term.window_size()
-
-	local get_dir_files = function(dir)
-		local files = std.fs.list_files(dir, "^[^.]", patterns.mode)
-		local file_names = std.tbl.sort_keys(files)
-		local max_width = std.tbl.longest(file_names)
-		return file_names, files, max_width
-	end
-	local choice
-	repeat
-		term.clear()
-		std.fs.chdir(cur_dir)
-		local file_names, files, max_width = get_dir_files(".")
-		if #title > max_width then
-			max_width = #title
-		end
-		local w = max_width + 4
-			tss = tss:scope({ w = w })
-		local h = #file_names
-		local idx = 1
-		local c = math.floor((w_x - w) / 2)
-		local l = math.floor((w_y - h) / 2 / 2)
-		draw_borders(title, rss, w, h, l, c, cur_dir)
-		local render_files = function()
-			for i, file in ipairs(file_names) do
-				term.go(l + 2 + i, c + 1)
-				local elements = {}
-				if i == idx then
-					elements = { "file.selected" }
-				else
-					elements = { "file" }
-				end
-				if files[file].mode == "d" then
-					elements[2] = "file.directory"
-				end
-				term.write(tss:apply(elements, file, c + 1))
-			end
-		end
-		render_files()
-		local key
-		repeat
-			key = term.simple_get()
-			if key then
-				if key == "UP" and idx > 1 then
-					idx = idx - 1
-					render_files()
-				end
-				if key == "DOWN" and idx < #file_names then
-					idx = idx + 1
-					render_files()
-				end
-				if key == "RIGHT" and files[file_names[idx]].mode == "d" then
-					cur_dir = std.fs.cwd() .. "/" .. file_names[idx]
-					key = "change_dir"
-				end
-				if key == "LEFT" then
-					-- hacky way to restrict going upper than the start_dir
-					if std.utf.len(cur_dir) > std.utf.len(start_dir) and std.fs.chdir("..") then
-						cur_dir = std.fs.cwd()
-						key = "change_dir"
-					end
-				end
-				if key == "ENTER" and files[file_names[idx]].mode:match(patterns.select) then
-					key = "chosen"
-					choice = std.fs.cwd() .. "/" .. file_names[idx]
-					break
-				end
-				if key == "ESC" then
-					break
-				end
-			end
-		until key == "change_dir"
-	until key == "chosen" or key == "ESC"
-	std.ps.setenv("LILUSH_FC_LASTDIR", std.fs.cwd())
-	std.fs.chdir(invoke_dir)
-	state:done()
-	return choice
-end
---]==]
-
-local _M = {
+return {
 	chooser = chooser,
 	simple_confirm = simple_confirm,
 	form = form,
 }
-
-return _M
