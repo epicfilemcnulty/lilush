@@ -419,7 +419,7 @@ local sse_client = function(uri, options, callbacks)
 				if not response_status or response_status < 200 or response_status >= 300 then
 					local msg = "bad response status: " .. tostring(response_status)
 					if callbacks.error then
-						callbacks.error(msg)
+						callbacks.error(msg, response_status)
 					end
 					client.close(client)
 					return false

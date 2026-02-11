@@ -32,6 +32,7 @@ local close_div
 local close_blockquote
 local close_all_blockquotes
 local process_line
+local emit_inline_content
 
 -- Close the current paragraph if open
 local close_paragraph = function(self)
@@ -39,6 +40,9 @@ local close_paragraph = function(self)
 		-- Flush any buffered inline content
 		if self.__state.inline_buffer then
 			self.__state.inline_buffer:flush()
+		elseif self.cfg.parse_inline then
+			-- Non-streaming: parse full paragraph content (with \n -> softbreaks)
+			emit_inline_content(self, self.__state.para_content)
 		end
 		self.__state.events:emit_block_end("para")
 		self.__state.in_paragraph = false
@@ -91,6 +95,7 @@ close_div = function(self)
 	if #self.__state.div_stack > 0 then
 		local div = table.remove(self.__state.div_stack)
 		-- Close any content inside the div
+		close_code_block(self)
 		close_paragraph(self)
 		close_all_lists(self)
 		self.__state.events:emit_block_end("div")
@@ -108,7 +113,8 @@ end
 close_blockquote = function(self)
 	if #self.__state.blockquote_stack > 0 then
 		table.remove(self.__state.blockquote_stack)
-		-- Close any content inside the blockquote
+		-- Close all content inside the blockquote
+		close_code_block(self)
 		close_paragraph(self)
 		close_all_lists(self)
 		close_all_divs(self)
@@ -312,7 +318,7 @@ local handle_blank_line = function(self)
 end
 
 -- Emit inline content (either parsed or raw)
-local emit_inline_content = function(self, content)
+emit_inline_content = function(self, content)
 	if not self.cfg.parse_inline then
 		-- Raw mode: emit as plain text
 		self.__state.events:emit_text(content)
@@ -409,7 +415,7 @@ local function can_continue_list(self, attrs)
 	if not attrs.ordered and current.marker ~= attrs.marker then
 		return false
 	end
-	-- For ordered, delimiter must match (. vs ))
+	-- For ordered, delimiter must match (. vs )
 	if attrs.ordered and current.delimiter ~= attrs.delimiter then
 		return false
 	end
@@ -489,25 +495,41 @@ open_paragraph = function(self, line)
 	self.__state.para_content = line
 	self.__state.events:emit_block_start("para")
 
-	-- Emit first line content
-	emit_inline_content(self, line)
+	-- Non-streaming inline: defer parsing to close_paragraph
+	if not self.cfg.parse_inline or self.cfg.streaming_inline then
+		emit_inline_content(self, line)
+	end
 end
 
 -- Continue current paragraph
 local continue_paragraph = function(self, line)
 	self.__state.para_content = self.__state.para_content .. "\n" .. line
 
-	-- Emit soft break then line content
-	emit_softbreak(self)
-	emit_inline_content(self, line)
+	-- Non-streaming inline: defer parsing to close_paragraph
+	if not self.cfg.parse_inline or self.cfg.streaming_inline then
+		emit_softbreak(self)
+		emit_inline_content(self, line)
+	end
 end
 
 -- Process a single line
 process_line = function(self, line)
 	-- If in code block, handle specially (no interruption)
 	if self.__state.code_block then
-		handle_code_block_line(self, line)
-		return
+		-- If inside a blockquote and this line lacks the > marker, the blockquote
+		-- (and the code block inside it) must close — otherwise the code block
+		-- would consume every subsequent line and the blockquote could never end.
+		if
+			#self.__state.blockquote_stack > 0
+			and not self.__state.processing_blockquote_content
+			and state.detect_blockquote(line) == nil
+		then
+			close_all_blockquotes(self)
+			-- Fall through to process line normally
+		else
+			handle_code_block_line(self, line)
+			return
+		end
 	end
 
 	-- Handle blockquotes

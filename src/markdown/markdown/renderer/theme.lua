@@ -65,8 +65,8 @@ local DEFAULT_RSS = {
 		s = "bold",
 		fg = { 177, 140, 169 },
 		h1 = { ts = "double", before = "⁜ " },
-		h2 = { ts = { s = 2, n = 6, d = 9, w = 2, v = 2 }, before = "⁜⁜ " },
-		h3 = { ts = { s = 2, n = 9, d = 14, w = 2, v = 2 }, before = "⁜⁜⁜ " },
+		h2 = { ts = { s = 2, n = 6, d = 9, w = 2, v = 2, h = 0 }, before = "⁜⁜ " },
+		h3 = { ts = { s = 2, n = 9, d = 14, w = 2, v = 2, h = 0 }, before = "⁜⁜⁜ " },
 		h4 = { before = "⁜⁜⁜⁜ " },
 		h5 = { before = "⁜⁜⁜⁜⁜ " },
 		h6 = { before = "⁜⁜⁜⁜⁜⁜ " },
@@ -204,8 +204,27 @@ local DEFAULT_RSS = {
 	},
 }
 
+-- Scoped override to disable clipping inside paragraphs so inline styles
+-- (bold, italic, links, …) don't get clipped by a parent width constraint.
+local PARAGRAPH_NO_CLIP_RSS = {
+	para = { clip = -1, w = 0 },
+	strong = { clip = -1, w = 0 },
+	emph = { clip = -1, w = 0 },
+	strikethrough = { clip = -1, w = 0 },
+	code = { clip = -1, w = 0 },
+	link = {
+		title = { clip = -1, w = 0 },
+		url = { clip = -1, w = 0 },
+	},
+	image = {
+		alt = { clip = -1, w = 0 },
+		url = { clip = -1, w = 0 },
+	},
+}
+
 return {
 	DEFAULT_BORDERS = DEFAULT_BORDERS,
 	DEFAULT_TABLE_BORDERS = DEFAULT_TABLE_BORDERS,
 	DEFAULT_RSS = DEFAULT_RSS,
+	PARAGRAPH_NO_CLIP_RSS = PARAGRAPH_NO_CLIP_RSS,
 }

@@ -546,13 +546,13 @@ local cleanup_acme_challenge = function(self, domain, token)
 	return red:cmd("DEL", key)
 end
 
-local close = function(self)
+local close = function(self, no_keepalive)
 	local red = self.__state.red
 	if not red then
 		return true
 	end
 	self.__state.red = nil
-	return red:close()
+	return red:close(no_keepalive)
 end
 
 local new = function(srv_cfg)

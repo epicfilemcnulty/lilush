@@ -79,9 +79,169 @@ local resolve_endpoint = function(opts)
 	return endpoint
 end
 
+local encode_tool_arguments = function(arguments)
+	if type(arguments) == "string" then
+		return arguments
+	end
+	if arguments == nil then
+		return "{}"
+	end
+	if type(arguments) == "table" then
+		return json.encode(arguments) or "{}"
+	end
+	return tostring(arguments)
+end
+
+local normalize_tool_call_id = function(value)
+	if type(value) == "string" and value ~= "" then
+		return value
+	end
+	if value ~= nil then
+		local s = tostring(value)
+		if s ~= "" and not s:match("^userdata:") and not s:match("^cdata:") then
+			return s
+		end
+	end
+	if std.nanoid then
+		return "call_" .. std.nanoid()
+	end
+	return nil
+end
+
+local normalize_tool_call_name = function(value)
+	if type(value) ~= "string" then
+		return nil
+	end
+	if value == "" then
+		return nil
+	end
+	return value
+end
+
+local to_chat_tool_call_wire = function(call)
+	if type(call) ~= "table" then
+		return nil, "tool call must be an object"
+	end
+
+	local id = normalize_tool_call_id(call.id or call.call_id)
+	local name = call.name
+	local arguments = call.arguments
+
+	if not name and type(call["function"]) == "table" then
+		name = call["function"].name
+		arguments = call["function"].arguments
+	end
+	if not name and type(call.function_call) == "table" then
+		name = call.function_call.name
+		arguments = call.function_call.arguments
+	end
+	name = normalize_tool_call_name(name)
+
+	if type(id) ~= "string" or id == "" then
+		return nil, "tool call is missing id"
+	end
+	if type(name) ~= "string" or name == "" then
+		return nil, "tool call is missing function name"
+	end
+
+	return {
+		id = id,
+		type = "function",
+		["function"] = {
+			name = name,
+			arguments = encode_tool_arguments(arguments),
+		},
+	}
+end
+
+local validate_chat_message_sequence = function(messages)
+	local pending = {}
+	local pending_order = {}
+
+	local add_pending = function(call_id)
+		pending[call_id] = true
+		pending_order[#pending_order + 1] = call_id
+	end
+
+	local pending_count = function()
+		return #pending_order
+	end
+
+	local pop_pending = function(call_id)
+		if not pending[call_id] then
+			return false
+		end
+		pending[call_id] = nil
+		for i, id in ipairs(pending_order) do
+			if id == call_id then
+				table.remove(pending_order, i)
+				break
+			end
+		end
+		return true
+	end
+
+	for msg_index, msg in ipairs(messages or {}) do
+		local role = msg and msg.role
+		local tool_calls = msg and msg.tool_calls
+
+		if role == "assistant" and type(tool_calls) == "table" and #tool_calls > 0 then
+			if pending_count() > 0 then
+				return "invalid chat transcript: assistant emitted tool calls before prior tool results were provided"
+			end
+			for call_index, call in ipairs(tool_calls) do
+				local call_id = call and call.id
+				if type(call_id) ~= "string" or call_id == "" then
+					return "invalid chat transcript: assistant tool_call missing id at message "
+						.. tostring(msg_index)
+						.. ", call "
+						.. tostring(call_index)
+				end
+				local fn = call["function"]
+				if type(fn) ~= "table" or type(fn.name) ~= "string" or fn.name == "" then
+					return "invalid chat transcript: assistant tool_call missing function name at message "
+						.. tostring(msg_index)
+						.. ", call "
+						.. tostring(call_index)
+				end
+				if type(fn.arguments) ~= "string" then
+					return "invalid chat transcript: assistant tool_call arguments must be a string at message "
+						.. tostring(msg_index)
+						.. ", call "
+						.. tostring(call_index)
+				end
+				if pending[call_id] then
+					return "invalid chat transcript: duplicate pending tool_call_id `" .. tostring(call_id) .. "`"
+				end
+				add_pending(call_id)
+			end
+		elseif role == "tool" then
+			local call_id = msg.tool_call_id
+			if type(call_id) ~= "string" or call_id == "" then
+				return "invalid chat transcript: tool message missing tool_call_id at message " .. tostring(msg_index)
+			end
+			if not pop_pending(call_id) then
+				return "invalid chat transcript: tool message references unknown tool_call_id `"
+					.. tostring(call_id)
+					.. "`"
+			end
+		elseif pending_count() > 0 then
+			return "invalid chat transcript: message role `"
+				.. tostring(role)
+				.. "` encountered before all pending tool results were provided"
+		end
+	end
+
+	if pending_count() > 0 then
+		return "invalid chat transcript: dangling tool_call_id `" .. tostring(pending_order[1]) .. "`"
+	end
+
+	return nil
+end
+
 local sanitize_chat_messages = function(messages)
 	local sanitized = {}
-	for _, v in ipairs(messages or {}) do
+	for msg_index, v in ipairs(messages or {}) do
 		local m = { role = v.role, content = v.content }
 		if m.role == "tool" and type(m.content) ~= "string" then
 			m.content = json.encode(m.content) or tostring(m.content)
@@ -93,11 +253,28 @@ local sanitize_chat_messages = function(messages)
 			m.tool_call_id = v.tool_call_id
 		end
 		if v.tool_calls then
-			m.tool_calls = v.tool_calls
+			if type(v.tool_calls) ~= "table" then
+				return nil, "invalid chat transcript: assistant tool_calls must be an array"
+			end
+			local tool_calls = {}
+			for call_index, call in ipairs(v.tool_calls) do
+				local wire_call, wire_err = to_chat_tool_call_wire(call)
+				if not wire_call then
+					return nil,
+						"invalid chat transcript: "
+							.. tostring(wire_err)
+							.. " at message "
+							.. tostring(msg_index)
+							.. ", call "
+							.. tostring(call_index)
+				end
+				tool_calls[#tool_calls + 1] = wire_call
+			end
+			m.tool_calls = tool_calls
 		end
 		table.insert(sanitized, m)
 	end
-	return sanitized
+	return sanitized, nil
 end
 
 -- Normalize tool calls to canonical format
@@ -108,22 +285,26 @@ local normalize_tool_calls = function(calls)
 	local out = {}
 	for _, c in ipairs(calls) do
 		if type(c) == "table" then
-			local id = c.id or c.call_id
-			local name = c.name
+			local id = normalize_tool_call_id(c.id or c.call_id)
+			local name = normalize_tool_call_name(c.name)
 			local args = c.arguments
 			local kind = c.type
-			if not name and type(c["function"]) == "table" then
-				name = c["function"].name
+			local fn = c["function"]
+			if not name and type(fn) == "table" then
+				name = normalize_tool_call_name(fn.name)
 				args = c["function"].arguments
 				kind = kind or "function"
 			end
 			if not name and type(c.function_call) == "table" then
-				name = c.function_call.name
+				name = normalize_tool_call_name(c.function_call.name)
 				args = c.function_call.arguments
 				kind = kind or "function"
 			end
-			if name then
-				table.insert(out, { id = id, type = kind or "function", name = name, arguments = args })
+			if type(kind) ~= "string" or kind == "" then
+				kind = "function"
+			end
+			if name or args ~= nil or id then
+				table.insert(out, { id = id, type = kind, name = name, arguments = args })
 			end
 		end
 	end
@@ -142,6 +323,77 @@ local extract_chat_tool_calls = function(choice)
 		return normalize_tool_calls({ { type = "function", ["function"] = msg.function_call } })
 	end
 	return nil
+end
+
+local normalize_chunk_text = function(value)
+	if value == nil then
+		return nil
+	end
+	if type(value) == "string" then
+		return value
+	end
+	if type(value) == "table" then
+		if type(value.text) == "string" then
+			return value.text
+		end
+		if type(value.content) == "string" then
+			return value.content
+		end
+		return nil
+	end
+	local s = tostring(value)
+	if s:match("^userdata:") or s:match("^cdata:") then
+		return nil
+	end
+	return s
+end
+
+local append_chunk_text = function(parts, value)
+	local text = normalize_chunk_text(value)
+	if text and #text > 0 then
+		parts[#parts + 1] = text
+	end
+end
+
+local is_reasoning_type = function(part_type)
+	if type(part_type) ~= "string" or part_type == "" then
+		return false
+	end
+	local kind = part_type:lower()
+	if kind:find("reasoning", 1, true) then
+		return true
+	end
+	if kind:find("summary", 1, true) then
+		return true
+	end
+	return kind == "thought" or kind == "thinking"
+end
+
+local append_reasoning_payload = function(parts, payload)
+	if type(payload) == "string" then
+		append_chunk_text(parts, payload)
+		return
+	end
+	if type(payload) ~= "table" then
+		return
+	end
+
+	append_chunk_text(parts, payload.reasoning_content)
+	append_chunk_text(parts, payload.reasoning_text)
+	append_chunk_text(parts, payload.summary_text)
+	append_chunk_text(parts, payload.text)
+	append_chunk_text(parts, payload.content)
+
+	local summary = payload.summary
+	if type(summary) == "table" then
+		for _, entry in ipairs(summary) do
+			if type(entry) == "table" then
+				append_chunk_text(parts, entry.summary_text or entry.text or entry.content)
+			elseif type(entry) == "string" then
+				append_chunk_text(parts, entry)
+			end
+		end
+	end
 end
 
 local extract_chat_text = function(choice)
@@ -168,27 +420,16 @@ local extract_chat_text = function(choice)
 			local parts = {}
 			for _, p in ipairs(c) do
 				if type(p) == "table" then
-					local t = p.text or p.content
-					if t ~= nil then
-						local s = t
-						if type(s) ~= "string" then
-							s = tostring(s)
-							if s:match("^userdata:") or s:match("^cdata:") then
-								s = nil
-							end
-						end
-						if s and #s > 0 then
-							table.insert(parts, s)
-						end
+					if not is_reasoning_type(p.type) then
+						append_chunk_text(parts, p.text or p.content)
 					end
+				elseif type(p) == "string" then
+					append_chunk_text(parts, p)
 				end
 			end
 			if #parts > 0 then
 				return table.concat(parts)
 			end
-		end
-		if type(msg.reasoning_content) == "string" then
-			return msg.reasoning_content
 		end
 		return ""
 	end
@@ -196,6 +437,33 @@ local extract_chat_text = function(choice)
 		return choice.text
 	end
 	return ""
+end
+
+local extract_chat_reasoning = function(choice)
+	local msg = choice and choice.message
+	if type(msg) ~= "table" then
+		return ""
+	end
+
+	local parts = {}
+	append_reasoning_payload(parts, msg.reasoning_content)
+	append_reasoning_payload(parts, msg.reasoning)
+
+	local c = msg.content
+	if type(c) == "table" then
+		for _, part in ipairs(c) do
+			if type(part) == "table" then
+				if is_reasoning_type(part.type) then
+					append_reasoning_payload(parts, part)
+				elseif part.reasoning_content or part.reasoning then
+					append_reasoning_payload(parts, part.reasoning_content)
+					append_reasoning_payload(parts, part.reasoning)
+				end
+			end
+		end
+	end
+
+	return table.concat(parts)
 end
 
 local convert_tool_to_responses = function(tool)
@@ -345,10 +613,19 @@ local convert_messages_to_responses_input = function(messages)
 end
 
 local build_chat_data = function(model, messages, sampler, opts)
+	local sanitized_messages, sanitize_err = sanitize_chat_messages(messages)
+	if not sanitized_messages then
+		return nil, sanitize_err
+	end
+	local sequence_err = validate_chat_message_sequence(sanitized_messages)
+	if sequence_err then
+		return nil, sequence_err
+	end
+
 	local data = {
 		model = model,
 		max_tokens = sampler.max_new_tokens,
-		messages = sanitize_chat_messages(messages),
+		messages = sanitized_messages,
 		temperature = sampler.temperature,
 		top_p = sampler.top_p,
 		top_k = sampler.top_k,
@@ -360,7 +637,7 @@ local build_chat_data = function(model, messages, sampler, opts)
 			data.tool_choice = opts.tool_choice
 		end
 	end
-	return data
+	return data, nil
 end
 
 local build_responses_data = function(model, messages, sampler, opts)
@@ -393,13 +670,24 @@ local extract_responses_text_from_content = function(content)
 	local parts = {}
 	for _, part in ipairs(content or {}) do
 		if type(part) == "table" then
-			if part.type == "output_text" and type(part.text) == "string" then
-				table.insert(parts, part.text)
-			elseif type(part.text) == "string" then
-				table.insert(parts, part.text)
+			if not is_reasoning_type(part.type) then
+				append_chunk_text(parts, part.text)
+				if type(part.type) ~= "string" or part.type == "" then
+					append_chunk_text(parts, part.content)
+				end
 			end
 		elseif type(part) == "string" then
-			table.insert(parts, part)
+			append_chunk_text(parts, part)
+		end
+	end
+	return table.concat(parts)
+end
+
+local extract_responses_reasoning_from_content = function(content)
+	local parts = {}
+	for _, part in ipairs(content or {}) do
+		if type(part) == "table" and is_reasoning_type(part.type) then
+			append_reasoning_payload(parts, part)
 		end
 	end
 	return table.concat(parts)
@@ -430,6 +718,27 @@ local extract_responses_text = function(resp_json)
 			end
 		end
 	end
+	return table.concat(parts)
+end
+
+local extract_responses_reasoning = function(resp_json)
+	local parts = {}
+	for _, item in ipairs(resp_json.output or {}) do
+		if type(item) == "table" then
+			if item.type == "reasoning" then
+				append_reasoning_payload(parts, item)
+			elseif item.type == "message" and type(item.content) == "table" then
+				append_chunk_text(parts, extract_responses_reasoning_from_content(item.content))
+			elseif is_reasoning_type(item.type) then
+				append_reasoning_payload(parts, item)
+			end
+		end
+	end
+
+	append_reasoning_payload(parts, resp_json.reasoning)
+	append_reasoning_payload(parts, resp_json.reasoning_content)
+	append_reasoning_payload(parts, resp_json.reasoning_text)
+
 	return table.concat(parts)
 end
 
@@ -468,10 +777,12 @@ local parse_chat_response = function(resp_json, duration, backend, debug_mode)
 			answer.tool_calls = tc
 		end
 		answer.text = extract_chat_text(c1)
+		answer.reasoning_text = extract_chat_reasoning(c1)
 	elseif resp_json.content then
 		answer.text = resp_json.content[1].text
 	end
 	answer.text = cleanup_text(answer.text)
+	answer.reasoning_text = cleanup_text(answer.reasoning_text)
 	answer.backend = backend
 	return answer
 end
@@ -485,6 +796,7 @@ local parse_responses_response = function(resp_json, duration, backend, debug_mo
 	answer.rate = duration > 0 and (tokens / duration) or 0
 	answer.backend = backend
 	answer.text = cleanup_text(extract_responses_text(resp_json))
+	answer.reasoning_text = cleanup_text(extract_responses_reasoning(resp_json))
 	answer.response_id = resp_json.id
 	answer.finish_reason = resp_json.status
 	if debug_mode then
@@ -532,7 +844,10 @@ local models = function(self)
 end
 
 local complete_chat = function(self, model, messages, sampler, opts)
-	local data = build_chat_data(model, messages, sampler, opts)
+	local data, build_err = build_chat_data(model, messages, sampler, opts)
+	if not data then
+		return nil, build_err
+	end
 	return request(
 		self.cfg.api_url .. DEFAULT_ENDPOINT,
 		data,
@@ -557,21 +872,47 @@ local complete_responses = function(self, model, messages, sampler, opts)
 	)
 end
 
+local is_retryable = function(status)
+	return status == 429 or (status and status >= 500)
+end
+
+local cancellable_sleep = function(ms, is_cancelled)
+	local elapsed = 0
+	local step = 200
+	while elapsed < ms do
+		if is_cancelled and is_cancelled() then
+			return true
+		end
+		local remaining = ms - elapsed
+		std.sleep_ms(remaining < step and remaining or step)
+		elapsed = elapsed + step
+	end
+	return false
+end
+
 local stream_chat = function(self, model, messages, sampler, user_callbacks, opts)
-	local data = build_chat_data(model, messages, sampler, opts)
+	local data, build_err = build_chat_data(model, messages, sampler, opts)
+	if not data then
+		return nil, build_err
+	end
 	data.stream = true
 	data.stream_options = { include_usage = true }
 
+	local is_cancelled = opts and opts.is_cancelled
 	local full_text = buffer.new()
+	local reasoning_text = buffer.new()
 	local usage = nil
 	local tool_by_index = {}
 	local legacy_fn = { name = nil, arguments = "" }
 	local start_ms = (std.time_ms and std.time_ms()) or nil
 	local http_error = nil
+	local http_status = nil
+	local cancelled = false
 	local client
 	local callbacks = {
-		error = function(msg)
+		error = function(msg, status)
 			http_error = msg
+			http_status = status
 			if user_callbacks.error then
 				user_callbacks.error(msg)
 			end
@@ -622,24 +963,28 @@ local stream_chat = function(self, model, messages, sampler, user_callbacks, opt
 					legacy_fn.arguments = legacy_fn.arguments .. delta.function_call.arguments
 				end
 			end
-			local delta_text = delta and (delta.content or delta.reasoning_content or delta.text)
-			if delta_text ~= nil then
-				local s = delta_text
-				if type(s) ~= "string" then
-					s = tostring(s)
-					if s:match("^userdata:") or s:match("^cdata:") then
-						s = nil
+			local reasoning_delta = delta and (delta.reasoning_content or delta.reasoning)
+			local reasoning_chunk = normalize_chunk_text(reasoning_delta)
+			if reasoning_chunk and #reasoning_chunk > 0 then
+				reasoning_text:put(reasoning_chunk)
+				if user_callbacks.chunk then
+					local chunk_data = { kind = "reasoning", text = reasoning_chunk }
+					if self.cfg.debug_mode then
+						chunk_data.raw = chunk
 					end
+					user_callbacks.chunk(chunk_data)
 				end
-				if s and #s > 0 then
-					full_text:put(s)
-					if user_callbacks.chunk then
-						local chunk_data = { text = s }
-						if self.cfg.debug_mode then
-							chunk_data.raw = chunk
-						end
-						user_callbacks.chunk(chunk_data)
+			end
+			local output_delta = delta and (delta.content or delta.text)
+			local output_chunk = normalize_chunk_text(output_delta)
+			if output_chunk and #output_chunk > 0 then
+				full_text:put(output_chunk)
+				if user_callbacks.chunk then
+					local chunk_data = { kind = "output", text = output_chunk }
+					if self.cfg.debug_mode then
+						chunk_data.raw = chunk
 					end
+					user_callbacks.chunk(chunk_data)
 				end
 			end
 		end,
@@ -650,22 +995,66 @@ local stream_chat = function(self, model, messages, sampler, user_callbacks, opt
 		end,
 	}
 
-	client = web.sse_client(
-		self.cfg.api_url .. DEFAULT_ENDPOINT,
-		{ method = "POST", body = json.encode(data), headers = self.__state.headers },
-		callbacks
-	)
-	local ok, err = client:connect()
-	if not ok then
-		return nil, err
-	end
-	local running = true
-	while running do
-		running = client:update() and client:is_connected()
-		std.sleep_ms(50)
+	local max_retries = 2
+	local backoff = { 2000, 8000 }
+	for attempt = 1, max_retries + 1 do
+		http_error = nil
+		http_status = nil
+
+		client = web.sse_client(
+			self.cfg.api_url .. DEFAULT_ENDPOINT,
+			{ method = "POST", body = json.encode(data), headers = self.__state.headers },
+			callbacks
+		)
+		local ok, err = client:connect()
+		if not ok then
+			if attempt <= max_retries then
+				if user_callbacks.retry then
+					user_callbacks.retry(attempt, nil)
+				end
+				if cancellable_sleep(backoff[attempt], is_cancelled) then
+					cancelled = true
+					break
+				end
+			else
+				return nil, err
+			end
+		else
+			local running = true
+			while running do
+				running = client:update() and client:is_connected()
+				if is_cancelled and is_cancelled() then
+					client:close()
+					cancelled = true
+					break
+				end
+				std.sleep_ms(50)
+			end
+			if cancelled then
+				break
+			end
+			if http_error and is_retryable(http_status) and attempt <= max_retries then
+				if user_callbacks.retry then
+					user_callbacks.retry(attempt, http_status)
+				end
+				if cancellable_sleep(backoff[attempt], is_cancelled) then
+					cancelled = true
+					break
+				end
+				-- Reset accumulators for next attempt
+				full_text:reset()
+				reasoning_text:reset()
+				usage = nil
+				tool_by_index = {}
+				legacy_fn = { name = nil, arguments = "" }
+				start_ms = (std.time_ms and std.time_ms()) or nil
+			else
+				break
+			end
+		end
 	end
 
-	if http_error then
+	if not cancelled and http_error then
 		return nil, http_error
 	end
 
@@ -694,11 +1083,13 @@ local stream_chat = function(self, model, messages, sampler, user_callbacks, opt
 	end
 	local out = {
 		text = ft,
+		reasoning_text = cleanup_text(reasoning_text:get()),
 		backend = self.cfg.backend,
 		model = model,
 		tokens = tokens,
 		ctx = ctx,
 		rate = rate,
+		cancelled = cancelled or nil,
 	}
 	if tool_calls and #tool_calls > 0 then
 		out.tool_calls = tool_calls
@@ -772,7 +1163,9 @@ local stream_responses = function(self, model, messages, sampler, user_callbacks
 	local data = build_responses_data(model, messages, sampler, opts)
 	data.stream = true
 
+	local is_cancelled = opts and opts.is_cancelled
 	local full_text = buffer.new()
+	local reasoning_text = buffer.new()
 	local usage = nil
 	local tool_by_key = {}
 	local tool_order = {}
@@ -781,10 +1174,33 @@ local stream_responses = function(self, model, messages, sampler, user_callbacks
 	local finish_reason = nil
 	local start_ms = (std.time_ms and std.time_ms()) or nil
 	local http_error = nil
+	local http_status = nil
+	local cancelled = false
 	local client
+	local emit_chunk = function(kind, text, raw)
+		if not (type(text) == "string" and #text > 0) then
+			return
+		end
+		if kind == "reasoning" then
+			reasoning_text:put(text)
+		else
+			full_text:put(text)
+		end
+		if user_callbacks.chunk then
+			local chunk_data = {
+				kind = kind,
+				text = text,
+			}
+			if self.cfg.debug_mode then
+				chunk_data.raw = raw
+			end
+			user_callbacks.chunk(chunk_data)
+		end
+	end
 	local callbacks = {
-		error = function(msg)
+		error = function(msg, status)
 			http_error = msg
+			http_status = status
 			if user_callbacks.error then
 				user_callbacks.error(msg)
 			end
@@ -805,14 +1221,12 @@ local stream_responses = function(self, model, messages, sampler, user_callbacks
 			if event_type == "response.output_text.delta" then
 				local delta = payload.delta or payload.text
 				if type(delta) == "string" and #delta > 0 then
-					full_text:put(delta)
-					if user_callbacks.chunk then
-						local chunk_data = { text = delta }
-						if self.cfg.debug_mode then
-							chunk_data.raw = payload
-						end
-						user_callbacks.chunk(chunk_data)
-					end
+					emit_chunk("output", delta, payload)
+				end
+			elseif event_type:match("^response%.reasoning") then
+				local reasoning_delta = normalize_chunk_text(payload.delta or payload.text or payload.reasoning)
+				if reasoning_delta and #reasoning_delta > 0 then
+					emit_chunk("reasoning", reasoning_delta, payload)
 				end
 			elseif event_type == "response.output_item.added" or event_type == "response.output_item.done" then
 				local item = payload.item or payload.output_item
@@ -824,10 +1238,15 @@ local stream_responses = function(self, model, messages, sampler, user_callbacks
 							arguments = item.arguments,
 						}
 						merge_response_tool_calls(tool_by_key, tool_order, { call })
+					elseif item.type == "reasoning" then
+						local text = extract_responses_reasoning({ output = { item } })
+						if #text > 0 then
+							emit_chunk("reasoning", text, payload)
+						end
 					elseif item.type == "message" and full_text:get() == "" then
 						local text = extract_responses_text_from_content(item.content)
 						if #text > 0 then
-							full_text:put(text)
+							emit_chunk("output", text, payload)
 						end
 					end
 				end
@@ -853,6 +1272,10 @@ local stream_responses = function(self, model, messages, sampler, user_callbacks
 					local text = extract_responses_text(response)
 					if #text > 0 and full_text:get() == "" then
 						full_text:put(text)
+					end
+					local reasoning = extract_responses_reasoning(response)
+					if #reasoning > 0 and reasoning_text:get() == "" then
+						reasoning_text:put(reasoning)
 					end
 				end
 				client:close()
@@ -888,22 +1311,69 @@ local stream_responses = function(self, model, messages, sampler, user_callbacks
 		end,
 	}
 
-	client = web.sse_client(
-		self.cfg.api_url .. "/responses",
-		{ method = "POST", body = json.encode(data), headers = self.__state.headers },
-		callbacks
-	)
-	local ok, err = client:connect()
-	if not ok then
-		return nil, err
-	end
-	local running = true
-	while running do
-		running = client:update() and client:is_connected()
-		std.sleep_ms(50)
+	local max_retries = 2
+	local backoff = { 2000, 8000 }
+	for attempt = 1, max_retries + 1 do
+		http_error = nil
+		http_status = nil
+
+		client = web.sse_client(
+			self.cfg.api_url .. "/responses",
+			{ method = "POST", body = json.encode(data), headers = self.__state.headers },
+			callbacks
+		)
+		local ok, err = client:connect()
+		if not ok then
+			if attempt <= max_retries then
+				if user_callbacks.retry then
+					user_callbacks.retry(attempt, nil)
+				end
+				if cancellable_sleep(backoff[attempt], is_cancelled) then
+					cancelled = true
+					break
+				end
+			else
+				return nil, err
+			end
+		else
+			local running = true
+			while running do
+				running = client:update() and client:is_connected()
+				if is_cancelled and is_cancelled() then
+					client:close()
+					cancelled = true
+					break
+				end
+				std.sleep_ms(50)
+			end
+			if cancelled then
+				break
+			end
+			if http_error and is_retryable(http_status) and attempt <= max_retries then
+				if user_callbacks.retry then
+					user_callbacks.retry(attempt, http_status)
+				end
+				if cancellable_sleep(backoff[attempt], is_cancelled) then
+					cancelled = true
+					break
+				end
+				-- Reset accumulators for next attempt
+				full_text:reset()
+				reasoning_text:reset()
+				usage = nil
+				tool_by_key = {}
+				tool_order = {}
+				response_id = nil
+				response_model = nil
+				finish_reason = nil
+				start_ms = (std.time_ms and std.time_ms()) or nil
+			else
+				break
+			end
+		end
 	end
 
-	if http_error then
+	if not cancelled and http_error then
 		return nil, http_error
 	end
 
@@ -931,6 +1401,7 @@ local stream_responses = function(self, model, messages, sampler, user_callbacks
 	end
 	local out = {
 		text = cleanup_text(full_text:get()),
+		reasoning_text = cleanup_text(reasoning_text:get()),
 		backend = self.cfg.backend,
 		model = response_model or model,
 		tokens = tokens,
@@ -938,6 +1409,7 @@ local stream_responses = function(self, model, messages, sampler, user_callbacks
 		rate = rate,
 		response_id = response_id,
 		finish_reason = finish_reason,
+		cancelled = cancelled or nil,
 	}
 	if tool_calls and #tool_calls > 0 then
 		out.tool_calls = tool_calls

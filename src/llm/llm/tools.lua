@@ -5,11 +5,14 @@
 local std = require("std")
 local json = require("cjson.safe")
 
--- Tool registry
+-- Built-in tools are loaded from src/llm/llm/tools/*.lua and keyed by canonical tool name.
 local registered = {}
-
-local register = function(name, tool)
-	registered[name] = tool
+local builtin_modules = { "read_file", "write_file", "edit_file", "bash", "web_search", "fetch_webpage" }
+for _, module_name in ipairs(builtin_modules) do
+	local ok, tool = pcall(require, "llm.tools." .. module_name)
+	if ok and type(tool) == "table" and type(tool.name) == "string" and tool.name ~= "" then
+		registered[tool.name] = tool
+	end
 end
 
 local get = function(name)
@@ -21,6 +24,7 @@ local list = function()
 	for name, _ in pairs(registered) do
 		table.insert(names, name)
 	end
+	table.sort(names)
 	return names
 end
 
@@ -33,6 +37,7 @@ end
 -- Get multiple tool descriptions as tables
 local get_descriptions = function(names)
 	local descs = {}
+	names = names or list()
 	for _, name in ipairs(names or {}) do
 		local desc = get_description(name)
 		if desc then
@@ -51,9 +56,34 @@ local execute = function(name, arguments)
 	return pcall(tool.execute, arguments)
 end
 
+local is_non_empty_string = function(value)
+	return type(value) == "string" and value ~= ""
+end
+
+local is_ffi_marker_string = function(value)
+	return type(value) == "string" and (value:match("^userdata:") or value:match("^cdata:"))
+end
+
+local stringify_tool_arguments = function(arguments)
+	if type(arguments) == "string" then
+		return arguments
+	end
+	if arguments == nil then
+		return "{}"
+	end
+	if type(arguments) == "table" then
+		return json.encode(arguments) or "{}"
+	end
+	local s = tostring(arguments)
+	if is_ffi_marker_string(s) then
+		return "{}"
+	end
+	return s
+end
+
 -- Normalize client responses to a stable contract expected by callers.
 -- Canonical shape:
---   text(string), tool_calls(table|nil), tokens(number), ctx(number), rate(number),
+--   text(string), reasoning_text(string), tool_calls(table|nil), tokens(number), ctx(number), rate(number),
 --   backend(string|nil), model(string|nil), raw(any, optional)
 local normalize_response = function(resp, client, model)
 	resp = resp or {}
@@ -62,6 +92,11 @@ local normalize_response = function(resp, client, model)
 		resp.text = ""
 	elseif type(resp.text) ~= "string" then
 		resp.text = tostring(resp.text)
+	end
+	if resp.reasoning_text == nil then
+		resp.reasoning_text = ""
+	elseif type(resp.reasoning_text) ~= "string" then
+		resp.reasoning_text = tostring(resp.reasoning_text)
 	end
 
 	resp.tokens = tonumber(resp.tokens) or 0
@@ -75,12 +110,160 @@ local normalize_response = function(resp, client, model)
 end
 
 local ensure_call_id = function(call)
+	if type(call) ~= "table" then
+		return nil
+	end
+
 	local id = call.id
-	if not id and std.nanoid then
+	if type(id) ~= "string" or id == "" then
+		local alt_id = call.call_id
+		if type(alt_id) == "string" and alt_id ~= "" then
+			id = alt_id
+		elseif alt_id ~= nil then
+			local alt_s = tostring(alt_id)
+			if alt_s ~= "" and not is_ffi_marker_string(alt_s) then
+				id = alt_s
+			end
+		elseif id ~= nil then
+			local id_s = tostring(id)
+			if id_s ~= "" and not is_ffi_marker_string(id_s) then
+				id = id_s
+			else
+				id = nil
+			end
+		else
+			id = nil
+		end
+	end
+
+	if (type(id) ~= "string" or id == "") and std.nanoid then
 		id = "call_" .. std.nanoid()
+	end
+	if type(id) == "string" and id ~= "" then
 		call.id = id
+		return id
 	end
 	return id
+end
+
+local normalize_tool_name = function(call)
+	if type(call) ~= "table" then
+		return "unknown"
+	end
+	if type(call.name) == "string" and call.name ~= "" then
+		return call.name
+	end
+	local fn = call["function"]
+	if type(fn) == "table" and type(fn.name) == "string" and fn.name ~= "" then
+		return fn.name
+	end
+	return "unknown"
+end
+
+local normalize_tool_args = function(call)
+	if type(call) ~= "table" then
+		return ""
+	end
+	local args = call.arguments
+	if args ~= nil then
+		return stringify_tool_arguments(args)
+	end
+	local fn = call["function"]
+	if type(fn) == "table" then
+		return stringify_tool_arguments(fn.arguments)
+	end
+	return ""
+end
+
+local emit_tool_warning = function(on_tool_warning, message, call)
+	if type(on_tool_warning) ~= "function" then
+		return
+	end
+	pcall(on_tool_warning, message, call)
+end
+
+local extract_raw_tool_name = function(call)
+	if type(call) ~= "table" then
+		return nil
+	end
+	if is_non_empty_string(call.name) then
+		return call.name
+	end
+	local fn = call["function"]
+	if type(fn) == "table" and is_non_empty_string(fn.name) then
+		return fn.name
+	end
+	local legacy = call.function_call
+	if type(legacy) == "table" and is_non_empty_string(legacy.name) then
+		return legacy.name
+	end
+	return nil
+end
+
+local extract_raw_tool_arguments = function(call)
+	if type(call) ~= "table" then
+		return nil
+	end
+	if call.arguments ~= nil then
+		return call.arguments
+	end
+	local fn = call["function"]
+	if type(fn) == "table" then
+		return fn.arguments
+	end
+	local legacy = call.function_call
+	if type(legacy) == "table" then
+		return legacy.arguments
+	end
+	return nil
+end
+
+local normalize_oaic_tool_calls = function(calls, on_tool_warning)
+	if type(calls) ~= "table" then
+		return {}, 0
+	end
+
+	local out = {}
+	local dropped = 0
+	for index, raw_call in ipairs(calls) do
+		if type(raw_call) ~= "table" then
+			dropped = dropped + 1
+			emit_tool_warning(
+				on_tool_warning,
+				"Skipping malformed tool call #" .. tostring(index) .. ": expected an object",
+				raw_call
+			)
+		else
+			local name = extract_raw_tool_name(raw_call)
+			if not name then
+				dropped = dropped + 1
+				emit_tool_warning(
+					on_tool_warning,
+					"Skipping malformed tool call #" .. tostring(index) .. ": missing function name",
+					raw_call
+				)
+			else
+				local normalized_call = {
+					id = ensure_call_id(raw_call),
+					type = "function",
+					name = name,
+					arguments = stringify_tool_arguments(extract_raw_tool_arguments(raw_call)),
+				}
+				if not normalized_call.id or normalized_call.id == "" then
+					dropped = dropped + 1
+					emit_tool_warning(
+						on_tool_warning,
+						"Skipping malformed tool call #" .. tostring(index) .. ": missing tool_call id",
+						raw_call
+					)
+				else
+					out[#out + 1] = normalized_call
+				end
+			end
+		end
+	end
+
+	return out, dropped
 end
 
 local decode_call_arguments = function(arguments, keep_raw_on_decode_error)
@@ -151,15 +334,10 @@ local append_oaic_tool_results = function(messages, resp, on_tool_call, on_tool_
 	local assistant_tool_calls = {}
 
 	for _, call in ipairs(tool_calls) do
-		local id = ensure_call_id(call)
-		local args = call.arguments
-		if type(args) == "table" then
-			args = json.encode(args) or "{}"
-		end
 		table.insert(assistant_tool_calls, {
-			id = id,
+			id = call.id,
 			type = "function",
-			["function"] = { name = call.name, arguments = args },
+			["function"] = { name = call.name, arguments = call.arguments },
 		})
 	end
 	local assistant_msg = { role = "assistant", content = resp.text or "", tool_calls = assistant_tool_calls }
@@ -183,53 +361,6 @@ local append_oaic_tool_results = function(messages, resp, on_tool_call, on_tool_
 
 		table.insert(messages, { role = "tool", tool_call_id = call.id, content = tool_content })
 	end
-
-	return messages
-end
-
--- Helper: Append Anthropic-style tool results to messages
-local append_anthropic_tool_results = function(messages, resp, on_tool_call, on_tool_result)
-	local tool_calls = resp.tool_calls or {}
-	local assistant_content = {}
-
-	if resp.text and #resp.text > 0 then
-		table.insert(assistant_content, { type = "text", text = resp.text })
-	end
-	for _, call in ipairs(tool_calls) do
-		table.insert(assistant_content, {
-			type = "tool_use",
-			id = call.id,
-			name = call.name,
-			input = decode_call_arguments(call.arguments, false),
-		})
-	end
-	table.insert(messages, { role = "assistant", content = assistant_content })
-
-	local tool_results = {}
-	for i, call in ipairs(tool_calls) do
-		local action, decision = get_call_decision(call, i, resp, on_tool_call)
-		if action == "abort" then
-			return nil, decision
-		end
-
-		local result_for_callback, is_error = execute_call(call, action, decision, false)
-		local result_content = json.encode(result_for_callback)
-
-		if on_tool_result then
-			on_tool_result(call, result_for_callback, is_error)
-		end
-
-		local tool_result = {
-			type = "tool_result",
-			tool_use_id = call.id,
-			content = result_content,
-		}
-		if is_error then
-			tool_result.is_error = true
-		end
-		table.insert(tool_results, tool_result)
-	end
-	table.insert(messages, { role = "user", content = tool_results })
 
 	return messages
 end
@@ -298,7 +429,6 @@ end
 
 local APPEND_BY_STYLE = {
 	oaic = append_oaic_tool_results,
-	anthropic = append_anthropic_tool_results,
 	xml = append_xml_tool_results,
 }
 
@@ -310,12 +440,10 @@ local loop = function(client, model, messages, sampler, opts)
 	local execute_tools = opts.execute_tools or false
 	local on_tool_call = opts.on_tool_call
 	local on_tool_result = opts.on_tool_result
+	local on_tool_warning = opts.on_tool_warning
 	local stream = opts.stream or false
 	local client_backend = client and (client.backend or (client.cfg and client.cfg.backend))
-	local style = opts.style
-		or (client_backend == "anthropic" and "anthropic")
-		or (client_backend == "oaic" and "oaic")
-		or "xml"
+	local style = opts.style or (client_backend == "oaic" and "oaic") or "xml"
 
 	local cur_messages = std.tbl.copy(messages)
 	for step = 1, max_steps do
@@ -329,8 +457,20 @@ local loop = function(client, model, messages, sampler, opts)
 			return nil, err
 		end
 
+		if resp.cancelled then
+			return normalize_response(resp, client, model)
+		end
+
 		local tool_calls = resp.tool_calls
+		local dropped_tool_calls = 0
+		if style == "oaic" then
+			tool_calls, dropped_tool_calls = normalize_oaic_tool_calls(tool_calls, on_tool_warning)
+			resp.tool_calls = tool_calls
+		end
 		if not tool_calls or #tool_calls == 0 then
+			if dropped_tool_calls > 0 and (not resp.text or resp.text == "") then
+				resp.text = "Model emitted malformed tool calls; skipped."
+			end
 			return normalize_response(resp, client, model)
 		end
 		if not execute_tools then
@@ -353,21 +493,14 @@ local loop = function(client, model, messages, sampler, opts)
 	return nil, "tool loop exceeded max_steps"
 end
 
--- Auto-register built-in tools
-local builtins = { "read_file", "write_file", "edit_file", "bash", "web_search", "fetch_webpage" }
-for _, name in ipairs(builtins) do
-	local ok, tool = pcall(require, "llm.tools." .. name)
-	if ok and tool then
-		register(tool.name, tool)
-	end
-end
-
 return {
-	register = register,
 	get = get,
 	list = list,
 	get_description = get_description,
 	get_descriptions = get_descriptions,
 	execute = execute,
 	loop = loop,
+	ensure_call_id = ensure_call_id,
+	normalize_tool_name = normalize_tool_name,
+	normalize_tool_args = normalize_tool_args,
 }

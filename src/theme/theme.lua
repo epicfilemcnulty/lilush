@@ -34,7 +34,7 @@ local widget_default = {
 local errors_default = {
 	-- builtin_markdown is used for markdown-formatted error messages in shell
 	builtin_markdown = {
-		fg = 245,
+		fg = 238,
 		code = { fg = 95, bg = 233, s = "bold" },
 		strong = { s = "inverted,bold" },
 	},
@@ -235,6 +235,7 @@ local agent_default = {
 	agent = {
 		error = { fg = 167 },
 		info = { fg = 245 },
+		thinking = { fg = 147 },
 
 		tool = {
 			bracket = { fg = 214 },
@@ -268,7 +269,7 @@ local agent_default = {
 			mode = {
 				prefix = { fg = 99, content = "[" },
 				suffix = { fg = 99, content = "]" },
-				label = { fg = 147, s = "bold", content = "agent" },
+				label = { fg = 147, s = "bold" },
 				backend = { fg = 103 },
 				model = { fg = 183 },
 			},

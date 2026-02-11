@@ -6,7 +6,7 @@ local testimony = require("testimony")
 local std = require("std")
 local argparser = require("argparser")
 
-local testify = testimony.new("== argparser v2 ==")
+local testify = testimony.new("== argparser ==")
 
 testify:that("parses GNU long and short value forms", function()
 	local parser = argparser

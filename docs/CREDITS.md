@@ -60,7 +60,7 @@ to the harsh realms of terminal.
 ## AI contributions
 
 Core parts of the project were designed and implemented first
-by me(a human), and then refactored/extended with the help of LLMs.
+by me (a human), and then refactored/extended with the help of LLMs.
 
 Some parts were implemented by LLMs first, and then cleaned
 up/extended or refactored by me.

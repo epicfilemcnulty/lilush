@@ -42,7 +42,6 @@ local luamods = {
 	llm = {
 		"llm",
 		"llm.llamacpp",
-		"llm.anthropic",
 		"llm.oaic",
 		"llm.templates",
 		"llm.tools",
@@ -52,7 +51,6 @@ local luamods = {
 		"llm.tools.bash",
 		"llm.tools.web_search",
 		"llm.tools.fetch_webpage",
-		"llm.pricing",
 	},
 	redis = { "redis" },
 	reliw = {
@@ -70,6 +68,7 @@ local luamods = {
 	shell = {
 		"shell",
 		"shell.store",
+		"shell.messages",
 		"shell.utils",
 		"shell.utils.pager",
 		"shell.utils.pipeline",
@@ -95,8 +94,10 @@ local luamods = {
 	agent = {
 		"agent.config",
 		"agent.conversation",
+		"agent.conversation_markdown",
 		"agent.system_prompt",
-		"agent.tools",
+		"agent.completion.slash",
+		"agent.completion.source.slash",
 		"agent.stream",
 		"agent.mode.agent",
 		"agent.mode.agent.prompt",

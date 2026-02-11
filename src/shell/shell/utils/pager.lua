@@ -138,7 +138,6 @@ local pager_set_render_mode = function(self, mode)
 
 		local result = markdown.render(self.content.raw, {
 			width = content_width,
-			return_metadata = true,
 			hide_link_urls = true,
 			supports_ts = supports_ts,
 		})
@@ -508,6 +507,9 @@ local pager_exit = function(self)
 	self.cfg.status_line = false
 	if self.__state.screen then
 		self.__state.screen:done()
+	end
+	if self.cfg.write_back == false then
+		return
 	end
 	term.go(self.__state.window.l, 1)
 	local till = self.__state.window.capacity
@@ -1083,6 +1085,7 @@ local pager_new = function(config)
 		wrap = 0,
 		wrap_in_raw = false,
 		hide_links = false,
+		write_back = true,
 	}
 	std.tbl.merge(default_config, config)
 	default_config.ctrls = {

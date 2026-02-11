@@ -1110,4 +1110,8 @@ return {
 	text_size_chunks = text_size_chunks,
 	has_ts = has_ts,
 	has_ts_combined = has_ts_combined,
+	-- Cancel (SIGINT) API
+	install_cancel_handler = core.install_cancel_handler,
+	remove_cancel_handler = core.remove_cancel_handler,
+	check_cancel = core.check_cancel,
 }

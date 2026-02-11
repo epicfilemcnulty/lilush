@@ -4,134 +4,332 @@
 
 --[[
 Agent configuration module.
-
-Handles loading configuration from file, environment variables,
-and provides defaults. Supports runtime model/backend switching.
-
-Config file: ~/.config/lilush/agent.json
+User config file: ~/.config/lilush/agent.json
 ]]
 
 local std = require("std")
 local json = require("cjson.safe")
+local web = require("web")
 
--- Zen model configurations with explicit api_style
--- api_style: "anthropic" or "oaic"
--- endpoint: specific endpoint path (for oaic style)
-local zen_models = {
-	-- Anthropic models via Zen (use /messages endpoint)
-	["claude-sonnet-4"] = { api_style = "anthropic" },
-	["claude-sonnet-4-5"] = { api_style = "anthropic" },
-	["claude-haiku-4-5"] = { api_style = "anthropic" },
-	["claude-3-5-haiku"] = { api_style = "anthropic" },
-	["claude-opus-4-5"] = { api_style = "anthropic" },
-	["claude-opus-4-1"] = { api_style = "anthropic" },
-	-- Special case: minimax-m2.1-free uses anthropic style
-	["minimax-m2.1-free"] = { api_style = "anthropic" },
-
-	-- OpenAI models via Zen (use /responses endpoint)
-	["gpt-5.2"] = { api_style = "oaic", endpoint = "/responses" },
-	["gpt-5.2-codex"] = { api_style = "oaic", endpoint = "/responses" },
-	["gpt-5.1"] = { api_style = "oaic", endpoint = "/responses" },
-	["gpt-5.1-codex"] = { api_style = "oaic", endpoint = "/responses" },
-	["gpt-5.1-codex-max"] = { api_style = "oaic", endpoint = "/responses" },
-	["gpt-5.1-codex-mini"] = { api_style = "oaic", endpoint = "/responses" },
-	["gpt-5"] = { api_style = "oaic", endpoint = "/responses" },
-	["gpt-5-codex"] = { api_style = "oaic", endpoint = "/responses" },
-	["gpt-5-nano"] = { api_style = "oaic", endpoint = "/responses" },
-
-	-- Other models via Zen (use /chat/completions endpoint)
-	["minimax-m2.1"] = { api_style = "oaic", endpoint = "/chat/completions" },
-	["glm-4.7"] = { api_style = "oaic", endpoint = "/chat/completions" },
-	["glm-4.7-free"] = { api_style = "oaic", endpoint = "/chat/completions" },
-	["glm-4.6"] = { api_style = "oaic", endpoint = "/chat/completions" },
-	["kimi-k2.5"] = { api_style = "oaic", endpoint = "/chat/completions" },
-	["kimi-k2.5-free"] = { api_style = "oaic", endpoint = "/chat/completions" },
-	["kimi-k2-thinking"] = { api_style = "oaic", endpoint = "/chat/completions" },
-	["kimi-k2"] = { api_style = "oaic", endpoint = "/chat/completions" },
-	["qwen3-coder"] = { api_style = "oaic", endpoint = "/chat/completions" },
-	["big-pickle"] = { api_style = "oaic", endpoint = "/chat/completions" },
-}
-
--- Default configuration
 local defaults = {
-	-- Active backend and model (can be switched at runtime)
-	-- Default to OpenCode Zen with Claude Sonnet 4
-	backend = "zen",
-	model = "claude-sonnet-4",
+	provider = "openrouter",
+	model = "openai/gpt-5.2-codex",
 
-	-- Available backends with their default models
-	backends = {
-		zen = {
-			url = "https://opencode.ai/zen/v1",
-			api_key_env = "OPENCODE_API_KEY",
-			default_model = "claude-sonnet-4",
-			-- Model configs are in zen_models table above
-			models = zen_models,
-		},
-		anthropic = {
-			url = nil, -- Uses ANTHROPIC_API_URL or default
-			api_key_env = "ANTHROPIC_API_KEY",
-			default_model = "claude-sonnet-4-20250514",
-			api_style = "anthropic", -- All models use anthropic style
-		},
-		oaic = {
-			url = nil, -- Uses LLM_OAIC_API_URL or default
-			api_key_env = "LLM_API_KEY",
-			default_model = "gpt-4o",
-			api_style = "oaic", -- All models use oaic style
-		},
-		llamacpp = {
-			url = nil, -- Uses LLM_API_URL or default
-			api_key_env = "LLM_API_KEY",
-			default_model = "GLM-4.7-Flash",
-			api_style = "oaic", -- llamacpp uses OAIC-compatible API
+	providers = {
+		openrouter = {
+			kind = "openrouter",
+			url = "https://openrouter.ai/api/v1",
+			api_key_env = "OPENROUTER_API_KEY",
+			default_model = "openai/gpt-5.2-codex",
 		},
 	},
 
-	-- To do/to think over:
-	-- shall we provide a way to specify temperature
-	-- or other sampling parameters? Most providers don't even
-	-- expose those for coding agents, and with llamacpp we can
-	-- rely on the server settings, but still..
 	sampler = {
 		max_new_tokens = 32768,
 	},
 
-	-- Tool-specific configuration
 	tools = {
 		bash = {
-			approval = "ask", -- "auto", "ask", "deny"
-		},
-		write_file = {
 			approval = "ask",
 		},
-		edit_file = {
+		write = {
 			approval = "ask",
 		},
-		-- Read-only tools default to auto
-		read_file = { approval = "auto" },
+		edit = {
+			approval = "ask",
+		},
+		read = { approval = "auto" },
 		web_search = { approval = "auto" },
 		fetch_webpage = { approval = "auto" },
 	},
-
-	-- System prompt (nil = use default from agent.system_prompt)
-	system_prompt = nil,
-
-	-- Conversation settings
-	max_conversation_tokens = 100000,
-
-	-- Rendering settings
-	render = {
-		markdown = true,
-		syntax_highlight = true,
-		line_numbers = true,
-	},
-
-	-- Custom pricing overrides (merged with llm.pricing defaults)
-	pricing = {},
+	active_prompt = nil,
+	index_file = "INDEX.md",
+	max_tool_steps = 100,
 }
 
--- Load configuration from file
+local normalize_context_window = function(value)
+	local n = tonumber(value)
+	if not n then
+		return nil
+	end
+	n = math.floor(n)
+	if n < 1 then
+		return nil
+	end
+	return n
+end
+
+local normalize_non_negative_number = function(value)
+	local n = tonumber(value)
+	if not n or n < 0 then
+		return nil
+	end
+	return n
+end
+
+local trim_trailing_slash = function(value)
+	if type(value) ~= "string" then
+		return value
+	end
+	return value:gsub("/+$", "")
+end
+
+local normalize_provider_cfg = function(provider_name, provider_cfg)
+	provider_cfg = provider_cfg or {}
+	provider_cfg.url = trim_trailing_slash(provider_cfg.url)
+
+	if provider_cfg.kind == "openrouter" then
+		provider_cfg.api_key_env = provider_cfg.api_key_env or "OPENROUTER_API_KEY"
+	elseif provider_cfg.kind == "llamacpp" then
+		provider_cfg.api_key_env = provider_cfg.api_key_env or "LLM_API_KEY"
+	end
+
+	return provider_cfg
+end
+
+local resolve_provider_api_url = function(provider_name, provider_cfg)
+	local configured = trim_trailing_slash(provider_cfg and provider_cfg.url)
+	if configured and configured ~= "" then
+		return configured
+	end
+
+	if provider_name == "openrouter" and provider_cfg and provider_cfg.kind == "openrouter" then
+		local env_url = trim_trailing_slash(os.getenv("OPENROUTER_API_URL"))
+		if env_url and env_url ~= "" then
+			return env_url
+		end
+		return "https://openrouter.ai/api/v1"
+	end
+
+	return nil
+end
+
+local provider_models_url = function(provider_name, provider_cfg, api_url)
+	if type(api_url) ~= "string" or api_url == "" then
+		return nil
+	end
+
+	if provider_cfg.kind == "llamacpp" then
+		local base = api_url:gsub("/v1$", "")
+		return base .. "/models"
+	end
+
+	return api_url .. "/models"
+end
+
+local provider_auth_headers = function(provider_name, provider_cfg)
+	local headers = { ["Content-Type"] = "application/json" }
+	local key_env = provider_cfg and provider_cfg.api_key_env
+	local key = nil
+
+	if type(key_env) == "string" and key_env ~= "" then
+		key = os.getenv(key_env)
+	elseif provider_name == "openrouter" and provider_cfg and provider_cfg.kind == "openrouter" then
+		key = os.getenv("OPENROUTER_API_KEY")
+	end
+
+	if key and key ~= "" then
+		headers["Authorization"] = "Bearer " .. key
+	end
+
+	return headers
+end
+
+local parse_llamacpp_ctx_size = function(args)
+	if type(args) ~= "table" then
+		return nil
+	end
+	for i = 1, #args - 1 do
+		if args[i] == "--ctx-size" then
+			return normalize_context_window(args[i + 1])
+		end
+	end
+	return nil
+end
+
+local list_has_value = function(values, value)
+	if type(values) == "table" then
+		for _, v in ipairs(values) do
+			if v == value then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local supports_text_io = function(model)
+	local arch = model and model.architecture
+	if type(arch) ~= "table" then
+		return false
+	end
+
+	local input_has_text = list_has_value(arch.input_modalities, "text")
+	local output_has_text = list_has_value(arch.output_modalities, "text")
+	if input_has_text and output_has_text then
+		return true
+	end
+
+	if type(arch.modality) == "string" and arch.modality ~= "" then
+		local input, output = arch.modality:match("^([^%-]+)%-%>(.+)$")
+		if input and output then
+			return input:match("text") ~= nil and output:match("text") ~= nil
+		end
+	end
+
+	return false
+end
+
+local parse_openrouter_model = function(model)
+	if type(model) ~= "table" then
+		return nil
+	end
+
+	local name = model.id
+	if type(name) ~= "string" or name == "" then
+		return nil
+	end
+	if not supports_text_io(model) then
+		return nil
+	end
+
+	local top_provider = model.top_provider
+	local context_window = normalize_context_window(top_provider and top_provider.context_length)
+		or normalize_context_window(model.context_length)
+	if not context_window then
+		return nil
+	end
+
+	local pricing = model.pricing or {}
+	local prompt_price = normalize_non_negative_number(pricing.prompt)
+	local completion_price = normalize_non_negative_number(pricing.completion)
+
+	return {
+		name = name,
+		context_window = context_window,
+		prompt_price = prompt_price,
+		completion_price = completion_price,
+		supports_text_in = true,
+		supports_text_out = true,
+		loaded = nil,
+	}
+end
+
+local parse_llamacpp_model = function(model)
+	if type(model) ~= "table" then
+		return nil
+	end
+
+	local name = model.id
+	if type(name) ~= "string" or name == "" then
+		return nil
+	end
+
+	local status = model.status
+	local context_window = parse_llamacpp_ctx_size(status and status.args)
+		or normalize_context_window(model.context_length)
+	if not context_window then
+		return nil
+	end
+
+	local loaded = status and status.value == "loaded" or false
+
+	return {
+		name = name,
+		context_window = context_window,
+		prompt_price = nil,
+		completion_price = nil,
+		supports_text_in = true,
+		supports_text_out = true,
+		loaded = loaded,
+	}
+end
+
+local fetch_provider_models = function(provider_name, provider_cfg)
+	local api_url = resolve_provider_api_url(provider_name, provider_cfg)
+	if not api_url then
+		return nil, "provider `" .. tostring(provider_name) .. "` has invalid or missing URL"
+	end
+
+	local models_url = provider_models_url(provider_name, provider_cfg, api_url)
+	if not models_url then
+		return nil, "provider `" .. tostring(provider_name) .. "` has invalid models URL"
+	end
+
+	local timeout = tonumber(os.getenv("LLM_API_TIMEOUT")) or 600
+	local headers = provider_auth_headers(provider_name, provider_cfg)
+	local resp, err = web.request(models_url, { method = "GET", headers = headers }, timeout)
+	if not resp then
+		return nil, "provider `" .. tostring(provider_name) .. "` unavailable: " .. tostring(err)
+	end
+	if resp.status ~= 200 then
+		return nil,
+			"provider `"
+				.. tostring(provider_name)
+				.. "` unavailable: bad response status "
+				.. tostring(resp.status)
+				.. "\n"
+				.. tostring(resp.body or "")
+	end
+
+	local decoded, decode_err = json.decode(resp.body)
+	if type(decoded) ~= "table" then
+		return nil,
+			"provider `" .. tostring(provider_name) .. "` unavailable: invalid /models payload (" .. tostring(
+				decode_err
+			) .. ")"
+	end
+
+	local data = decoded.data
+	if type(data) ~= "table" then
+		return nil, "provider `" .. tostring(provider_name) .. "` unavailable: missing data array in /models response"
+	end
+
+	local ordered = {}
+	local by_name = {}
+	local parser = provider_cfg.kind == "openrouter" and parse_openrouter_model or parse_llamacpp_model
+
+	for _, model in ipairs(data) do
+		local descriptor = parser(model)
+		if descriptor and not by_name[descriptor.name] then
+			by_name[descriptor.name] = descriptor
+			ordered[#ordered + 1] = descriptor
+		end
+	end
+
+	if #ordered == 0 then
+		return nil, "provider `" .. tostring(provider_name) .. "` unavailable: no usable models in /models response"
+	end
+
+	table.sort(ordered, function(a, b)
+		return tostring(a.name) < tostring(b.name)
+	end)
+
+	by_name = {}
+	for _, descriptor in ipairs(ordered) do
+		by_name[descriptor.name] = descriptor
+	end
+
+	local default_model = provider_cfg.default_model
+	if not by_name[default_model] then
+		return nil,
+			"provider `"
+				.. tostring(provider_name)
+				.. "` default_model `"
+				.. tostring(default_model)
+				.. "` not found in discovered models"
+	end
+
+	return {
+		provider = provider_name,
+		kind = provider_cfg.kind,
+		api_url = api_url,
+		models = ordered,
+		models_by_name = by_name,
+		default_model = default_model,
+	}
+end
+
 local load_file = function()
 	local home = os.getenv("HOME") or "/tmp"
 	local config_path = home .. "/.config/lilush/agent.json"
@@ -143,32 +341,116 @@ local load_file = function()
 	if not config then
 		return nil, "failed to parse agent.json: " .. tostring(err)
 	end
+	if type(config) ~= "table" then
+		return nil, "agent.json must contain a JSON object"
+	end
 	return config
 end
 
--- Save configuration to file
-local save_file = function(config)
+local validate_provider_cfg = function(provider_name, provider_cfg)
+	if type(provider_name) ~= "string" or provider_name == "" then
+		return nil, "provider name must be a non-empty string"
+	end
+	if type(provider_cfg) ~= "table" then
+		return nil, "provider `" .. tostring(provider_name) .. "` must be an object"
+	end
+
+	if provider_cfg.api_style ~= nil then
+		return nil, "provider `" .. tostring(provider_name) .. "`: `api_style` is no longer supported"
+	end
+	if provider_cfg.endpoint ~= nil then
+		return nil, "provider `" .. tostring(provider_name) .. "`: `endpoint` is no longer supported"
+	end
+
+	if type(provider_cfg.kind) ~= "string" or provider_cfg.kind == "" then
+		return nil, "provider `" .. tostring(provider_name) .. "` is missing required `kind`"
+	end
+	if provider_cfg.kind ~= "openrouter" and provider_cfg.kind ~= "llamacpp" then
+		return nil,
+			"provider `" .. tostring(provider_name) .. "` has invalid `kind`; expected `openrouter` or `llamacpp`"
+	end
+
+	if provider_cfg.url ~= nil and (type(provider_cfg.url) ~= "string" or provider_cfg.url == "") then
+		return nil, "provider `" .. tostring(provider_name) .. "` has invalid `url`"
+	end
+	if
+		provider_cfg.api_key_env ~= nil
+		and (type(provider_cfg.api_key_env) ~= "string" or provider_cfg.api_key_env == "")
+	then
+		return nil, "provider `" .. tostring(provider_name) .. "` has invalid `api_key_env`"
+	end
+	if type(provider_cfg.default_model) ~= "string" or provider_cfg.default_model == "" then
+		return nil, "provider `" .. tostring(provider_name) .. "` is missing required `default_model`"
+	end
+
+	return true
+end
+
+local validate_user_config = function(config)
+	if type(config) ~= "table" then
+		return nil, "agent.json must contain a JSON object"
+	end
+
+	if config.provider ~= nil and (type(config.provider) ~= "string" or config.provider == "") then
+		return nil, "`provider` must be a non-empty string"
+	end
+	if config.model ~= nil and (type(config.model) ~= "string" or config.model == "") then
+		return nil, "`model` must be a non-empty string"
+	end
+
+	if type(config.providers) == "table" then
+		for provider_name, provider_cfg in pairs(config.providers) do
+			local ok, err = validate_provider_cfg(provider_name, provider_cfg)
+			if not ok then
+				return nil, err
+			end
+		end
+	end
+
+	return true
+end
+
+local validate_merged_config = function(config)
+	if type(config.providers) ~= "table" then
+		return nil, "`providers` must be an object"
+	end
+
+	local provider_count = 0
+	for provider_name, provider_cfg in pairs(config.providers) do
+		provider_count = provider_count + 1
+		local ok, err = validate_provider_cfg(provider_name, provider_cfg)
+		if not ok then
+			return nil, err
+		end
+	end
+
+	if provider_count == 0 then
+		return nil, "at least one provider must be configured"
+	end
+
+	if type(config.provider) ~= "string" or config.provider == "" then
+		return nil, "`provider` must be a non-empty string"
+	end
+
+	if not config.providers[config.provider] then
+		return nil, "unknown provider: " .. tostring(config.provider)
+	end
+
+	if config.model ~= nil and (type(config.model) ~= "string" or config.model == "") then
+		return nil, "`model` must be a non-empty string"
+	end
+
+	return true
+end
+
+local save_file = function(user_config)
 	local home = os.getenv("HOME") or "/tmp"
 	local config_dir = home .. "/.config/lilush"
 	local config_path = config_dir .. "/agent.json"
 
-	-- Ensure directory exists
 	std.fs.mkdir(config_dir)
 
-	-- Only save user-configurable fields, not runtime state
-	local to_save = {
-		backend = config.backend,
-		model = config.model,
-		backends = config.backends,
-		sampler = config.sampler,
-		tools = config.tools,
-		system_prompt = config.system_prompt,
-		max_conversation_tokens = config.max_conversation_tokens,
-		render = config.render,
-		pricing = config.pricing,
-	}
-
-	local content = json.encode(to_save)
+	local content = json.encode(user_config)
 	if not content then
 		return nil, "failed to encode config"
 	end
@@ -176,197 +458,287 @@ local save_file = function(config)
 	return std.fs.write_file(config_path, content)
 end
 
-local init_pricing = function(config)
-	if config.pricing and next(config.pricing) then
-		local pricing = require("llm.pricing")
-		pricing.set_custom_prices(config.pricing)
-	end
+local get_provider = function(self)
+	return self.__state.provider
 end
 
--- Get current backend name
-local get_backend = function(self)
-	return self.__state.backend
-end
-
--- Get current model name
 local get_model = function(self)
 	return self.__state.model
 end
 
--- Get backend configuration
-local get_backend_config = function(self, backend_name)
-	backend_name = backend_name or self.__state.backend
-	return (self.cfg.backends or {})[backend_name]
+local get_provider_config = function(self, provider_name)
+	provider_name = provider_name or self.__state.provider
+	return (self.cfg.providers or {})[provider_name]
 end
 
--- Get model configuration (api_style, endpoint) for current or specified model
--- Returns { api_style = "anthropic"|"oaic", endpoint = "/path" } or nil
-local get_model_config = function(self, model_name)
+local discover_provider_models = function(self, provider_name, opts)
+	provider_name = provider_name or self.__state.provider
+	opts = opts or {}
+
+	local provider_cfg = self:get_provider_config(provider_name)
+	if not provider_cfg then
+		return nil, "unknown provider: " .. tostring(provider_name)
+	end
+
+	self.__state.provider_models = self.__state.provider_models or {}
+	local cached = self.__state.provider_models[provider_name]
+	if cached and not opts.refresh then
+		return cached
+	end
+
+	local discovered, discover_err = fetch_provider_models(provider_name, provider_cfg)
+	if not discovered then
+		self.__state.provider_models[provider_name] = nil
+		return nil, discover_err
+	end
+
+	self.__state.provider_models[provider_name] = discovered
+	return discovered
+end
+
+local resolve_model = function(self, model_name, provider_name)
 	model_name = model_name or self.__state.model
-	local backend_config = self.get_backend_config(self)
+	provider_name = provider_name or self.__state.provider
 
-	if not backend_config then
-		return nil
+	if type(model_name) ~= "string" or model_name == "" then
+		return nil, "model name must be a non-empty string"
 	end
 
-	-- Check if backend has per-model configs (like Zen)
-	if backend_config.models and backend_config.models[model_name] then
-		return backend_config.models[model_name]
+	local provider_cfg = self:get_provider_config(provider_name)
+	if not provider_cfg then
+		return nil, "unknown provider: " .. tostring(provider_name)
 	end
 
-	-- Check if backend has a global api_style
-	if backend_config.api_style then
-		return { api_style = backend_config.api_style }
+	local discovered, discover_err = self:discover_provider_models(provider_name)
+	if not discovered then
+		return nil, discover_err
 	end
 
-	-- Default fallback for unknown models: use oaic with /chat/completions
-	return { api_style = "oaic", endpoint = "/chat/completions" }
+	local meta = discovered.models_by_name and discovered.models_by_name[model_name]
+	if not meta then
+		return nil,
+			"model `" .. model_name .. "` is not available on provider `" .. tostring(provider_name) .. "` (/models)"
+	end
+
+	return {
+		name = model_name,
+		provider = provider_name,
+		endpoint = "/chat/completions",
+		context_window = meta.context_window,
+		prompt_price = meta.prompt_price,
+		completion_price = meta.completion_price,
+		supports_text_in = meta.supports_text_in,
+		supports_text_out = meta.supports_text_out,
+		loaded = meta.loaded,
+		kind = provider_cfg.kind,
+	}
 end
 
--- Set backend (switches to that backend's default model if model not specified)
-local set_backend = function(self, backend_name, model_name)
-	local backend_config = (self.cfg.backends or {})[backend_name]
-	if not backend_config then
-		return nil, "unknown backend: " .. tostring(backend_name)
+local set_provider = function(self, provider_name, model_name)
+	local provider_cfg = (self.cfg.providers or {})[provider_name]
+	if not provider_cfg then
+		return nil, "unknown provider: " .. tostring(provider_name)
 	end
 
-	self.__state.backend = backend_name
-	self.__state.model = model_name or backend_config.default_model
+	local discovered, discover_err = self:discover_provider_models(provider_name, { refresh = true })
+	if not discovered then
+		return nil, discover_err
+	end
+
+	local target_model = model_name or provider_cfg.default_model
+	if not target_model then
+		return nil, "provider `" .. tostring(provider_name) .. "` has no default model"
+	end
+	if not (discovered.models_by_name and discovered.models_by_name[target_model]) then
+		return nil,
+			"model `" .. tostring(target_model) .. "` is not available on provider `" .. tostring(provider_name) .. "`"
+	end
+
+	self.__state.provider = provider_name
+	self.__state.model = target_model
+	self.__user_cfg.provider = provider_name
+	self.__user_cfg.model = target_model
 	return true
 end
 
--- Set model (optionally with backend)
-local set_model = function(self, model_name, backend_name)
-	if backend_name then
-		return self.set_backend(self, backend_name, model_name)
+local set_model = function(self, model_name, provider_name)
+	if provider_name then
+		return self:set_provider(provider_name, model_name)
 	end
+
+	local _, resolve_err = self:resolve_model(model_name, self.__state.provider)
+	if resolve_err then
+		return nil, resolve_err
+	end
+
 	self.__state.model = model_name
+	self.__user_cfg.model = model_name
 	return true
 end
 
--- Get sampler configuration
+local refresh_provider_models = function(self, provider_name)
+	provider_name = provider_name or self.__state.provider
+	return self:discover_provider_models(provider_name, { refresh = true })
+end
+
 local get_sampler = function(self)
 	return std.tbl.copy(self.cfg.sampler or {})
 end
 
--- Update sampler settings
 local set_sampler = function(self, settings)
 	self.cfg.sampler = self.cfg.sampler or {}
+	self.__user_cfg.sampler = self.__user_cfg.sampler or {}
 	for k, v in pairs(settings or {}) do
 		self.cfg.sampler[k] = v
+		self.__user_cfg.sampler[k] = v
 	end
 end
 
--- Get tool configuration
 local get_tool_config = function(self, tool_name)
 	local tools = self.cfg.tools or {}
 	return tools[tool_name] or { approval = "auto" }
 end
 
--- Check if tool requires approval (considering session overrides)
 local tool_needs_approval = function(self, tool_name)
-	-- Session override takes precedence
 	if self.__state.session_approvals[tool_name] == "auto" then
 		return false
 	end
 
-	local tool_config = self.get_tool_config(self, tool_name)
+	local tool_config = self:get_tool_config(tool_name)
 	return tool_config.approval == "ask"
 end
 
--- Set session-level approval override for a tool
 local set_session_approval = function(self, tool_name, approval)
 	self.__state.session_approvals[tool_name] = approval
 end
 
--- Clear session approvals (e.g., when starting new conversation)
 local clear_session_approvals = function(self)
 	self.__state.session_approvals = {}
 end
 
--- Get system prompt (returns nil if should use default)
-local get_system_prompt = function(self)
-	return self.cfg.system_prompt
+local get_active_prompt = function(self)
+	return self.cfg.active_prompt
 end
 
--- Set system prompt
-local set_system_prompt = function(self, prompt)
-	self.cfg.system_prompt = prompt
+local set_active_prompt = function(self, name)
+	self.cfg.active_prompt = name
+	self.__user_cfg.active_prompt = name
 end
 
--- Get max conversation tokens
-local get_max_tokens = function(self)
-	return self.cfg.max_conversation_tokens
+local get_index_file = function(self)
+	return self.cfg.index_file
 end
 
--- Get render settings
-local get_render_config = function(self)
-	return self.cfg.render
+local get_max_tool_steps = function(self)
+	return self.cfg.max_tool_steps
 end
 
--- Get list of available backends
-local list_backends = function(self)
-	local backends = {}
-	for name, _ in pairs(self.cfg.backends or {}) do
-		table.insert(backends, name)
+local list_providers = function(self)
+	local providers = {}
+	for name, _ in pairs(self.cfg.providers or {}) do
+		table.insert(providers, name)
 	end
-	table.sort(backends)
-	return backends
+	table.sort(providers)
+	return providers
 end
 
--- Get list of models for a backend (if available)
-local list_models = function(self, backend_name)
-	backend_name = backend_name or self.__state.backend
-	local backend_config = (self.cfg.backends or {})[backend_name]
-	if not backend_config then
+local list_models = function(self, provider_name)
+	provider_name = provider_name or self.__state.provider
+	if not (self.cfg.providers or {})[provider_name] then
 		return {}
 	end
 
-	if backend_config.models then
-		local models = {}
-		for name, _ in pairs(backend_config.models) do
-			table.insert(models, name)
+	local discovered = self:discover_provider_models(provider_name)
+	if not discovered then
+		return {}
+	end
+
+	local names = {}
+	for _, model in ipairs(discovered.models or {}) do
+		if model and model.name then
+			names[#names + 1] = model.name
 		end
-		table.sort(models)
-		return models
 	end
-
-	-- Return default model as the only option
-	if backend_config.default_model then
-		return { backend_config.default_model }
-	end
-
-	return {}
+	return names
 end
 
--- Get pricing overrides from config
-local get_pricing_overrides = function(self)
-	return self.cfg.pricing or {}
+local list_models_detailed = function(self, provider_name, opts)
+	provider_name = provider_name or self.__state.provider
+	if not (self.cfg.providers or {})[provider_name] then
+		return {}
+	end
+
+	local discovered, discover_err = self:discover_provider_models(provider_name, opts)
+	if not discovered then
+		return {}, discover_err
+	end
+
+	local details = {}
+	for _, model in ipairs(discovered.models or {}) do
+		if type(model) == "table" and type(model.name) == "string" and model.name ~= "" then
+			details[#details + 1] = {
+				name = model.name,
+				context_window = model.context_window,
+				provider = provider_name,
+				loaded = model.loaded,
+				prompt_price = model.prompt_price,
+				completion_price = model.completion_price,
+				supports_text_in = model.supports_text_in,
+				supports_text_out = model.supports_text_out,
+			}
+		end
+	end
+	return details
 end
 
--- Save current configuration to file
 local save = function(self)
-	return save_file(self.cfg)
+	return save_file(self.__user_cfg)
 end
 
 local new = function()
-	local file_config = load_file() or {}
-	local config = std.tbl.merge(defaults, file_config)
+	local file_config, load_err = load_file()
+	if load_err then
+		error(load_err)
+	end
+
+	file_config = file_config or {}
+	local ok, validate_err = validate_user_config(file_config)
+	if not ok then
+		error(validate_err)
+	end
+
+	local user_cfg = std.tbl.copy(file_config)
+	local config = std.tbl.merge(std.tbl.copy(defaults), file_config)
+	for provider_name, provider_cfg in pairs(config.providers or {}) do
+		config.providers[provider_name] = normalize_provider_cfg(provider_name, provider_cfg)
+	end
+
+	ok, validate_err = validate_merged_config(config)
+	if not ok then
+		error(validate_err)
+	end
+
+	if type(config.model) ~= "string" or config.model == "" then
+		local active_provider = config.providers[config.provider]
+		config.model = active_provider and active_provider.default_model or nil
+	end
 
 	local instance = {
 		cfg = config,
+		__user_cfg = user_cfg,
 		__state = {
-			backend = config.backend,
+			provider = config.provider,
 			model = config.model,
-			-- Session-level tool approval overrides
-			-- When a user says "allow all" for a tool, it's stored here.
 			session_approvals = {},
+			provider_models = {},
 		},
-		get_backend = get_backend,
+		get_provider = get_provider,
 		get_model = get_model,
-		get_backend_config = get_backend_config,
-		get_model_config = get_model_config,
-		set_backend = set_backend,
+		get_provider_config = get_provider_config,
+		discover_provider_models = discover_provider_models,
+		refresh_provider_models = refresh_provider_models,
+		resolve_model = resolve_model,
+		set_provider = set_provider,
 		set_model = set_model,
 		get_sampler = get_sampler,
 		set_sampler = set_sampler,
@@ -374,22 +746,65 @@ local new = function()
 		tool_needs_approval = tool_needs_approval,
 		set_session_approval = set_session_approval,
 		clear_session_approvals = clear_session_approvals,
-		get_system_prompt = get_system_prompt,
-		set_system_prompt = set_system_prompt,
-		get_max_tokens = get_max_tokens,
-		get_render_config = get_render_config,
-		list_backends = list_backends,
+		get_active_prompt = get_active_prompt,
+		set_active_prompt = set_active_prompt,
+		get_index_file = get_index_file,
+		get_max_tool_steps = get_max_tool_steps,
+		list_providers = list_providers,
 		list_models = list_models,
-		get_pricing_overrides = get_pricing_overrides,
+		list_models_detailed = list_models_detailed,
 		save = save,
 	}
 
-	init_pricing(config)
+	local discovered, discover_err = instance:discover_provider_models(instance:get_provider(), { refresh = true })
+	if not discovered then
+		error(discover_err)
+	end
+
+	if not instance:get_model() or instance:get_model() == "" then
+		instance.__state.model = discovered.default_model
+	end
+
+	local _, resolve_err = instance:resolve_model(instance:get_model(), instance:get_provider())
+	if resolve_err then
+		error(resolve_err)
+	end
 
 	return instance
+end
+
+local prompts_dir = function()
+	local home = os.getenv("HOME") or "/tmp"
+	return home .. "/.config/lilush/agent/prompts"
+end
+
+local list_user_prompts = function()
+	local dir = prompts_dir()
+	local entries = std.fs.list_dir(dir)
+	if not entries then
+		return {}
+	end
+	local names = {}
+	for _, name in ipairs(entries) do
+		if name ~= "." and name ~= ".." then
+			names[#names + 1] = name
+		end
+	end
+	table.sort(names)
+	return names
+end
+
+local load_user_prompt = function(name)
+	if not name or name == "" then
+		return nil
+	end
+	local path = prompts_dir() .. "/" .. name
+	return std.fs.read_file(path)
 end
 
 return {
 	new = new,
 	defaults = defaults,
+	list_user_prompts = list_user_prompts,
+	load_user_prompt = load_user_prompt,
 }

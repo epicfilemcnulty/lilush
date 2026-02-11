@@ -19,19 +19,3 @@ After making changes, build lilush and run:
   ```bash
   ./lilush tests/std/test_tbl.lua
   ```
-
-### Focused LLM/Agent refactor checks
-
-When changing `src/llm` or `src/agent`, run:
-
-```bash
-./lilush tests/llm/test_tools_loop.lua
-./lilush tests/llm/test_clients_phase1.lua
-./lilush tests/llm/test_clients_phase3.lua
-./lilush tests/llm/test_builtin_tools_phase2.lua
-./lilush tests/llm/test_templates_pricing.lua
-./lilush tests/agent/test_config.lua
-./lilush tests/agent/test_conversation.lua
-./lilush tests/agent/test_stream.lua
-./lilush tests/shell/test_mode_agent.lua
-```

@@ -235,7 +235,7 @@ local event = function(self)
 		end
 		for i, line in ipairs(std.txt.lines(b:get())) do
 			if i == 1 then
-				local p = std.utf.sub(s.lines[s.line], 1, s.offset + s.cursor)
+				local p = std.utf.sub(s.lines[s.line], 1, s.offset + s.cursor - 1)
 				local suffix = std.utf.sub(s.lines[s.line], s.offset + s.cursor)
 				s.lines[s.line] = p .. line .. suffix
 				self:cursor_right(std.utf.len(line))
@@ -298,7 +298,7 @@ local newline = function(self)
 	-- insert the new line before the current one
 	if s.cursor == 1 and s.offset == 0 then
 		table.insert(s.lines, s.line, "")
-	elseif s.cursor + s.offset == #s.lines[s.line] + 1 then
+	elseif s.cursor + s.offset == std.utf.len(s.lines[s.line]) + 1 then
 		--  If we are at the end, insert the new line
 		-- after the current one
 		s.line = s.line + 1
@@ -306,11 +306,10 @@ local newline = function(self)
 	else
 		-- Middle of the line case
 		local p = std.utf.sub(s.lines[s.line], 1, s.offset + s.cursor - 1)
-		local suffix = std.utf.sub(s.lines[s.line], s.offset + s.cursor, #s.lines[s.line])
+		local suffix = std.utf.sub(s.lines[s.line], s.offset + s.cursor)
 		s.lines[s.line] = p
 		s.line = s.line + 1
-		table.insert(s.lines, s.line, "")
-		table.insert(s.lines, s.line + 1, suffix)
+		table.insert(s.lines, s.line, suffix)
 	end
 	return self:start_of_line()
 end
@@ -382,7 +381,7 @@ local full_redraw = function(self)
 	if s.offset > 0 then
 		content = std.utf.sub(s.lines[s.line], s.offset + 1)
 	end
-	if #content > mw then
+	if std.utf.len(content) > mw then
 		content = std.utf.sub(content, 1, mw)
 	end
 	term.write(content)
@@ -418,8 +417,9 @@ local move_right = function(self)
 	local line_len = std.utf.len(s.lines[s.line])
 	local pos = s.offset + s.cursor
 	if pos <= line_len then
+		local old_offset = s.offset
 		self:cursor_right()
-		if pos <= self:max_width() then
+		if s.offset == old_offset then
 			term.move("right")
 			return false
 		else
@@ -548,7 +548,7 @@ local backspace = function(self)
 		return true
 	end
 
-	if (pos == line_len + 1 or pos == line_len) and line_len > 0 then
+	if pos == line_len + 1 and line_len > 0 then
 		self:clear_completion()
 		s.lines[s.line] = std.utf.sub(s.lines[s.line], 1, pos - 2)
 		if s.cursor > 1 then
@@ -790,10 +790,8 @@ local new = function(config)
 			local s = self.__state
 			self.cfg.h = h
 			self.cfg.w = w
-			-- Adjust visible width if needed
-			if w < self.cfg.width then
-				self.cfg.width = w
-			end
+			-- Track terminal width
+			self.cfg.width = w - 1
 			-- Ensure cursor position is valid
 			local max_w = self:max_width()
 			if s.cursor > max_w then

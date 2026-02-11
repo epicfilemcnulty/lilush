@@ -109,13 +109,15 @@ static WOLFSSL_CTX *check_client_sni(p_ssl ssl, const unsigned char *buffer, siz
  */
 static int meth_destroy(lua_State *L) {
     p_ssl ssl = (p_ssl)luaL_checkudata(L, 1, "SSL:Connection");
-    /* Fast teardown: avoid blocking shutdown on peers that disconnect abruptly. */
+    if (ssl->ssl && ssl->sock != SOCKET_INVALID && ssl->state == LSEC_STATE_CONNECTED) {
+        wolfSSL_shutdown(ssl->ssl);
+        shutdown(ssl->sock, SHUT_RDWR);
+    }
     if (ssl->sock != SOCKET_INVALID) {
         socket_destroy(&ssl->sock);
     }
     ssl->state = LSEC_STATE_CLOSED;
     if (ssl->ssl) {
-        /* Destroy the object */
         wolfSSL_free(ssl->ssl);
         ssl->ssl = NULL;
     }

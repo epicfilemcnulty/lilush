@@ -216,6 +216,7 @@ local TOKEN_STRIKE_DELIM = 7
 local TOKEN_AUTOLINK = 8
 local TOKEN_FOOTNOTE_REF = 9
 local TOKEN_ATTR_BLOCK = 10
+local TOKEN_SOFTBREAK = 11
 
 -- Tokenize the input
 local function tokenize(subject)
@@ -237,7 +238,14 @@ local function tokenize(subject)
 		local char = sub(subject, pos, pos)
 		local b = byte(char)
 
-		if b == 92 then -- backslash
+		if b == 10 then -- newline -> softbreak
+			add_text_token(pos - 1)
+			tokens[#tokens + 1] = {
+				type = TOKEN_SOFTBREAK,
+			}
+			pos = pos + 1
+			text_start = pos
+		elseif b == 92 then -- backslash
 			local next_char = sub(subject, pos + 1, pos + 1)
 			if next_char ~= "" and is_punctuation(next_char) then
 				add_text_token(pos - 1)
@@ -804,6 +812,8 @@ local function process_tokens(tokens, emit, link_refs, footnote_tracker)
 				else
 					text_parts[#text_parts + 1] = "<" .. tok.url .. ">"
 				end
+			elseif tok.type == TOKEN_SOFTBREAK then
+				text_parts[#text_parts + 1] = "\n"
 			elseif tok.type == TOKEN_LINK_OPEN then
 				text_parts[#text_parts + 1] = tok.is_image and "![" or "["
 			elseif tok.type == TOKEN_LINK_CLOSE then
@@ -865,6 +875,9 @@ local function process_tokens(tokens, emit, link_refs, footnote_tracker)
 			i = i + 1
 		elseif tok.type == TOKEN_ESCAPE then
 			emit_text(tok.text)
+			i = i + 1
+		elseif tok.type == TOKEN_SOFTBREAK then
+			emit({ type = "softbreak" })
 			i = i + 1
 		elseif tok.type == TOKEN_CODE then
 			-- Check for following attribute block

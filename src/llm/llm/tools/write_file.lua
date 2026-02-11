@@ -12,17 +12,12 @@ return {
 		["function"] = {
 			name = TOOL_NAME,
 			description = "Writes content to a file at the specified path. "
-				.. "Overwrites the file if it exists, creates it if it doesn't. "
-				.. "Use create_dirs=true to create parent directories if they don't exist.",
+				.. "Overwrites the file if it exists, creates it if it doesn't. ",
 			parameters = {
 				type = "object",
 				properties = {
 					filepath = { type = "string", description = "Path to the file to write" },
 					content = { type = "string", description = "Content to write to the file" },
-					create_dirs = {
-						type = "boolean",
-						description = "Create parent directories if they don't exist (default: false)",
-					},
 				},
 				required = { "filepath", "content" },
 			},
@@ -43,19 +38,17 @@ return {
 		-- Check if file exists before writing
 		local existed = std.fs.file_exists(filepath)
 
-		-- Create parent directories if requested
-		if arguments.create_dirs then
-			local parent_dir = filepath:match("^(.+)/[^/]+$")
-			if parent_dir and not std.fs.dir_exists(parent_dir) then
-				local ok, err = std.fs.mkdir(parent_dir, nil, true)
-				if not ok then
-					return {
-						name = TOOL_NAME,
-						ok = false,
-						filepath = filepath,
-						error = "failed to create directory: " .. err,
-					}
-				end
+		-- Create parent directories if needed
+		local parent_dir = filepath:match("^(.+)/[^/]+$")
+		if parent_dir and not std.fs.dir_exists(parent_dir) then
+			local ok, err = std.fs.mkdir(parent_dir, nil, true)
+			if not ok then
+				return {
+					name = TOOL_NAME,
+					ok = false,
+					filepath = filepath,
+					error = "failed to create directory: " .. err,
+				}
 			end
 		end
 

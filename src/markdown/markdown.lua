@@ -42,7 +42,7 @@ end
 --   indent: number - global indentation (default 0)
 --   hide_link_urls: boolean - hide URLs in rendered output (default false)
 --   supports_ts: boolean - whether terminal supports OSC 66 text sizing (default true)
---   return_metadata: boolean - return { rendered, elements } instead of just string (default false)
+-- Returns: { rendered = string, elements = table }
 local render = function(input, options)
 	options = options or {}
 	local renderer_name = options.renderer or "static"
@@ -72,13 +72,7 @@ local render = function(input, options)
 	p:feed(input or "")
 	p:finish()
 
-	local result = r:finish()
-
-	-- For backward compatibility, return just string unless metadata requested
-	if options.return_metadata then
-		return result -- { rendered, elements }
-	end
-	return result.rendered
+	return r:finish()
 end
 
 -- AST generation (stub for later phases)

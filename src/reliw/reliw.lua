@@ -18,6 +18,7 @@ local default_reliw_config = {
 		port = 6379,
 		db = 13,
 		prefix = "RLW",
+		timeout = 5,
 	},
 	metrics = {
 		ip = "127.0.0.1",
@@ -259,7 +260,7 @@ local new = function()
 	if not store_validation then
 		return nil, "failed to init store: " .. store_err
 	end
-	local _, close_err = store_validation.close(store_validation)
+	local _, close_err = store_validation.close(store_validation, true)
 	if close_err then
 		return nil, "failed to close store validation handle: " .. tostring(close_err)
 	end

@@ -130,6 +130,23 @@ testify:that("renders multiple paragraphs", function()
 	testimony.assert_true(contains(plain, "Second paragraph"))
 end)
 
+testify:that("does not truncate long plain paragraph before wrapping", function()
+	local input = "Start " .. string.rep("word ", 40) .. "tail marker 1.0."
+	local result = render_with_streaming(input, { width = 50 })
+	local plain = strip_ansi(result)
+	testimony.assert_true(contains(plain, "tail marker 1.0."))
+	testimony.assert_nil(plain:find("…", 1, true))
+end)
+
+testify:that("does not truncate long styled paragraph before wrapping", function()
+	local input = "Prefix **" .. string.rep("boldword ", 30) .. "tail styled** suffix."
+	local result = render_with_streaming(input, { width = 50 })
+	local plain = strip_ansi(result)
+	testimony.assert_true(contains(plain, "tail styled"))
+	testimony.assert_true(contains(plain, "suffix."))
+	testimony.assert_nil(plain:find("…", 1, true))
+end)
+
 testify:that("handles softbreak as space", function()
 	local renderer, get_output = create_capturing_renderer({ width = 80 })
 	renderer:render_event({ type = "block_start", tag = "para" })

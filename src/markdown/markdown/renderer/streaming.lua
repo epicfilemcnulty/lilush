@@ -42,6 +42,7 @@ local SYNC_END = "\027[?2026l"
 
 local DEFAULT_BORDERS = theme.DEFAULT_BORDERS
 local DEFAULT_RSS = theme.DEFAULT_RSS
+local PARAGRAPH_NO_CLIP_RSS = theme.PARAGRAPH_NO_CLIP_RSS
 
 local get_block_indent = function(tss, style_key)
 	if not style_key then
@@ -85,12 +86,154 @@ local get_heading_pos = function(self)
 	return std.utf.len(self.__state.heading_content.plain)
 end
 
+local get_table_cell_pos = function(self)
+	local content = self.__state.table_cell_content
+	if type(content) == "table" then
+		return std.utf.len(content.plain or "")
+	end
+	return 0
+end
+
+local inline_elements_for_tag = function(tag, attrs)
+	local elements = {}
+	if tag == "strong" or tag == "emph" or tag == "strikethrough" then
+		elements = { tag }
+	elseif tag == "code" then
+		elements = { "code" }
+		if attrs and attrs.class then
+			for class in attrs.class:gmatch("%S+") do
+				elements[#elements + 1] = "code." .. class
+			end
+		end
+	elseif tag == "link" then
+		elements = { "link.title" }
+	elseif tag == "image" then
+		elements = { "image.alt" }
+	end
+	return elements
+end
+
+local normalize_table_cell_content = function(content)
+	if type(content) == "table" then
+		return {
+			plain = content.plain or "",
+			ranges = content.ranges or {},
+		}
+	end
+	return {
+		plain = tostring(content or ""),
+		ranges = {},
+	}
+end
+
+local style_content = function(self, content, base_style)
+	content = normalize_table_cell_content(content)
+	if #content.ranges == 0 then
+		return self.__state.tss:apply(base_style, content.plain).text
+	end
+	local styled = self.__state.tss:apply_sized(base_style, content)
+	return styled.text
+end
+
+local take_prefix_by_display = function(text, max_width)
+	local utf_len = std.utf.len(text)
+	if utf_len == 0 or max_width <= 0 then
+		return "", 0, 0
+	end
+
+	local lo, hi = 0, utf_len
+	while lo < hi do
+		local mid = math.floor((lo + hi + 1) / 2)
+		local sub = std.utf.sub(text, 1, mid)
+		if std.utf.display_len(sub) <= max_width then
+			lo = mid
+		else
+			hi = mid - 1
+		end
+	end
+
+	if lo == 0 then
+		return "", 0, 0
+	end
+
+	local prefix = std.utf.sub(text, 1, lo)
+	return prefix, lo, std.utf.display_len(prefix)
+end
+
+local clip_content_with_ranges = function(content, max_width)
+	content = normalize_table_cell_content(content)
+	local plain = content.plain
+	local clipped_text, clipped_chars, clipped_width = take_prefix_by_display(plain, max_width)
+	if clipped_chars == 0 then
+		return { plain = "", ranges = {} }, 0
+	end
+
+	if #content.ranges == 0 then
+		return { plain = clipped_text, ranges = {} }, clipped_width
+	end
+
+	local clipped_ranges = {}
+	for _, r in ipairs(content.ranges) do
+		local overlap_start = math.max(1, r.start or 1)
+		local overlap_stop = math.min(clipped_chars, r.stop or clipped_chars)
+		if overlap_stop >= overlap_start then
+			clipped_ranges[#clipped_ranges + 1] = {
+				start = overlap_start,
+				stop = overlap_stop,
+				elements = r.elements,
+			}
+		end
+	end
+
+	return { plain = clipped_text, ranges = clipped_ranges }, clipped_width
+end
+
+local style_wrapped_cell_line = function(self, content, parts, base_style)
+	content = normalize_table_cell_content(content)
+	if not parts or #parts == 0 then
+		return "", 0
+	end
+
+	local line_content = { plain = "", ranges = {} }
+	local plain_parts = {}
+	local line_width = 0
+	for i, part in ipairs(parts) do
+		plain_parts[i] = part.text
+		line_width = line_width + (part.width or std.utf.display_len(part.text or ""))
+	end
+	line_content.plain = table.concat(plain_parts)
+
+	if #content.ranges > 0 then
+		local line_pos = 1
+		for _, part in ipairs(parts) do
+			local part_len = std.utf.len(part.text)
+			if part_len > 0 then
+				for _, r in ipairs(content.ranges) do
+					local overlap_start = math.max(part.start, r.start)
+					local overlap_stop = math.min(part.stop, r.stop)
+					if overlap_stop >= overlap_start then
+						line_content.ranges[#line_content.ranges + 1] = {
+							start = line_pos + (overlap_start - part.start),
+							stop = line_pos + (overlap_stop - part.start),
+							elements = r.elements,
+						}
+					end
+				end
+				line_pos = line_pos + part_len
+			end
+		end
+	end
+
+	return style_content(self, line_content, base_style), line_width
+end
+
 -- Apply current inline style stack to text (for paragraphs only - headings are buffered)
 local apply_current_styles = function(self, text)
+	local style_tss = (self.__state.in_paragraph and self.__state.paragraph_tss) or self.__state.tss
 	if #self.__state.inline_stack == 0 then
 		-- Apply base paragraph style
 		if self.__state.in_paragraph then
-			return self.__state.tss:apply("para", text).text
+			return style_tss:apply("para", text).text
 		end
 		return text
 	end
@@ -127,7 +270,7 @@ local apply_current_styles = function(self, text)
 		return text
 	end
 
-	return self.__state.tss:apply(elements, text).text
+	return style_tss:apply(elements, text).text
 end
 
 -- Render buffered heading with text-sizing
@@ -383,7 +526,8 @@ local render_table = function(self)
 	local col_widths = {}
 	for _, row in ipairs(tbl.rows) do
 		for i, cell in ipairs(row.cells) do
-			local width = std.utf.display_len(cell)
+			local cell_content = normalize_table_cell_content(cell)
+			local width = std.utf.display_len(cell_content.plain)
 			col_widths[i] = math.max(col_widths[i] or 0, width)
 		end
 	end
@@ -428,29 +572,34 @@ local render_table = function(self)
 	if overflow_mode == "clip" then
 		for row_idx, row in ipairs(tbl.rows) do
 			local row_line = styled_border(b.left)
-			for i, cell in ipairs(row.cells) do
+			for i = 1, #col_widths do
 				local w = col_widths[i]
 				local style_key = row.header and "table.header" or "table.cell"
+				local base_style = { style_key }
 				local cell_props, _ = self.__state.tss:get(style_key)
 				local align = cell_props.align or tbl.alignments[i] or "left"
 
-				local clipped_cell = cell
-				local cell_width = std.utf.display_len(clipped_cell)
+				local cell_content = normalize_table_cell_content(row.cells[i])
+				local clipped_content = cell_content
+				local cell_width = std.utf.display_len(cell_content.plain)
 				if cell_width > w then
-					clipped_cell = clamp_display_width(clipped_cell, w)
-					cell_width = std.utf.display_len(clipped_cell)
+					if #cell_content.ranges == 0 then
+						local clipped_plain = clamp_display_width(cell_content.plain, w)
+						clipped_content = { plain = clipped_plain, ranges = {} }
+						cell_width = std.utf.display_len(clipped_plain)
+					else
+						clipped_content, cell_width = clip_content_with_ranges(cell_content, w)
+					end
 				end
+
+				local styled_content = style_content(self, clipped_content, base_style)
 				local pad_left, pad_right = table_layout.compute_padding(align, w, cell_width)
-				local padded = string.rep(" ", pad_left) .. clipped_cell .. string.rep(" ", pad_right)
+				local left_pad = pad_left > 0 and self.__state.tss:apply(base_style, string.rep(" ", pad_left)).text
+					or ""
+				local right_pad = pad_right > 0 and self.__state.tss:apply(base_style, string.rep(" ", pad_right)).text
+					or ""
 
-				local styled_content
-				if row.header then
-					styled_content = self.__state.tss:apply({ "table.header" }, padded).text
-				else
-					styled_content = self.__state.tss:apply({ "table.cell" }, padded).text
-				end
-
-				row_line = row_line .. " " .. styled_content .. " "
+				row_line = row_line .. " " .. left_pad .. styled_content .. right_pad .. " "
 				if i < #col_widths then
 					row_line = row_line .. styled_border(b.mid)
 				end
@@ -481,7 +630,8 @@ local render_table = function(self)
 			local row_height = 1
 
 			for i = 1, #col_widths do
-				local lines = table_layout.wrap_text_with_spans(row.cells[i] or "", col_widths[i])
+				local cell_content = normalize_table_cell_content(row.cells[i])
+				local lines = table_layout.wrap_text_with_spans(cell_content.plain, col_widths[i])
 				wrapped_cells[i] = lines
 				if #lines > row_height then
 					row_height = #lines
@@ -494,13 +644,24 @@ local render_table = function(self)
 					local w = col_widths[col_idx]
 					local align = cell_props.align or tbl.alignments[col_idx] or "left"
 					local line_info = wrapped_cells[col_idx][line_idx]
-					local cell_text = line_info and line_info.text or ""
-					local cell_width = line_info and line_info.width or 0
+					local cell_text = ""
+					local cell_width = 0
+					if line_info then
+						cell_text, cell_width = style_wrapped_cell_line(
+							self,
+							row.cells[col_idx] or { plain = "", ranges = {} },
+							line_info.parts,
+							base_style
+						)
+					end
 					local pad_left, pad_right = table_layout.compute_padding(align, w, cell_width)
-					local padded = string.rep(" ", pad_left) .. cell_text .. string.rep(" ", pad_right)
-					local styled_content = self.__state.tss:apply(base_style, padded).text
+					local left_pad = pad_left > 0 and self.__state.tss:apply(base_style, string.rep(" ", pad_left)).text
+						or ""
+					local right_pad = pad_right > 0
+							and self.__state.tss:apply(base_style, string.rep(" ", pad_right)).text
+						or ""
 
-					row_line = row_line .. " " .. styled_content .. " "
+					row_line = row_line .. " " .. left_pad .. cell_text .. right_pad .. " "
 					if col_idx < #col_widths then
 						row_line = row_line .. styled_border(b.mid)
 					end
@@ -545,6 +706,7 @@ local handle_block_start = function(self, tag, attrs)
 	if tag == "para" then
 		self.__state.in_paragraph = true
 		self.__state.inline_stack = {}
+		self.__state.paragraph_tss = self.__state.tss:scope(PARAGRAPH_NO_CLIP_RSS)
 		-- Output list marker if this is first block in list item
 		if self.__state.in_list_item and self.__state.list_item_first_block then
 			output_list_marker(self)
@@ -599,7 +761,7 @@ local handle_block_start = function(self, tag, attrs)
 		self.__state.table_row_header = attrs.header or false
 	elseif tag == "table_cell" then
 		self.__state.in_table_cell = true
-		self.__state.table_cell_content = ""
+		self.__state.table_cell_content = { plain = "", ranges = {} }
 		-- Record alignment
 		if self.__state.table_data and #self.__state.table_row_cells < #self.__state.table_data.alignments + 1 then
 			self.__state.table_data.alignments[#self.__state.table_row_cells + 1] = attrs.align or "left"
@@ -688,6 +850,7 @@ local handle_block_end = function(self, tag)
 		self.__state.output("\n")
 		self.__state.in_paragraph = false
 		self.__state.inline_stack = {}
+		self.__state.paragraph_tss = nil
 		-- Add extra newline after paragraph (but not in tight lists)
 		if not self.__state.in_list_item then
 			self.__state.output("\n")
@@ -752,10 +915,11 @@ local handle_block_end = function(self, tag)
 		self.__state.table_row_cells = {}
 	elseif tag == "table_cell" then
 		if self.__state.table_row_cells then
-			self.__state.table_row_cells[#self.__state.table_row_cells + 1] = self.__state.table_cell_content
+			local cell_content = normalize_table_cell_content(self.__state.table_cell_content)
+			self.__state.table_row_cells[#self.__state.table_row_cells + 1] = cell_content
 		end
 		self.__state.in_table_cell = false
-		self.__state.table_cell_content = ""
+		self.__state.table_cell_content = { plain = "", ranges = {} }
 	elseif tag == "div" then
 		-- Finalize div with bordered re-rendering
 		if #self.__state.div_stack > 0 then
@@ -981,10 +1145,12 @@ end
 local handle_inline_start = function(self, tag, attrs)
 	attrs = attrs or {}
 
-	-- For headings, record start position for range tracking
+	-- For headings and table cells, record start position for range tracking.
 	local start_pos = nil
 	if self.__state.in_heading then
 		start_pos = get_heading_pos(self) + 1
+	elseif self.__state.in_table_cell then
+		start_pos = get_table_cell_pos(self) + 1
 	end
 
 	-- Push style context onto stack
@@ -1012,29 +1178,23 @@ local handle_inline_end = function(self, tag)
 		return
 	end
 
-	if self.__state.in_heading then
-		-- For headings: record style range (rendered at block_end)
-		local content = self.__state.heading_content
-		local stop_pos = get_heading_pos(self)
+	if self.__state.in_heading or self.__state.in_table_cell then
+		local content
+		local stop_pos
+		if self.__state.in_heading then
+			content = self.__state.heading_content
+			stop_pos = get_heading_pos(self)
+		else
+			content = self.__state.table_cell_content
+			if type(content) ~= "table" then
+				content = normalize_table_cell_content(content)
+				self.__state.table_cell_content = content
+			end
+			stop_pos = get_table_cell_pos(self)
+		end
 
 		if stop_pos >= (style_info.start_pos or 0) then
-			local elements = {}
-			if tag == "strong" or tag == "emph" or tag == "strikethrough" then
-				elements = { tag }
-			elseif tag == "code" then
-				elements = { "code" } -- Base style first
-				if style_info.attrs and style_info.attrs.class then
-					-- Support multiple space-separated classes
-					for class in style_info.attrs.class:gmatch("%S+") do
-						elements[#elements + 1] = "code." .. class
-					end
-				end
-			elseif tag == "link" then
-				elements = { "link.title" }
-			elseif tag == "image" then
-				elements = { "image.alt" }
-			end
-
+			local elements = inline_elements_for_tag(tag, style_info.attrs)
 			if #elements > 0 then
 				table.insert(content.ranges, {
 					start = style_info.start_pos,
@@ -1044,7 +1204,7 @@ local handle_inline_end = function(self, tag)
 			end
 		end
 
-		-- For links/images in headings, append URL to buffer
+		-- For links/images in buffered content, append URL text with dedicated style.
 		if tag == "link" or tag == "image" then
 			local url = style_info.attrs and style_info.attrs.href
 			if url then
@@ -1092,7 +1252,10 @@ local handle_text = function(self, text)
 		self.__state.code_lines_written = self.__state.code_lines_written + count
 	elseif self.__state.in_table_cell then
 		-- Buffer table cell text (rendered when table is complete)
-		self.__state.table_cell_content = self.__state.table_cell_content .. text
+		if type(self.__state.table_cell_content) ~= "table" then
+			self.__state.table_cell_content = normalize_table_cell_content(self.__state.table_cell_content)
+		end
+		self.__state.table_cell_content.plain = self.__state.table_cell_content.plain .. text
 	elseif self.__state.in_heading then
 		-- Buffer heading text (rendered at block_end with text-sizing)
 		self.__state.heading_content.plain = self.__state.heading_content.plain .. text
@@ -1109,6 +1272,11 @@ local handle_softbreak = function(self)
 	if self.__state.in_heading then
 		-- Buffer space for heading
 		self.__state.heading_content.plain = self.__state.heading_content.plain .. " "
+	elseif self.__state.in_table_cell then
+		if type(self.__state.table_cell_content) ~= "table" then
+			self.__state.table_cell_content = normalize_table_cell_content(self.__state.table_cell_content)
+		end
+		self.__state.table_cell_content.plain = self.__state.table_cell_content.plain .. " "
 	else
 		-- Output space for paragraph
 		self.__state.output(" ")
@@ -1147,6 +1315,7 @@ local reset = function(self)
 	self.__state.code_lines = {}
 	self.__state.code_lines_written = 0
 	self.__state.in_paragraph = false
+	self.__state.paragraph_tss = nil
 	self.__state.in_heading = false
 	self.__state.heading_level = 0
 	self.__state.heading_content = { plain = "", ranges = {} }
@@ -1165,7 +1334,7 @@ local reset = function(self)
 	self.__state.table_row_cells = {}
 	self.__state.table_row_header = false
 	self.__state.in_table_cell = false
-	self.__state.table_cell_content = ""
+	self.__state.table_cell_content = { plain = "", ranges = {} }
 	self.__state.line_has_content = false
 	self.__state.previous_block = nil
 	-- Div and blockquote state
@@ -1212,6 +1381,7 @@ local new = function(options)
 
 			-- Block tracking
 			in_paragraph = false,
+			paragraph_tss = nil,
 			in_heading = false,
 			heading_level = 0,
 			-- Heading content buffer (for text-sizing at block_end)
@@ -1235,7 +1405,7 @@ local new = function(options)
 			table_row_cells = {},
 			table_row_header = false,
 			in_table_cell = false,
-			table_cell_content = "",
+			table_cell_content = { plain = "", ranges = {} },
 
 			-- Track if we've output anything on current line
 			line_has_content = false,

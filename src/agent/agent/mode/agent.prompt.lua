@@ -6,7 +6,7 @@
 Agent mode prompt.
 
 Displays:
-- Mode indicator with backend/model
+- Mode indicator with provider/model
 - Current working directory
 - Token usage
 - Optional status indicators
@@ -16,6 +16,7 @@ local std = require("std")
 local buffer = require("string.buffer")
 local style = require("term.tss")
 local theme = require("theme").get("agent")
+local conversation_mod = require("agent.conversation")
 
 local tss = style.new(theme)
 local style_text = function(ctx, ...)
@@ -33,37 +34,19 @@ local function format_tokens(count)
 	end
 end
 
--- Get the short model name (e.g., "claude-sonnet-4-20250514" -> "sonnet-4")
+-- Get the short model name
 local function short_model_name(model)
 	if not model then
 		return "unknown"
 	end
-
-	-- Common patterns for model name shortening
-	local patterns = {
-		-- Anthropic
-		{ "claude%-(%w+)%-(%d+)%-", "%1-%2" }, -- claude-sonnet-4-20250514 -> sonnet-4
-		{ "claude%-(%d+%.?%d*)%-(%w+)", "%2-%1" }, -- claude-3.5-sonnet -> sonnet-3.5
-		{ "claude%-(%w+)", "%1" }, -- claude-opus -> opus
-		-- OpenAI
-		{ "gpt%-(%d+)%-?(%w*)", "gpt%1%2" }, -- gpt-4-turbo -> gpt4turbo
-		{ "gpt%-(%d+)", "gpt%1" }, -- gpt-4 -> gpt4
-		-- Generic: take last meaningful segment
-		{ ".*/([^/]+)$", "%1" }, -- path/to/model -> model
+	local short_names = {
+		["claude-opus-4-5"] = "opus-4.5",
+		["claude-sonnet-4-5"] = "sonnet-4.5",
+		["claude-3-5-haiku"] = "haiku-3.5",
 	}
-
-	for _, p in ipairs(patterns) do
-		local short = model:gsub(p[1], p[2])
-		if short ~= model then
-			return short
-		end
+	if short_names[model] then
+		return short_names[model]
 	end
-
-	-- Fallback: truncate if too long
-	if std.utf.len(model) > 20 then
-		return std.utf.sub(model, 1, 17) .. "..."
-	end
-
 	return model
 end
 
@@ -72,7 +55,7 @@ local set = function(self, options)
 	options = options or {}
 	for k, v in pairs(options) do
 		-- Use false as sentinel to clear a value (since pairs() skips nil)
-		if v == false and (k == "status") then
+		if v == false and (k == "status" or k == "prompt_name") then
 			state[k] = nil
 		elseif k == "home" then
 			self.cfg.home = v
@@ -85,10 +68,11 @@ end
 local get = function(self)
 	local state = self.__state
 	local buf = buffer.new()
+	local mode_label = state.prompt_name or "Smith"
 
-	-- Mode indicator: [agent:model]
+	-- Mode indicator: [Smith:model] or [prompt_name:model]
 	buf:put(style_text(tss, "prompts.agent.mode.prefix"))
-	buf:put(style_text(tss, "prompts.agent.mode.label"))
+	buf:put(style_text(tss, "prompts.agent.mode.label", mode_label))
 
 	if state.model then
 		buf:put(style_text(tss, "prompts.agent.sep", ":"))
@@ -124,13 +108,22 @@ local get = function(self)
 		buf:put(style_text(tss, token_style, format_tokens(state.tokens)))
 		buf:put(style_text(tss, "prompts.agent.tokens.unit"))
 
-		-- Show cost if available
-		if state.cost and state.cost > 0 then
-			local pricing = require("llm.pricing")
-			buf:put(style_text(tss, "prompts.agent.cost.prefix"))
-			buf:put(style_text(tss, "prompts.agent.cost.amount", pricing.format_cost(state.cost)))
+		if state.max_tokens and state.max_tokens > 0 then
+			local pct = math.floor((state.tokens / state.max_tokens) * 100)
+			buf:put(style_text(tss, token_style, " " .. tostring(pct) .. "%"))
 		end
 
+		-- Show cost if available
+		if state.cost and state.cost > 0 then
+			buf:put(style_text(tss, "prompts.agent.cost.prefix"))
+			buf:put(style_text(tss, "prompts.agent.cost.amount", conversation_mod.format_cost(state.cost)))
+		end
+
+		buf:put(style_text(tss, "prompts.agent.tokens.suffix"))
+	elseif state.cost and state.cost > 0 then
+		buf:put(" ")
+		buf:put(style_text(tss, "prompts.agent.tokens.prefix"))
+		buf:put(style_text(tss, "prompts.agent.cost.amount", conversation_mod.format_cost(state.cost)))
 		buf:put(style_text(tss, "prompts.agent.tokens.suffix"))
 	end
 
@@ -162,10 +155,11 @@ local new = function(options)
 		},
 		__state = {
 			model = nil,
-			backend = nil,
+			provider = nil,
 			tokens = 0,
 			max_tokens = 100000,
 			cost = 0, -- Session cost in dollars
+			prompt_name = nil, -- Active user prompt name (without extension)
 			status = nil, -- nil, "streaming", "thinking", "error"
 			lines = 1,
 			line = 1,

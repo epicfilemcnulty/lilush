@@ -485,7 +485,7 @@ end
 testify:that("inline code with single class applies class style", function()
 	local test_rss = create_test_rss()
 	local input = "`123`{.num}"
-	local result = markdown.render(input, { rss = test_rss })
+	local result = markdown.render(input, { rss = test_rss }).rendered
 	-- Should have the num markers
 	testimony.assert_true(result:find("[NUM:", 1, true) ~= nil)
 	testimony.assert_true(result:find(":NUM]", 1, true) ~= nil)
@@ -496,7 +496,7 @@ end)
 testify:that("inline code with multiple classes applies all class styles", function()
 	local test_rss = create_test_rss()
 	local input = "`value`{.num .req}"
-	local result = markdown.render(input, { rss = test_rss })
+	local result = markdown.render(input, { rss = test_rss }).rendered
 	-- Should have both num and req markers (cascaded)
 	-- TSS cascading: base code -> code.num -> code.req
 	-- The last one's before/after should win
@@ -507,7 +507,7 @@ end)
 testify:that("inline code without class uses base code style", function()
 	local test_rss = create_test_rss()
 	local input = "`plain`"
-	local result = markdown.render(input, { rss = test_rss })
+	local result = markdown.render(input, { rss = test_rss }).rendered
 	-- Should have base code markers
 	testimony.assert_true(result:find("[C:", 1, true) ~= nil)
 	testimony.assert_true(result:find(":C]", 1, true) ~= nil)
@@ -519,7 +519,7 @@ end)
 testify:that("inline code class works in paragraph context", function()
 	local test_rss = create_test_rss()
 	local input = "The value is `42`{.num} which is a number."
-	local result = markdown.render(input, { rss = test_rss })
+	local result = markdown.render(input, { rss = test_rss }).rendered
 	-- Should have the num markers around the code
 	testimony.assert_true(result:find("[NUM:", 1, true) ~= nil)
 	testimony.assert_true(result:find("42", 1, true) ~= nil)
@@ -528,7 +528,7 @@ end)
 testify:that("multiple inline codes with different classes", function()
 	local test_rss = create_test_rss()
 	local input = "Number: `123`{.num}, String: `hello`{.str}"
-	local result = markdown.render(input, { rss = test_rss })
+	local result = markdown.render(input, { rss = test_rss }).rendered
 	-- Should have both num and str markers
 	testimony.assert_true(result:find("[NUM:", 1, true) ~= nil)
 	testimony.assert_true(result:find("[STR:", 1, true) ~= nil)

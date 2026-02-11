@@ -98,7 +98,7 @@ local build_usage_spec = function(cmd)
 end
 
 local build_usage = function(cmd)
-	return "Usage: " .. build_usage_spec(cmd)
+	return "Usage: " .. build_usage_spec(cmd) .. "\n"
 end
 
 local code_type_class = function(kind)

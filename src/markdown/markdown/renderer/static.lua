@@ -31,6 +31,7 @@ local table_layout = require("markdown.renderer.table_layout")
 
 local DEFAULT_BORDERS = theme.DEFAULT_BORDERS
 local DEFAULT_RSS = theme.DEFAULT_RSS
+local PARAGRAPH_NO_CLIP_RSS = theme.PARAGRAPH_NO_CLIP_RSS
 
 -- Count newlines in text for line tracking
 local count_newlines = function(text)
@@ -318,11 +319,12 @@ local build_styled_text = function(self, content, base_elements)
 	local pos = 1
 
 	-- Helper to apply style to text
+	local style_tss = self.__state.paragraph_tss or self.__state.tss
 	local function apply_style(text, elements)
 		if not elements or #elements == 0 then
 			return text
 		end
-		return self.__state.tss:apply(elements, text).text
+		return style_tss:apply(elements, text).text
 	end
 
 	-- Process character by character, tracking active ranges
@@ -953,6 +955,7 @@ local handle_block_start = function(self, tag, attrs)
 	if tag == "para" then
 		self.__state.in_paragraph = true
 		self.__state.paragraph_content = { plain = "", ranges = {} }
+		self.__state.paragraph_tss = self.__state.tss:scope(PARAGRAPH_NO_CLIP_RSS)
 	elseif tag == "heading" then
 		self.__state.in_heading = true
 		self.__state.heading_level = attrs.level or 1
@@ -1089,6 +1092,7 @@ local handle_block_end = function(self, tag)
 		render_paragraph(self)
 		self.__state.in_paragraph = false
 		self.__state.paragraph_content = { plain = "", ranges = {} }
+		self.__state.paragraph_tss = nil
 		-- Track previous block only for top-level paragraphs (not inside lists)
 		if not self.__state.in_list_item then
 			self.__state.previous_block = "para"
@@ -1514,6 +1518,7 @@ local reset = function(self)
 	self.__state.code_block_lines = {}
 	self.__state.in_paragraph = false
 	self.__state.paragraph_content = { plain = "", ranges = {} }
+	self.__state.paragraph_tss = nil
 	self.__state.in_heading = false
 	self.__state.heading_level = 0
 	self.__state.heading_content = { plain = "", ranges = {} }
@@ -1597,6 +1602,7 @@ local new = function(options)
 			-- Styled content buffer: { plain = "", ranges = {} }
 			-- ranges: list of { start, stop, elements }
 			paragraph_content = { plain = "", ranges = {} },
+			paragraph_tss = nil,
 
 			in_heading = false,
 			heading_level = 0,

@@ -65,7 +65,7 @@ testify:that("scope creates isolated derived tss with deep overrides", function(
 	testimony.assert_equal("|", scoped.__style.code_block.border.v.content)
 	testimony.assert_equal(120, scoped.__window.w)
 	testimony.assert_equal(40, scoped.__window.h)
-	testimony.assert_equal(false, scoped.__supports_ts)
+	testimony.assert_equal(false, scoped.cfg.supports_ts)
 end)
 
 testify:that("scope is independent from parent mutations", function()

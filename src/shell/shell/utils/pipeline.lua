@@ -265,7 +265,10 @@ run_pipeline = function(pipeline, stdout, builtins, extra)
 		if pid ~= 0 then
 			local ret, status = std.ps.wait(pids[i])
 			if status ~= 0 then
-				return status, "pipeline failed: `" .. pipeline[i].cmd .. "`"
+				if #pipeline > 1 then
+					return status, "pipeline failed: `" .. pipeline[i].cmd .. "`"
+				end
+				return status
 			end
 		end
 	end

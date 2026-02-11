@@ -882,6 +882,28 @@ testify:that("row without delimiter is not a table", function()
 	testimony.assert_true(count_events(evts, "block_start", "para") >= 1)
 end)
 
+-- ============================================
+-- Cross-Line Emphasis in Paragraphs
+-- ============================================
+
+testify:that("multi-line paragraph with cross-line emphasis produces correct events", function()
+	local evts = markdown.parse("**bold\nacross lines**", { streaming_inline = false })
+	-- Expected: block_start para, inline_start strong, text "bold", softbreak, text "across lines", inline_end strong, block_end para
+	testimony.assert_equal(1, count_events(evts, "block_start", "para"))
+	testimony.assert_equal(1, count_events(evts, "block_end", "para"))
+	testimony.assert_equal(1, count_events(evts, "inline_start", "strong"))
+	testimony.assert_equal(1, count_events(evts, "inline_end", "strong"))
+
+	-- Find softbreak event and verify it exists between text events
+	local found_softbreak = false
+	for _, e in ipairs(evts) do
+		if e.type == "softbreak" then
+			found_softbreak = true
+		end
+	end
+	testimony.assert_true(found_softbreak, "expected softbreak event in multi-line emphasis")
+end)
+
 testify:that("table cells have inline content", function()
 	local input = "| **bold** | *italic* |\n|---|---|\n| text | more |"
 	local evts = markdown.parse(input, { streaming_inline = false })

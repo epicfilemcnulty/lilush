@@ -88,8 +88,10 @@ local complete = function(self, model, query, sampler, sc, uuid)
 	return nil, "request failed: " .. tostring(err)
 end
 
-local stream = function(self, model, query, sampler, sc, uuid, user_callbacks)
+local stream = function(self, model, query, sampler, sc, uuid, user_callbacks, opts)
 	user_callbacks = user_callbacks or {}
+	opts = opts or {}
+	local is_cancelled = opts.is_cancelled
 	local req_body = {
 		model = model,
 		prompt = query,
@@ -111,6 +113,7 @@ local stream = function(self, model, query, sampler, sc, uuid, user_callbacks)
 
 	local full_text = buffer.new()
 	local last_event = nil
+	local cancelled = false
 	local client
 	local callbacks = {
 		message = function(data)
@@ -158,6 +161,11 @@ local stream = function(self, model, query, sampler, sc, uuid, user_callbacks)
 	local running = true
 	while running do
 		running = client:update() and client:is_connected()
+		if is_cancelled and is_cancelled() then
+			client:close()
+			cancelled = true
+			break
+		end
 		std.sleep_ms(50)
 	end
 
@@ -174,6 +182,7 @@ local stream = function(self, model, query, sampler, sc, uuid, user_callbacks)
 		tokens = predicted_n,
 		ctx = prompt_n + cache_n + predicted_n,
 		rate = timings.predicted_per_second or 0,
+		cancelled = cancelled or nil,
 	}
 	if self.cfg.debug_mode then
 		response.raw = last_event
@@ -215,7 +224,7 @@ local chat_stream = function(self, model, messages, sampler, opts)
 
 	local prompt = templates.apply(opts.template, messages, tool_descs, opts.dont_start)
 	local callbacks = opts.callbacks or {}
-	return self.stream(self, model, prompt, sampler, opts.stop_conditions, opts.uuid, callbacks)
+	return self.stream(self, model, prompt, sampler, opts.stop_conditions, opts.uuid, callbacks, opts)
 end
 
 local new = function(api_url, api_key)

@@ -230,12 +230,12 @@ local apply = function(self, elements, content, position)
 
 	-- Resolve text sizing configuration only when terminal support is enabled.
 	local ts = nil
-	if self.__supports_ts ~= false then
+	if self.cfg.supports_ts ~= false then
 		ts = resolve_ts(props.ts)
 	end
 	local scale = ts and ts.s or 1
 
-	local text = tostring(content) or ""
+	local text = content ~= nil and tostring(content) or ""
 	if obj.content then
 		text = tostring(obj.content)
 	end
@@ -248,13 +248,7 @@ local apply = function(self, elements, content, position)
 	end
 	local ulen = std.utf.display_len(text)
 
-	-- Calculate effective width with scale multiplier
 	local effective_w = props.w
-	if effective_w ~= 0 and scale > 1 then
-		-- The logical width for layout purposes, but final display will be scaled
-		-- We don't multiply here - that happens in the protocol
-		effective_w = props.w
-	end
 
 	if effective_w ~= 0 then
 		if obj.fill then
@@ -408,11 +402,11 @@ local set_window_size = function(self, height, width)
 end
 
 local get_supports_ts = function(self)
-	return self.__supports_ts ~= false
+	return self.cfg.supports_ts ~= false
 end
 
 local set_supports_ts = function(self, enabled)
-	self.__supports_ts = enabled ~= false
+	self.cfg.supports_ts = enabled ~= false
 end
 
 --[[
@@ -459,7 +453,7 @@ local apply_sized = function(self, base_elements, content, position)
 	-- Resolve text sizing configuration from base style only when terminal
 	-- capability supports text sizing.
 	local ts = nil
-	if self.__supports_ts ~= false then
+	if self.cfg.supports_ts ~= false then
 		ts = resolve_ts(props.ts)
 	end
 	local scale = ts and ts.s or 1
@@ -715,49 +709,20 @@ local apply_sized = function(self, base_elements, content, position)
 		-- Render all segments
 		local result = {}
 		for _, seg in ipairs(segments) do
-			local style_open
+			local style_open = base_open
 			if seg.elements and #seg.elements > 0 then
 				local inline_open, _ = build_style_codes(seg.elements)
 				style_open = base_open .. inline_open
-			else
-				style_open = base_open
 			end
-
 			local meta = build_meta_str(seg.cell_width)
 			table.insert(result, style_open .. wrap_osc66(seg.text, meta) .. base_close)
 		end
 		final_text = table.concat(result)
-	elseif ts then
-		-- Text sizing without fractional chunking (e.g., just s=2 or s=3)
-		-- Split by style boundaries only, use same meta for all
-
-		local style_boundaries = get_style_boundaries()
-		local meta = build_meta_str(ts.w) -- Use original w if specified
-
-		local result = {}
-		for idx = 1, #style_boundaries do
-			local seg_start = style_boundaries[idx]
-			local seg_stop = (style_boundaries[idx + 1] or (plain_len + 1)) - 1
-
-			if seg_stop >= seg_start then
-				local seg_text = std.utf.sub(plain, seg_start, seg_stop)
-				local elements = get_elements_at(seg_start)
-
-				local style_open
-				if elements and #elements > 0 then
-					local inline_open, _ = build_style_codes(elements)
-					style_open = base_open .. inline_open
-				else
-					style_open = base_open
-				end
-
-				table.insert(result, style_open .. wrap_osc66(seg_text, meta) .. base_close)
-			end
-		end
-		final_text = table.concat(result)
 	else
-		-- No text sizing - just apply styles with ANSI codes only
+		-- Shared rendering for both ts (non-chunked) and non-ts paths.
+		-- Split by style boundaries; only difference is how text is wrapped.
 		local style_boundaries = get_style_boundaries()
+		local meta = ts and build_meta_str(ts.w) or nil
 
 		local result = {}
 		for idx = 1, #style_boundaries do
@@ -768,15 +733,14 @@ local apply_sized = function(self, base_elements, content, position)
 				local seg_text = std.utf.sub(plain, seg_start, seg_stop)
 				local elements = get_elements_at(seg_start)
 
-				local style_open
+				local style_open = base_open
 				if elements and #elements > 0 then
 					local inline_open, _ = build_style_codes(elements)
 					style_open = base_open .. inline_open
-				else
-					style_open = base_open
 				end
 
-				table.insert(result, style_open .. seg_text .. base_close)
+				local wrapped = meta and wrap_osc66(seg_text, meta) or seg_text
+				table.insert(result, style_open .. wrapped .. base_close)
 			end
 		end
 		final_text = table.concat(result)
@@ -800,7 +764,7 @@ local scope = function(self, overrides)
 		scoped_rss = std.tbl.merge(scoped_rss, overrides)
 	end
 
-	local child = new(scoped_rss, { supports_ts = self.__supports_ts })
+	local child = new(scoped_rss, { supports_ts = self.cfg.supports_ts })
 	child.__window.w = self.__window.w
 	child.__window.h = self.__window.h
 	return child
@@ -820,8 +784,6 @@ new = function(rss, opts)
 		__state = state,
 		__window = state.window,
 		__style = state.style,
-		-- TSS-level protocol gate: when false, ts properties are ignored.
-		__supports_ts = opts.supports_ts ~= false,
 		calc_el_width = calc_el_width,
 		get = get,
 		apply = apply,

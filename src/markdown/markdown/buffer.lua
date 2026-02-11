@@ -85,11 +85,55 @@ local function has_unclosed_syntax(text)
 		return true -- Unclosed brackets
 	end
 
-	-- Check for trailing emphasis markers that might be opening
-	-- (e.g., "some text **" waiting for more)
-	local trimmed = text:match("^(.-)%s*$") or text
-	if trimmed:match("[%*_]+$") then
-		return true
+	-- Check for unmatched emphasis openers anywhere in text
+	-- Scan for * or _ runs and check if they could be unclosed openers
+	local i = 1
+	local len = #text
+	while i <= len do
+		local c = sub(text, i, i)
+		if c == "*" or c == "_" then
+			local run_start = i
+			while i <= len and sub(text, i, i) == c do
+				i = i + 1
+			end
+			-- Check if this run could be a left-flanking (opening) delimiter
+			local before = run_start > 1 and sub(text, run_start - 1, run_start - 1) or ""
+			local after = i <= len and sub(text, i, i) or ""
+			-- Simplified flanking check: not followed by whitespace
+			local b_after = after ~= "" and byte(after) or nil
+			local after_is_ws = (b_after == nil) or b_after == 32 or b_after == 9 or b_after == 10
+			if not after_is_ws then
+				-- Could be an opener — check if a matching closer exists later
+				local run_len = i - run_start
+				local found_closer = false
+				local j = i
+				while j <= len do
+					local cj = sub(text, j, j)
+					if cj == c then
+						local close_start = j
+						while j <= len and sub(text, j, j) == c do
+							j = j + 1
+						end
+						local close_len = j - close_start
+						-- Check if this closer run is right-flanking
+						local cbefore = close_start > 1 and sub(text, close_start - 1, close_start - 1) or ""
+						local b_before = cbefore ~= "" and byte(cbefore) or nil
+						local before_is_ws = (b_before == nil) or b_before == 32 or b_before == 9 or b_before == 10
+						if not before_is_ws and close_len >= (run_len >= 2 and 2 or 1) then
+							found_closer = true
+							break
+						end
+					else
+						j = j + 1
+					end
+				end
+				if not found_closer then
+					return true -- Unclosed emphasis opener
+				end
+			end
+		else
+			i = i + 1
+		end
 	end
 
 	return false

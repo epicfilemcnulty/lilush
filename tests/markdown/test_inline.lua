@@ -461,6 +461,67 @@ testify:that("multi-line paragraph with inline elements", function()
 end)
 
 -- ============================================
+-- Cross-Line Emphasis Tests (inline parser with \n)
+-- ============================================
+
+testify:that("parses strong emphasis across lines", function()
+	local evts = parse_inline("**bold\nacross lines**")
+	testimony.assert_equal(1, count_events(evts, "inline_start", "strong"))
+	testimony.assert_equal(1, count_events(evts, "inline_end", "strong"))
+	testimony.assert_equal(1, count_events(evts, "softbreak"))
+end)
+
+testify:that("parses emphasis across lines", function()
+	local evts = parse_inline("*italic\nacross lines*")
+	testimony.assert_equal(1, count_events(evts, "inline_start", "emph"))
+	testimony.assert_equal(1, count_events(evts, "inline_end", "emph"))
+	testimony.assert_equal(1, count_events(evts, "softbreak"))
+end)
+
+testify:that("parses nested emphasis across lines", function()
+	local evts = parse_inline("**bold\nwith *nested italic*\nacross lines**")
+	testimony.assert_equal(1, count_events(evts, "inline_start", "strong"))
+	testimony.assert_equal(1, count_events(evts, "inline_end", "strong"))
+	testimony.assert_equal(1, count_events(evts, "inline_start", "emph"))
+	testimony.assert_equal(1, count_events(evts, "inline_end", "emph"))
+	testimony.assert_equal(2, count_events(evts, "softbreak"))
+end)
+
+testify:that("mixed same-line and cross-line emphasis", function()
+	local evts = parse_inline("*a* and **bold\nacross** here")
+	testimony.assert_equal(1, count_events(evts, "inline_start", "emph"))
+	testimony.assert_equal(1, count_events(evts, "inline_end", "emph"))
+	testimony.assert_equal(1, count_events(evts, "inline_start", "strong"))
+	testimony.assert_equal(1, count_events(evts, "inline_end", "strong"))
+	testimony.assert_equal(1, count_events(evts, "softbreak"))
+end)
+
+-- ============================================
+-- Cross-Line Emphasis Integration Tests (block parser)
+-- ============================================
+
+testify:that("multi-line paragraph with cross-line strong", function()
+	local evts =
+		markdown.parse("This is **bold text that\ncontinues on the next line** here.", { streaming_inline = false })
+	testimony.assert_equal(1, count_events(evts, "inline_start", "strong"))
+	testimony.assert_equal(1, count_events(evts, "inline_end", "strong"))
+	testimony.assert_equal(1, count_events(evts, "softbreak"))
+end)
+
+testify:that("multi-line paragraph with cross-line emph", function()
+	local evts = markdown.parse("This is *italic text that\ncontinues* here.", { streaming_inline = false })
+	testimony.assert_equal(1, count_events(evts, "inline_start", "emph"))
+	testimony.assert_equal(1, count_events(evts, "inline_end", "emph"))
+end)
+
+testify:that("multi-line paragraph preserves same-line emphasis", function()
+	-- Existing behavior must still work
+	local evts = markdown.parse("First *italic*\nSecond **bold**", { streaming_inline = false })
+	testimony.assert_equal(1, count_events(evts, "inline_start", "emph"))
+	testimony.assert_equal(1, count_events(evts, "inline_start", "strong"))
+end)
+
+-- ============================================
 -- GFM Strikethrough Tests
 -- ============================================
 

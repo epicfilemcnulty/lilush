@@ -10,6 +10,7 @@ All file names in the documentation are relative to the root of the repo.
 * [RELIW](docs/RELIW.md): RELIW operator/developer guide (config, Redis schema, WAF, request semantics, operations)
 * [REDIS](docs/REDIS.md): Redis client API and connection config contract
 * [ARGPARSER](docs/ARGPARSER.md): Argparser v2 API, grammar, errors, and migration guide
+* [AGENT_SMITH](docs/AGENT_SMITH.md): Agent Smith TUI coding agent (config, providers, tools, commands, streaming)
 * [CREDITS](docs/CREDITS.md): Credits, acknowledgements, licensing info
 
 # High level overview

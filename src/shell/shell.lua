@@ -4,7 +4,6 @@
 
 local std = require("std")
 local json = require("cjson.safe")
-local markdown = require("markdown")
 local term = require("term")
 local input = require("term.input")
 local history = require("term.input.history")
@@ -14,18 +13,8 @@ local prompt = require("term.input.prompt")
 local storage = require("shell.store")
 local shell_mode = require("shell.mode.shell")
 local builtins = require("shell.builtins")
+local messages = require("shell.messages")
 local pipeline = require("shell.utils.pipeline")
-local theme = require("theme").get("shell")
-
-local show_error_msg = function(status, err)
-	local msg = tostring(err) .. " **(" .. tostring(status) .. ")**"
-	local out = markdown.render(msg, { rss = theme.errors.builtin_markdown })
-	io.stderr:write(out)
-end
-
-local show_warning_msg = function(msg)
-	io.stderr:write("warning: " .. tostring(msg) .. "\n")
-end
 
 local change_mode_combo
 
@@ -57,6 +46,29 @@ local validate_mode_contract = function(mode_name, mode)
 	return true
 end
 
+local activate_mode = function(self, mode_name)
+	local mode = get_mode(self, mode_name)
+	if not mode then
+		return nil, "mode `" .. tostring(mode_name) .. "` is not available"
+	end
+
+	if type(mode.on_activate) ~= "function" then
+		return true
+	end
+
+	local ok, activated, err = pcall(function()
+		return mode:on_activate()
+	end)
+	if not ok then
+		return nil, tostring(activated)
+	end
+	if not activated then
+		return nil, err or ("failed to activate mode `" .. tostring(mode_name) .. "`")
+	end
+
+	return true
+end
+
 local run_in_sane_mode = function(handler)
 	term.disable_kkbp()
 	term.set_sane_mode()
@@ -69,22 +81,27 @@ end
 local load_mode = function(self, mode_name, mode_cfg, history_store)
 	local mode_module, mode_prompt, mode_completion, mode_history
 	if not std.module_available(mode_cfg.path) then
-		show_error_msg(29, "no such module: " .. mode_cfg.path)
+		messages.error("no such module: " .. mode_cfg.path, { status = 29 })
 		os.exit(29)
 	end
 	if mode_cfg.prompt then
 		if not std.module_available(mode_cfg.prompt) then
-			show_error_msg(29, "no such module: " .. mode_cfg.prompt)
+			messages.error("no such module: " .. mode_cfg.prompt, { status = 29 })
 			os.exit(29)
 		end
 		mode_prompt = prompt.new(mode_cfg.prompt)
 	end
 	if mode_cfg.completion then
 		if not std.module_available(mode_cfg.completion.path) then
-			show_error_msg(29, "no such module: " .. mode_cfg.completion.path)
+			messages.error("no such module: " .. mode_cfg.completion.path, { status = 29 })
 			os.exit(29)
 		end
-		mode_completion = completion.new(mode_cfg.completion)
+		local completion_obj, completion_err = completion.new(mode_cfg.completion)
+		if not completion_obj then
+			messages.error("failed to initialize completion: " .. tostring(completion_err), { status = 29 })
+			os.exit(29)
+		end
+		mode_completion = completion_obj
 	end
 	mode_module = require(mode_cfg.path)
 	if mode_cfg.history then
@@ -96,7 +113,7 @@ local load_mode = function(self, mode_name, mode_cfg, history_store)
 	local mode = mode_module.new(mode_input, mode_cfg)
 	local valid, validation_err = validate_mode_contract(mode_name, mode)
 	if not valid then
-		show_error_msg(29, validation_err)
+		messages.error(validation_err, { status = 29 })
 		os.exit(29)
 	end
 	self.__state.modes[mode_name] = mode
@@ -178,13 +195,20 @@ local exit_combo = function(self, combo)
 end
 
 change_mode_combo = function(self, combo)
-	self.__state.chosen_mode = self.__state.shortcuts[combo] or "shell"
+	local next_mode_name = self.__state.shortcuts[combo] or "shell"
+	local activated, activate_err = activate_mode(self, next_mode_name)
+	if not activated then
+		messages.error(activate_err)
+		return true
+	end
+
+	self.__state.chosen_mode = next_mode_name
 	return clear_combo(self)
 end
 
 local run = function(self)
 	if not term.is_tty() then
-		show_error_msg("Not connected to a TTY", 29)
+		messages.error("Not connected to a TTY", { status = 29 })
 		os.exit(29)
 	end
 	term.set_raw_mode()
@@ -207,7 +231,7 @@ local run = function(self)
 		local active_mode = get_current_mode(self)
 		local active_input = active_mode and active_mode:get_input() or nil
 		if not active_mode or not active_input then
-			show_error_msg(29, "active mode is not available")
+			messages.error("active mode is not available", { status = 29 })
 			os.exit(29)
 		end
 
@@ -228,7 +252,7 @@ local run = function(self)
 					status = 0
 				end
 				if status ~= 0 then
-					show_error_msg(status, err)
+					messages.error(err, { status = status })
 				end
 				std.ps.setenv("LILUSH_EXEC_END", os.time())
 				std.ps.setenv("LILUSH_EXEC_STATUS", tostring(status))
@@ -276,14 +300,14 @@ local run_once = function(self)
 	local cmd = table.concat(arg, " ") or ""
 	local mode = get_mode(self, "shell")
 	if not mode then
-		show_error_msg(29, "shell mode is not available")
+		messages.error("shell mode is not available", { status = 29 })
 		os.exit(29)
 	end
 	local mode_input = mode:get_input()
 	mode_input:set_content(cmd)
 	local status, err = mode:run_once()
-	if err then
-		print(err)
+	if status ~= 0 then
+		messages.error(err, { status = status })
 	end
 	os.exit(status)
 end
@@ -348,6 +372,12 @@ local new = function()
 			path = "agent.mode.agent",
 			history = true,
 			prompt = "agent.mode.agent.prompt",
+			completion = {
+				path = "agent.completion.slash",
+				sources = {
+					"agent.completion.source.slash",
+				},
+			},
 		},
 	}
 	local builtin_mode_order = { "shell", "lua", "agent" }
@@ -408,14 +438,14 @@ local new = function()
 		local mode_name = mode_file:match("^(.+)%.json$")
 		if mode_name then
 			if shell.cfg.builtin_mode_configs[mode_name] then
-				show_warning_msg(
+				messages.warning(
 					"ignoring reserved mode config `" .. mode_file .. "`: built-in mode `" .. mode_name .. "` is fixed"
 				)
 			else
 				local mode_json = std.fs.read_file(home .. "/.config/lilush/modes/" .. mode_file)
 				local m = json.decode(mode_json)
 				if not m then
-					show_error_msg(29, "failed to decode mode config")
+					messages.error("failed to decode mode config", { status = 29 })
 					os.exit(29)
 				end
 				local requested_shortcut = m.shortcut
@@ -432,7 +462,7 @@ local new = function()
 				end
 				if collision_reason == "reserved" then
 					if assigned_shortcut then
-						show_warning_msg(
+						messages.warning(
 							"mode `"
 								.. mode_name
 								.. "` requested reserved shortcut `"
@@ -442,7 +472,7 @@ local new = function()
 								.. "`"
 						)
 					else
-						show_warning_msg(
+						messages.warning(
 							"mode `"
 								.. mode_name
 								.. "` requested reserved shortcut `"
@@ -452,7 +482,7 @@ local new = function()
 					end
 				elseif collision_reason == "taken" then
 					if assigned_shortcut then
-						show_warning_msg(
+						messages.warning(
 							"mode `"
 								.. mode_name
 								.. "` requested taken shortcut `"
@@ -462,7 +492,7 @@ local new = function()
 								.. "`"
 						)
 					else
-						show_warning_msg(
+						messages.warning(
 							"mode `"
 								.. mode_name
 								.. "` requested taken shortcut `"
@@ -494,7 +524,7 @@ local new_mini = function()
 	local mini_shell_mode = shell_mode.new(input.new({}))
 	local valid, validation_err = validate_mode_contract("shell", mini_shell_mode)
 	if not valid then
-		show_error_msg(29, validation_err)
+		messages.error(validation_err, { status = 29 })
 		os.exit(29)
 	end
 	local shell = {

@@ -32,10 +32,11 @@
         return 2;                 \
     } while (0)
 
-int window_been_resized = 0;
-int window_x            = 0;
-int window_y            = 0;
-int in_raw_mode         = 0;
+int window_been_resized       = 0;
+int window_x                  = 0;
+int window_y                  = 0;
+int in_raw_mode               = 0;
+volatile int cancel_requested = 0;
 
 static void sig_handler(int sig) {
     if (SIGWINCH == sig) {
@@ -47,6 +48,8 @@ static void sig_handler(int sig) {
             window_y = winsz.ws_row;
             window_x = winsz.ws_col;
         }
+    } else if (SIGINT == sig) {
+        cancel_requested = 1;
     }
 }
 
@@ -137,14 +140,40 @@ int is_tty(lua_State *L) {
     return 1;
 }
 
+int install_cancel_handler(lua_State *L) {
+    cancel_requested = 0;
+    signal(SIGINT, sig_handler);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int remove_cancel_handler(lua_State *L) {
+    signal(SIGINT, SIG_DFL);
+    cancel_requested = 0;
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int check_cancel(lua_State *L) {
+    int was_cancelled = cancel_requested;
+    if (was_cancelled) {
+        cancel_requested = 0;
+    }
+    lua_pushboolean(L, was_cancelled);
+    return 1;
+}
+
 static luaL_Reg funcs[] = {
-    {"set_raw_mode",    set_raw_mode   },
-    {"set_sane_mode",   set_sane_mode  },
-    {"get_window_size", get_window_size},
-    {"resized",         resized        },
-    {"raw_mode",        raw_mode       },
-    {"is_tty",          is_tty         },
-    {NULL,              NULL           }
+    {"set_raw_mode",           set_raw_mode          },
+    {"set_sane_mode",          set_sane_mode         },
+    {"get_window_size",        get_window_size       },
+    {"resized",                resized               },
+    {"raw_mode",               raw_mode              },
+    {"is_tty",                 is_tty                },
+    {"install_cancel_handler", install_cancel_handler},
+    {"remove_cancel_handler",  remove_cancel_handler },
+    {"check_cancel",           check_cancel          },
+    {NULL,                     NULL                  }
 };
 
 int luaopen_term_core(lua_State *L) {

@@ -7,6 +7,7 @@ local term = require("term")
 local widgets = require("term.widgets")
 local json = require("cjson.safe")
 local utils = require("shell.utils")
+local messages = require("shell.messages")
 local dig = require("dns.dig")
 local theme = require("theme").get("shell")
 local storage = require("shell.store")
@@ -26,20 +27,8 @@ local set_term_title = function(title)
 	end
 end
 
---[[ 
-    Throw errors to STDERR
-]]
-local errmsg = function(msg)
-	local out = markdown.render(tostring(msg), { rss = theme.errors.builtin_markdown })
-	io.stderr:write(out)
-	io.stderr:flush()
-end
-
-local helpmsg = function(msg)
-	local out = "\n" .. markdown.render(msg) .. "\n"
-	io.stderr:write(out)
-	io.stderr:flush()
-end
+local errmsg = messages.report
+local helpmsg = messages.help
 
 local style_text = function(tss, ...)
 	return tss:apply(...).text
@@ -1420,7 +1409,7 @@ local kinda_ps = function(cmd, args)
 		return 0
 	end
 	local ps_tbl_md = std.tbl.pipe_table(ps_tbl_fields, ps_tbl)
-	term.write("\n" .. markdown.render(table.concat(ps_tbl_md, "\n")) .. "\n")
+	term.write("\n" .. markdown.render(table.concat(ps_tbl_md, "\n")).rendered .. "\n")
 	return 0
 end
 
@@ -1545,7 +1534,7 @@ local zx = function(cmd, args)
 			term.set_sane_mode()
 			local code = snippet_code:gsub("{{([%w%d_]+)}}", snippet_args)
 			local txt = "# Running snippet\n\n```" .. snippet_name .. "\n" .. code .. "\n```\n"
-			term.write("\n" .. markdown.render(txt) .. "\n")
+			term.write("\n" .. markdown.render(txt).rendered .. "\n")
 
 			if snippet_meta.confirm then
 				local confirmed = widgets.simple_confirm("Are you sure? y/n\n", theme.widget.shell)
@@ -1681,5 +1670,5 @@ local get = function(cmd)
 	return nil
 end
 
-_M = { get = get, errmsg = errmsg }
+_M = { get = get }
 return _M

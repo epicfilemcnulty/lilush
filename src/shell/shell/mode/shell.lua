@@ -7,6 +7,7 @@ local term = require("term")
 local widgets = require("term.widgets")
 local pipeline = require("shell.utils.pipeline")
 local builtins = require("shell.builtins")
+local messages = require("shell.messages")
 local theme = require("theme").get("shell")
 local style = require("term.tss")
 local tss = style.new(theme)
@@ -52,7 +53,7 @@ local run_script = function(self, cmd, args)
 					end
 				end
 				if status ~= nil and status ~= 0 then
-					builtins.errmsg(
+					messages.error(
 						"error on line "
 							.. line_num
 							.. ", {"
@@ -67,7 +68,7 @@ local run_script = function(self, cmd, args)
 		script:close()
 		return 0
 	end
-	builtins.errmsg(err)
+	messages.error(err)
 	return 255
 end
 
