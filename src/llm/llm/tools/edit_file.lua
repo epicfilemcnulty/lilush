@@ -10,12 +10,12 @@ local function count_occurrences(str, pattern)
 	local count = 0
 	local start = 1
 	while true do
-		local pos = str:find(pattern, start, true) -- plain text search
-		if not pos then
+		local start_pos, end_pos = str:find(pattern, start, true) -- plain text search
+		if not start_pos then
 			break
 		end
 		count = count + 1
-		start = pos + 1
+		start = end_pos + 1
 	end
 	return count
 end
@@ -64,8 +64,8 @@ return {
 		if not filepath then
 			return { name = TOOL_NAME, ok = false, error = "filepath is required" }
 		end
-		if not old_text then
-			return { name = TOOL_NAME, ok = false, error = "old_text is required" }
+		if not old_text or old_text == "" then
+			return { name = TOOL_NAME, ok = false, error = "old_text is required and cannot be empty" }
 		end
 		if new_text == nil then
 			return { name = TOOL_NAME, ok = false, error = "new_text is required" }
@@ -101,11 +101,10 @@ return {
 		end
 
 		-- Find position and line number before replacement
-		local pos = content:find(old_text, 1, true)
-		local line_number = find_line_number(content, pos)
-
+		local start_pos, end_pos = content:find(old_text, 1, true)
+		local line_number = find_line_number(content, start_pos)
 		-- Perform replacement
-		local new_content = content:gsub(old_text, new_text, 1)
+		local new_content = content:sub(1, start_pos - 1) .. new_text .. content:sub(end_pos + 1)
 
 		-- Write back to file
 		local ok, write_err = std.fs.write_file(filepath, new_content)

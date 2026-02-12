@@ -18,8 +18,10 @@ local socket = require("socket")
 
   The main loop is proccessed in the `input:run()` method,
   where, based on the return of the `input:event()` method,
-  we call (or don't) the `input:display()` method (which is
-  just a wrapper for `input:full_redraw()` function at the moment)
+  we call (or don't) the `input:display()` method. `display()`
+  decides between a full redraw and a lightweight partial update
+  (rendering the visible line and syncing the cursor) based on
+  the cached render state.
 
   Input object instance with default config for reference:
   {
@@ -115,10 +117,20 @@ local completion_meta_at = function(completion, idx)
 	return completion:meta_at(idx)
 end
 
+local cursor_is_at_eol = function(self)
+	local s = self.__state
+	local line = s.lines[s.line] or ""
+	return s.offset + s.cursor == std.utf.len(line) + 1
+end
+
 -- All control events are handled here
 local handle_ctl = function(self, shortcut)
 	local s = self.__state
 	if shortcut == "TAB" then
+		if not cursor_is_at_eol(self) then
+			self:completion_reset_visual(true)
+			return nil
+		end
 		if self.__completion and self.__completion:available() then
 			if completion_count(self.__completion) == 1 then
 				return self:promote_completion()
@@ -153,18 +165,22 @@ local handle_ctl = function(self, shortcut)
 	end
 
 	if shortcut == "HOME" then
+		self:completion_reset_visual(true)
 		s.line = 1
 		return self:start_of_line()
 	end
 	if shortcut == "CTRL+a" then
+		self:completion_reset_visual(true)
 		return self:start_of_line()
 	end
 
 	if shortcut == "END" then
+		self:completion_reset_visual(true)
 		s.line = #s.lines
 		return self:end_of_line()
 	end
 	if shortcut == "CTRL+e" then
+		self:completion_reset_visual(true)
 		return self:end_of_line()
 	end
 
@@ -294,6 +310,7 @@ end
 
 local newline = function(self)
 	local s = self.__state
+	self:completion_reset_visual(true)
 	-- If we are at the beginning of the line, we'll
 	-- insert the new line before the current one
 	if s.cursor == 1 and s.offset == 0 then
@@ -353,11 +370,14 @@ end
 
 local draw_completion = function(self)
 	local s = self.__state
+	self:clear_completion()
+	if not cursor_is_at_eol(self) then
+		return nil
+	end
 	if self.__completion and self.__completion:available() then
 		local completion = self.__completion:get()
 		local len = std.utf.len(completion)
-		if completion ~= "" and len <= self:max_width() - s.cursor then
-			self:clear_completion()
+		if completion ~= "" and len > 0 and len <= self:max_width() - s.cursor then
 			term.write(self.cfg.tss:apply("completion", completion).text)
 			s.last_completion = len
 			term.move("left", len)
@@ -365,27 +385,184 @@ local draw_completion = function(self)
 	end
 end
 
+local visible_slice = function(self)
+	local s = self.__state
+	local mw = self:max_width()
+	local line = s.lines[s.line] or ""
+	if s.offset > 0 then
+		line = std.utf.sub(line, s.offset + 1)
+	end
+	if std.utf.len(line) > mw then
+		line = std.utf.sub(line, 1, mw)
+	end
+	return line, mw
+end
+
+local normalize_viewport = function(self, anchor)
+	local s = self.__state
+
+	if #s.lines == 0 then
+		s.lines = { "" }
+	end
+
+	local line_idx = tonumber(s.line) or 1
+	line_idx = math.floor(line_idx)
+	if line_idx < 1 then
+		line_idx = 1
+	elseif line_idx > #s.lines then
+		line_idx = #s.lines
+	end
+	s.line = line_idx
+
+	local line = s.lines[s.line] or ""
+	local line_len = std.utf.len(line)
+	local mw = self:max_width()
+	if mw < 1 then
+		mw = 1
+	end
+
+	local target_pos
+	if anchor == "start" then
+		target_pos = 1
+	elseif anchor == "end" then
+		target_pos = line_len + 1
+	else
+		local cursor = tonumber(s.cursor) or 1
+		local offset = tonumber(s.offset) or 0
+		cursor = math.floor(cursor)
+		offset = math.floor(offset)
+		if cursor < 1 then
+			cursor = 1
+		end
+		if offset < 0 then
+			offset = 0
+		end
+		target_pos = offset + cursor
+		if target_pos < 1 then
+			target_pos = 1
+		elseif target_pos > line_len + 1 then
+			target_pos = line_len + 1
+		end
+	end
+
+	if target_pos <= mw then
+		s.offset = 0
+		s.cursor = target_pos
+	else
+		s.offset = target_pos - mw
+		s.cursor = mw
+	end
+	return true
+end
+
+local snapshot_render_state = function(self)
+	local s = self.__state
+	local render = s.render or {}
+	local prompt_len, prompt = self:prompt_len()
+	local visible, mw = self:visible_slice()
+
+	render.last_prompt = prompt or ""
+	render.last_prompt_len = prompt_len or 0
+	render.last_visible = visible or ""
+	render.last_visible_len = std.utf.len(render.last_visible)
+	render.last_line = s.line
+	render.last_offset = s.offset
+	render.last_cursor = s.cursor
+	render.last_mw = mw
+	render.last_completion = s.last_completion or 0
+	render.ready = true
+
+	s.render = render
+	return true
+end
+
+local completion_reset_visual = function(self, flush_model)
+	self:clear_completion()
+	if flush_model and self.__completion then
+		self.__completion:flush()
+	end
+	return true
+end
+
+local render_visible_line = function(self, clear_tail)
+	local s = self.__state
+	local render = s.render or {}
+	local prompt_len = self:prompt_len()
+	local visible = self:visible_slice()
+	local visible_len = std.utf.len(visible)
+	local prev_len = render.last_visible_len or 0
+
+	term.go(self.cfg.l, self.cfg.c + prompt_len)
+	term.write(visible)
+	if clear_tail and prev_len > visible_len then
+		term.write(string.rep(self.cfg.blank, prev_len - visible_len))
+	end
+	self:sync_cursor()
+	return true
+end
+
+local render_from_column = function(self, col, clear_tail)
+	local s = self.__state
+	local render = s.render or {}
+	local prompt_len = self:prompt_len()
+	local visible = self:visible_slice()
+	local visible_len = std.utf.len(visible)
+	local prev_len = render.last_visible_len or 0
+
+	col = math.floor(tonumber(col) or 1)
+	if col < 1 then
+		col = 1
+	elseif col > visible_len + 1 then
+		col = visible_len + 1
+	end
+
+	local suffix = ""
+	if col <= visible_len then
+		suffix = std.utf.sub(visible, col)
+	end
+
+	term.go(self.cfg.l, self.cfg.c + prompt_len + col - 1)
+	if suffix ~= "" then
+		term.write(suffix)
+	end
+
+	if clear_tail then
+		local old_suffix_len = 0
+		if prev_len >= col then
+			old_suffix_len = prev_len - col + 1
+		end
+		local new_suffix_len = 0
+		if visible_len >= col then
+			new_suffix_len = visible_len - col + 1
+		end
+		local tail = old_suffix_len - new_suffix_len
+		if tail > 0 then
+			term.write(string.rep(self.cfg.blank, tail))
+		end
+	end
+
+	self:sync_cursor()
+	return true
+end
+
 local full_redraw = function(self)
 	local s = self.__state
 	self:clear_all()
 	self:prompt_set({ lines = #s.lines, line = s.line })
+	self:normalize_viewport("preserve")
+	s.last_completion = 0
 	local p_len, p = self:prompt_len()
 	if p_len > 0 then
 		term.write(p)
 	end
 	if self:buffer_empty() then
+		self:snapshot_render_state()
 		return true
 	end
-	local mw = self:max_width()
-	local content = s.lines[s.line]
-	if s.offset > 0 then
-		content = std.utf.sub(s.lines[s.line], s.offset + 1)
-	end
-	if std.utf.len(content) > mw then
-		content = std.utf.sub(content, 1, mw)
-	end
+	local content = self:visible_slice()
 	term.write(content)
 	term.go(self.cfg.l, self.cfg.c + p_len + s.cursor - 1)
+	self:snapshot_render_state()
 	return true
 end
 
@@ -418,16 +595,21 @@ local move_right = function(self)
 	local pos = s.offset + s.cursor
 	if pos <= line_len then
 		local old_offset = s.offset
+		self:completion_reset_visual(true)
 		self:cursor_right()
 		if s.offset == old_offset then
 			term.move("right")
-			return false
 		else
-			return true
+			term.hide_cursor()
+			self:render_visible_line(true)
+			term.show_cursor()
 		end
+		self:snapshot_render_state()
+		return false
 	elseif #s.lines > 1 then
 		-- Move to next line if available
 		if s.line < #s.lines then
+			self:completion_reset_visual(true)
 			s.line = s.line + 1
 			self:start_of_line()
 			return true
@@ -439,17 +621,25 @@ local move_left = function(self)
 	local s = self.__state
 	if s.cursor > 1 then
 		-- Simple case: move cursor left within visible area
+		self:completion_reset_visual(true)
 		term.move("left")
 		self:cursor_left()
+		self:snapshot_render_state()
 		return false
 	end
 	if s.offset > 0 then
 		-- Complex case: scroll content right to show earlier text
+		self:completion_reset_visual(true)
 		self:cursor_left()
-		return true
+		term.hide_cursor()
+		self:render_visible_line(true)
+		term.show_cursor()
+		self:snapshot_render_state()
+		return false
 	end
 	if s.line > 1 then
 		-- Move to previous line if available
+		self:completion_reset_visual(true)
 		s.line = s.line - 1
 		self:end_of_line()
 		return true
@@ -460,6 +650,8 @@ end
 -- distance is bigger than the visible part
 local move_to_previous_space = function(self)
 	local s = self.__state
+	local old_cursor = s.cursor
+	local old_offset = s.offset
 	local pos = s.offset + s.cursor
 	local line_upto_cursor = std.utf.sub(s.lines[s.line], 1, pos - 1)
 	if line_upto_cursor:match("%s") then
@@ -468,8 +660,20 @@ local move_to_previous_space = function(self)
 			local last_space = spaces[#spaces]
 			local distance = pos - last_space
 			if s.cursor > distance then
+				self:completion_reset_visual(true)
 				s.cursor = s.cursor - distance
-				return true
+				if s.offset ~= old_offset then
+					term.hide_cursor()
+					self:render_visible_line(true)
+					term.show_cursor()
+				else
+					local delta = old_cursor - s.cursor
+					if delta > 0 then
+						term.move("left", delta)
+					end
+				end
+				self:snapshot_render_state()
+				return false
 			end
 		end
 	end
@@ -478,14 +682,28 @@ end
 
 local move_to_next_space = function(self)
 	local s = self.__state
+	local old_cursor = s.cursor
+	local old_offset = s.offset
 	local pos = s.offset + s.cursor
 	local line_from_cursor = std.utf.sub(s.lines[s.line], pos + 1)
 	if line_from_cursor:match("%s") then
 		local spaces = std.utf.find_all_spaces(line_from_cursor)
 		local next_space = spaces[1] or math.huge
 		if s.cursor + next_space < self:max_width() then
+			self:completion_reset_visual(true)
 			s.cursor = s.cursor + next_space
-			return true
+			if s.offset ~= old_offset then
+				term.hide_cursor()
+				self:render_visible_line(true)
+				term.show_cursor()
+			else
+				local delta = s.cursor - old_cursor
+				if delta > 0 then
+					term.move("right", delta)
+				end
+			end
+			self:snapshot_render_state()
+			return false
 		end
 	end
 	return false
@@ -501,39 +719,37 @@ local insert = function(self, char)
 	local s = self.__state
 	local line_len = std.utf.len(s.lines[s.line])
 	local pos = s.offset + s.cursor
+	local old_cursor = s.cursor
+	local old_offset = s.offset
 
-	-- The simplest case first: we are right after the last character in the line
-	-- or in the very beginning of an empty line
-	if pos == line_len + 1 then
-		s.lines[s.line] = s.lines[s.line] .. char
-		if pos <= self:max_width() then
-			term.hide_cursor()
-			self:clear_completion()
-			term.write(char)
-			self:cursor_right()
-			self:search_completion()
-			self:draw_completion()
-			-- Ensure terminal cursor is positioned correctly when no new completion is drawn
-			-- This fixes the bug where cursor doesn't move on the last character of a completion,
-			-- but it's kinda an ad hoc solution...
-			if s.last_completion == 0 then
-				self:sync_cursor()
-			end
-			term.show_cursor()
-			return false
-		end
-		self:cursor_right()
-		return true
+	if pos > line_len + 1 then
+		return false
 	end
 
-	-- We are at the position of the last character or before
-	if pos <= line_len then
+	self:completion_reset_visual(true)
+
+	if pos == line_len + 1 then
+		s.lines[s.line] = s.lines[s.line] .. char
+	else
 		local p = std.utf.sub(s.lines[s.line], 1, pos - 1)
 		local suffix = std.utf.sub(s.lines[s.line], pos, line_len)
 		s.lines[s.line] = p .. char .. suffix
-		self:cursor_right()
-		return true
 	end
+
+	self:cursor_right()
+
+	term.hide_cursor()
+	if s.offset == old_offset then
+		self:render_from_column(old_cursor, true)
+	else
+		self:render_visible_line(true)
+	end
+	self:search_completion()
+	self:draw_completion()
+	self:snapshot_render_state()
+	term.show_cursor()
+
+	return false
 end
 
 local backspace = function(self)
@@ -549,24 +765,40 @@ local backspace = function(self)
 	end
 
 	if pos == line_len + 1 and line_len > 0 then
-		self:clear_completion()
+		local old_offset = s.offset
+		self:completion_reset_visual(true)
 		s.lines[s.line] = std.utf.sub(s.lines[s.line], 1, pos - 2)
-		if s.cursor > 1 then
-			self:cursor_left()
-			term.write("\b \b")
-			return false
-		end
 		self:cursor_left()
-		return true
+		term.hide_cursor()
+		if s.offset == old_offset then
+			self:render_from_column(s.cursor, true)
+		else
+			self:render_visible_line(true)
+		end
+		self:snapshot_render_state()
+		term.show_cursor()
+		return false
 	end
 
 	if pos <= line_len and pos > 1 then
+		local old_offset = s.offset
+		self:completion_reset_visual(true)
 		local p = std.utf.sub(s.lines[s.line], 1, pos - 2)
 		local suffix = std.utf.sub(s.lines[s.line], pos, line_len)
 		s.lines[s.line] = p .. suffix
 		self:cursor_left()
-		return true
+		term.hide_cursor()
+		if s.offset == old_offset then
+			self:render_from_column(s.cursor, true)
+		else
+			self:render_visible_line(true)
+		end
+		self:snapshot_render_state()
+		term.show_cursor()
+		return false
 	end
+
+	return false
 end
 
 local scroll_completion = function(self, direction)
@@ -592,6 +824,7 @@ local scroll_completion = function(self, direction)
 	completion_set_chosen_index(self.__completion, idx)
 	term.hide_cursor()
 	self:draw_completion()
+	self:snapshot_render_state()
 	term.show_cursor()
 	return false
 end
@@ -618,18 +851,27 @@ local promote_completion = function(self)
 		s.lines[s.line] = s.lines[s.line] .. promoted
 	end
 	self.__completion:flush()
+	self:clear_completion()
 	if metadata.exec_on_prom then
 		self:clear_from_prompt()
 		term.write(s.lines[s.line])
 		return "execute"
 	end
 	self:end_of_line()
-	return true
+	term.hide_cursor()
+	self:render_visible_line(true)
+	self:snapshot_render_state()
+	term.show_cursor()
+	return false
 end
 
 local search_completion = function(self)
 	local s = self.__state
 	if not self.__completion then
+		return false
+	end
+	if not cursor_is_at_eol(self) then
+		self.__completion:flush()
 		return false
 	end
 	-- once again, we've chosen to do it on line level
@@ -654,8 +896,10 @@ local external_editor = function(self)
 	stdout:close_inn()
 	local result = stdout:read() or "can't get editor output"
 	stdout:close_out()
+	self:completion_reset_visual(true)
 	s.lines = std.txt.lines(result)
 	s.line = #s.lines
+	self:prompt_set({ lines = #s.lines, line = s.line })
 	self:end_of_line()
 	self:display()
 end
@@ -722,6 +966,18 @@ local new = function(config)
 			cursor = 1,
 			offset = 0,
 			last_completion = 0,
+			render = {
+				last_prompt = "",
+				last_prompt_len = 0,
+				last_visible = "",
+				last_visible_len = 0,
+				last_line = 1,
+				last_offset = 0,
+				last_cursor = 1,
+				last_mw = 1,
+				last_completion = 0,
+				ready = false,
+			},
 			tab_long = false,
 			tab_state = {
 				start = nil,
@@ -758,11 +1014,39 @@ local new = function(config)
 		external_editor = external_editor,
 		insert_last_arg = insert_last_arg,
 		draw_completion = draw_completion,
+		visible_slice = visible_slice,
+		normalize_viewport = normalize_viewport,
+		snapshot_render_state = snapshot_render_state,
+		completion_reset_visual = completion_reset_visual,
+		render_visible_line = render_visible_line,
+		render_from_column = render_from_column,
 		sync_cursor = sync_cursor,
 		full_redraw = full_redraw,
-		display = function(self)
+		display = function(self, force)
+			local s = self.__state
+			self:prompt_set({ lines = #s.lines, line = s.line })
+			self:normalize_viewport("preserve")
+			local prompt_len, prompt = self:prompt_len()
+			local render = s.render or {}
+			local hard_redraw = force == true
+			if not hard_redraw then
+				if not render.ready then
+					hard_redraw = true
+				elseif render.last_prompt ~= prompt or render.last_prompt_len ~= prompt_len then
+					hard_redraw = true
+				elseif render.last_line ~= s.line then
+					hard_redraw = true
+				end
+			end
+
 			term.hide_cursor()
-			self:full_redraw()
+			if hard_redraw then
+				self:full_redraw()
+			else
+				self:completion_reset_visual(false)
+				self:render_visible_line(true)
+				self:snapshot_render_state()
+			end
 			term.show_cursor()
 		end,
 		buffer_empty = function(self)
@@ -784,24 +1068,16 @@ local new = function(config)
 		max_width = function(self)
 			local available_width = self.cfg.w - self.cfg.c - self:prompt_len()
 			local width = math.min(self.cfg.width, self.cfg.w)
-			return math.min(available_width, width)
+			return math.max(1, math.min(available_width, width))
 		end,
 		update_window_size = function(self, h, w)
-			local s = self.__state
 			self.cfg.h = h
 			self.cfg.w = w
 			-- Track terminal width
 			self.cfg.width = w - 1
-			-- Ensure cursor position is valid
-			local max_w = self:max_width()
-			if s.cursor > max_w then
-				s.cursor = max_w
-				local line_len = std.utf.len(s.lines[s.line])
-				if line_len > max_w then
-					-- offset is 0-indexed: position in buffer = offset + cursor
-					s.offset = math.max(0, line_len - max_w + 1)
-				end
-			end
+			local s = self.__state
+			self:prompt_set({ lines = #s.lines, line = s.line })
+			self:normalize_viewport("preserve")
 		end,
 		set_position = function(self, l, c)
 			if type(l) == "number" then
@@ -816,8 +1092,10 @@ local new = function(config)
 		end,
 		set_content = function(self, text)
 			local s = self.__state
+			self:completion_reset_visual(true)
 			s.lines = std.txt.lines(text or "")
 			s.line = #s.lines
+			self:prompt_set({ lines = #s.lines, line = s.line })
 			self:end_of_line()
 		end,
 		prompt_set = function(self, options)
@@ -889,11 +1167,13 @@ local new = function(config)
 				return false
 			end
 			if self.__history:up() then
+				self:completion_reset_visual(true)
 				if not self:buffer_empty() and history_position(self.__history) == history_count(self.__history) then
 					self.__history:stash(self:get_content())
 				end
 				s.lines = std.txt.lines(self.__history:get())
 				s.line = #s.lines
+				self:prompt_set({ lines = #s.lines, line = s.line })
 				self:end_of_line()
 				return true
 			end
@@ -905,33 +1185,19 @@ local new = function(config)
 				return false
 			end
 			if self.__history:down() then
+				self:completion_reset_visual(true)
 				s.lines = std.txt.lines(self.__history:get())
 				s.line = #s.lines
+				self:prompt_set({ lines = #s.lines, line = s.line })
 				self:end_of_line()
 				return true
 			end
 		end,
 		end_of_line = function(self)
-			local s = self.__state
-			local line_len = std.utf.len(s.lines[s.line])
-			local mw = self:max_width()
-			if line_len < mw then
-				-- cursor is 1-indexed: position after last character
-				s.cursor = line_len + 1
-			else
-				-- offset is 0-indexed: position in buffer = offset + cursor
-				-- cursor at max width, offset adjusted to show end of line
-				s.offset = line_len - mw + 1
-				s.cursor = mw
-			end
-			return true
+			return self:normalize_viewport("end")
 		end,
 		start_of_line = function(self)
-			local s = self.__state
-			-- Move to beginning: cursor at position 1, no horizontal scroll
-			s.cursor = 1
-			s.offset = 0 -- offset is 0-indexed
-			return true
+			return self:normalize_viewport("start")
 		end,
 		flush = function(self)
 			local s = self.__state
@@ -939,9 +1205,21 @@ local new = function(config)
 			s.line = 1
 			s.offset = 0
 			s.cursor = 1
+			s.render = {
+				last_prompt = "",
+				last_prompt_len = 0,
+				last_visible = "",
+				last_visible_len = 0,
+				last_line = 1,
+				last_offset = 0,
+				last_cursor = 1,
+				last_mw = 1,
+				last_completion = 0,
+				ready = false,
+			}
+			s.last_completion = 0
 			if self.__completion then
 				self.__completion:flush()
-				s.last_completion = 0
 			end
 		end,
 	}

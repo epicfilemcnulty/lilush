@@ -13,6 +13,31 @@ local buffer = require("string.buffer")
 
 local DEFAULT_ENDPOINT = "/chat/completions"
 
+local debug_log = function(cfg, category, data)
+	if not cfg.debug_file then
+		return
+	end
+	local f = io.open(cfg.debug_file, "a")
+	if not f then
+		return
+	end
+	f:write(string.format("\n=== [%s] %s ===\n", os.date("%H:%M:%S"), category))
+	if type(data) == "table" then
+		f:write(json.encode(data) or tostring(data))
+	else
+		f:write(tostring(data))
+	end
+	f:write("\n")
+	f:close()
+end
+
+local redact_key = function(key)
+	if type(key) ~= "string" or #key < 8 then
+		return "***"
+	end
+	return key:sub(1, 4) .. "..." .. key:sub(-4)
+end
+
 local cleanup_text = function(text)
 	return tostring(text or "")
 		:gsub("^\n+", "")
@@ -995,19 +1020,26 @@ local stream_chat = function(self, model, messages, sampler, user_callbacks, opt
 		end,
 	}
 
+	local url = self.cfg.api_url .. DEFAULT_ENDPOINT
+	local encoded_body = json.encode(data)
+	debug_log(self.cfg, "STREAM_CHAT REQUEST", {
+		url = url,
+		model = model,
+		headers = { Authorization = "Bearer " .. redact_key(self.cfg.api_key), ["Content-Type"] = "application/json" },
+		body = data,
+	})
+
 	local max_retries = 2
 	local backoff = { 2000, 8000 }
 	for attempt = 1, max_retries + 1 do
 		http_error = nil
 		http_status = nil
 
-		client = web.sse_client(
-			self.cfg.api_url .. DEFAULT_ENDPOINT,
-			{ method = "POST", body = json.encode(data), headers = self.__state.headers },
-			callbacks
-		)
+		client =
+			web.sse_client(url, { method = "POST", body = encoded_body, headers = self.__state.headers }, callbacks)
 		local ok, err = client:connect()
 		if not ok then
+			debug_log(self.cfg, "STREAM_CHAT CONNECT ERROR", { attempt = attempt, error = err })
 			if attempt <= max_retries then
 				if user_callbacks.retry then
 					user_callbacks.retry(attempt, nil)
@@ -1034,6 +1066,11 @@ local stream_chat = function(self, model, messages, sampler, user_callbacks, opt
 				break
 			end
 			if http_error and is_retryable(http_status) and attempt <= max_retries then
+				debug_log(self.cfg, "STREAM_CHAT HTTP ERROR (retrying)", {
+					attempt = attempt,
+					status = http_status,
+					error = http_error,
+				})
 				if user_callbacks.retry then
 					user_callbacks.retry(attempt, http_status)
 				end
@@ -1055,6 +1092,7 @@ local stream_chat = function(self, model, messages, sampler, user_callbacks, opt
 	end
 
 	if not cancelled and http_error then
+		debug_log(self.cfg, "STREAM_CHAT FINAL ERROR", { error = http_error, status = http_status })
 		return nil, http_error
 	end
 
@@ -1311,19 +1349,26 @@ local stream_responses = function(self, model, messages, sampler, user_callbacks
 		end,
 	}
 
+	local url = self.cfg.api_url .. "/responses"
+	local encoded_body = json.encode(data)
+	debug_log(self.cfg, "STREAM_RESPONSES REQUEST", {
+		url = url,
+		model = model,
+		headers = { Authorization = "Bearer " .. redact_key(self.cfg.api_key), ["Content-Type"] = "application/json" },
+		body = data,
+	})
+
 	local max_retries = 2
 	local backoff = { 2000, 8000 }
 	for attempt = 1, max_retries + 1 do
 		http_error = nil
 		http_status = nil
 
-		client = web.sse_client(
-			self.cfg.api_url .. "/responses",
-			{ method = "POST", body = json.encode(data), headers = self.__state.headers },
-			callbacks
-		)
+		client =
+			web.sse_client(url, { method = "POST", body = encoded_body, headers = self.__state.headers }, callbacks)
 		local ok, err = client:connect()
 		if not ok then
+			debug_log(self.cfg, "STREAM_RESPONSES CONNECT ERROR", { attempt = attempt, error = err })
 			if attempt <= max_retries then
 				if user_callbacks.retry then
 					user_callbacks.retry(attempt, nil)
@@ -1350,6 +1395,11 @@ local stream_responses = function(self, model, messages, sampler, user_callbacks
 				break
 			end
 			if http_error and is_retryable(http_status) and attempt <= max_retries then
+				debug_log(self.cfg, "STREAM_RESPONSES HTTP ERROR (retrying)", {
+					attempt = attempt,
+					status = http_status,
+					error = http_error,
+				})
 				if user_callbacks.retry then
 					user_callbacks.retry(attempt, http_status)
 				end
@@ -1374,6 +1424,7 @@ local stream_responses = function(self, model, messages, sampler, user_callbacks
 	end
 
 	if not cancelled and http_error then
+		debug_log(self.cfg, "STREAM_RESPONSES FINAL ERROR", { error = http_error, status = http_status })
 		return nil, http_error
 	end
 
@@ -1510,6 +1561,7 @@ local new = function(api_url, api_key)
 			api_key = resolved_api_key,
 			api_url = resolved_api_url,
 			debug_mode = os.getenv("LLM_DEBUG_MODE"),
+			debug_file = os.getenv("LLM_DEBUG_FILE"),
 		},
 		__state = {
 			headers = {

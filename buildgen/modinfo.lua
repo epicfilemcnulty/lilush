@@ -68,6 +68,7 @@ local luamods = {
 	shell = {
 		"shell",
 		"shell.store",
+		"shell.tty",
 		"shell.messages",
 		"shell.utils",
 		"shell.utils.pager",
@@ -95,6 +96,8 @@ local luamods = {
 		"agent.config",
 		"agent.conversation",
 		"agent.conversation_markdown",
+		"agent.edit_diff_preview",
+		"agent.index_context",
 		"agent.system_prompt",
 		"agent.completion.slash",
 		"agent.completion.source.slash",

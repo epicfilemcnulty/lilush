@@ -34,22 +34,6 @@ local function format_tokens(count)
 	end
 end
 
--- Get the short model name
-local function short_model_name(model)
-	if not model then
-		return "unknown"
-	end
-	local short_names = {
-		["claude-opus-4-5"] = "opus-4.5",
-		["claude-sonnet-4-5"] = "sonnet-4.5",
-		["claude-3-5-haiku"] = "haiku-3.5",
-	}
-	if short_names[model] then
-		return short_names[model]
-	end
-	return model
-end
-
 local set = function(self, options)
 	local state = self.__state
 	options = options or {}
@@ -76,7 +60,7 @@ local get = function(self)
 
 	if state.model then
 		buf:put(style_text(tss, "prompts.agent.sep", ":"))
-		buf:put(style_text(tss, "prompts.agent.mode.model", short_model_name(state.model)))
+		buf:put(style_text(tss, "prompts.agent.mode.model", state.model))
 	end
 
 	buf:put(style_text(tss, "prompts.agent.mode.suffix"))
@@ -89,31 +73,35 @@ local get = function(self)
 	buf:put(" ")
 	buf:put(style_text(tss, "prompts.agent.dir", cwd))
 
-	-- Token count and cost
-	if state.tokens and state.tokens > 0 then
+	-- Token count and cost: (12.7k 34% $1.23)
+	-- tokens = last context window usage
+	local ctx = state.tokens or 0
+	if ctx > 0 then
 		buf:put(" ")
 		buf:put(style_text(tss, "prompts.agent.tokens.prefix"))
 
-		-- Color based on usage percentage
-		local token_style = "prompts.agent.tokens.count"
+		-- Color context tokens and pct based on context window usage
+		local ctx_style = "prompts.agent.tokens.count"
+		local pct = 0
 		if state.max_tokens and state.max_tokens > 0 then
-			local usage = state.tokens / state.max_tokens
+			pct = math.floor((ctx / state.max_tokens) * 100)
+			local usage = ctx / state.max_tokens
 			if usage > 0.9 then
-				token_style = "prompts.agent.tokens.critical"
+				ctx_style = "prompts.agent.tokens.critical"
 			elseif usage > 0.7 then
-				token_style = "prompts.agent.tokens.warning"
+				ctx_style = "prompts.agent.tokens.warning"
 			end
 		end
 
-		buf:put(style_text(tss, token_style, format_tokens(state.tokens)))
-		buf:put(style_text(tss, "prompts.agent.tokens.unit"))
+		-- Context window tokens (color-coded)
+		buf:put(style_text(tss, ctx_style, format_tokens(ctx)))
 
+		-- Context percentage
 		if state.max_tokens and state.max_tokens > 0 then
-			local pct = math.floor((state.tokens / state.max_tokens) * 100)
-			buf:put(style_text(tss, token_style, " " .. tostring(pct) .. "%"))
+			buf:put(style_text(tss, ctx_style, " " .. tostring(pct) .. "%"))
 		end
 
-		-- Show cost if available
+		-- Cost
 		if state.cost and state.cost > 0 then
 			buf:put(style_text(tss, "prompts.agent.cost.prefix"))
 			buf:put(style_text(tss, "prompts.agent.cost.amount", conversation_mod.format_cost(state.cost)))
@@ -155,7 +143,6 @@ local new = function(options)
 		},
 		__state = {
 			model = nil,
-			provider = nil,
 			tokens = 0,
 			max_tokens = 100000,
 			cost = 0, -- Session cost in dollars

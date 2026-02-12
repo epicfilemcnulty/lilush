@@ -15,6 +15,7 @@ local shell_mode = require("shell.mode.shell")
 local builtins = require("shell.builtins")
 local messages = require("shell.messages")
 local pipeline = require("shell.utils.pipeline")
+local tty = require("shell.tty")
 
 local change_mode_combo
 
@@ -69,14 +70,7 @@ local activate_mode = function(self, mode_name)
 	return true
 end
 
-local run_in_sane_mode = function(handler)
-	term.disable_kkbp()
-	term.set_sane_mode()
-	local redraw = handler()
-	term.set_raw_mode()
-	term.enable_kkbp()
-	return redraw
-end
+local run_in_sane_mode = tty.run_in_sane_mode
 
 local load_mode = function(self, mode_name, mode_cfg, history_store)
 	local mode_module, mode_prompt, mode_completion, mode_history
@@ -188,9 +182,7 @@ local exit_combo = function(self, combo)
 	if os.getenv("VIRTUAL_ENV") ~= nil and mode and type(mode.on_shell_exit) == "function" then
 		return mode:on_shell_exit()
 	end
-	term.disable_kkbp()
-	term.disable_bracketed_paste()
-	term.set_sane_mode()
+	tty.enter_exec_mode()
 	os.exit(0)
 end
 
@@ -240,9 +232,7 @@ local run = function(self)
 			if event == "execute" then
 				-- Clear any pending input
 				io.flush()
-				term.write("\r\n")
-				term.disable_kkbp()
-				term.set_sane_mode()
+				tty.enter_exec_mode({ newline = true })
 
 				local cwd = std.fs.cwd()
 				std.ps.setenv("LILUSH_EXEC_CWD", cwd)
@@ -260,9 +250,7 @@ local run = function(self)
 					active_input:add_to_history()
 				end
 
-				term.set_raw_mode()
-				io.flush()
-				term.enable_kkbp()
+				tty.leave_exec_mode()
 
 				local l, _ = term.cursor_position()
 				active_input:set_position(l, 1)

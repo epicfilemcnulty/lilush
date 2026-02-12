@@ -21,7 +21,6 @@ This convention must be used consistently throughout the codebase.
 Always use explicit function assignment, never the colon syntax for definitions:
 
 ```lua
--- CORRECT: Explicit function assignment
 local get_name = function(self)
     return self.__name
 end
@@ -29,12 +28,10 @@ end
 local set_name = function(self, name)
     self.__name = name
 end
-
--- WRONG: Do NOT use this style
-function MyClass:getName()  -- PascalCase and colon syntax
-    return self.__name
-end
 ```
+
+**Method calls:**
+Method calls use the regular Lua syntactic sugar: `my_obj:set_name("Jimmy")`
 
 **Constructor Pattern:**
 Use a simple `new` function that returns a table with methods assigned directly (no metatables by default):
@@ -69,7 +66,7 @@ return {
 **Key Points:**
 
 1. No `ClassName = {}` with `__index` metatables
-2. No `function ClassName:method()` syntax
+2. No `function ClassName:method()` syntax for definitions
 3. Methods are defined as local functions, then assigned in the constructor
 4. Helper functions that don't need `self` remain standalone local functions
 5. Module exports only what's needed (typically just `new`)

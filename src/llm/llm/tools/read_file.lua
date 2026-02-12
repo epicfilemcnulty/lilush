@@ -25,7 +25,7 @@ return {
 					filepath = { type = "string", description = "Absolute or relative path to the file to read" },
 					offset = {
 						type = "integer",
-						description = "Number of lines to skip from the start of file (0-indexed, default: 0).",
+						description = "Number of lines to skip from the start of file (1-indexed, default: 1).",
 					},
 					limit = {
 						type = "integer",
@@ -60,17 +60,17 @@ return {
 		end
 
 		local total_lines = #lines
-		local offset = tonumber(arguments.offset) or 0
+		local offset = tonumber(arguments.offset) or 1
 		local requested_limit = tonumber(arguments.limit) or DEFAULT_LIMIT
 
-		if offset < 0 then
-			offset = 0
+		if offset < 1 then
+			offset = 1
 		end
 		if requested_limit < 1 then
 			requested_limit = 1
 		end
 
-		local start_line = offset + 1
+		local start_line = offset
 		if start_line > total_lines then
 			return {
 				name = TOOL_NAME,

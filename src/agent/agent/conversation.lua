@@ -13,6 +13,7 @@ Handles:
 
 local std = require("std")
 local json = require("cjson.safe")
+local trim = std.txt.trim
 
 local new_cost = function()
 	return {
@@ -42,6 +43,64 @@ local format_cost = function(cost)
 	end
 
 	return string.format("$%.2f", cost)
+end
+
+local conversations_dir = function()
+	local home = os.getenv("HOME") or "/tmp"
+	return home .. "/.local/share/lilush/agent/conversations"
+end
+
+local resolve_conversation_path = function(name)
+	local normalized_name = trim(name)
+	if not normalized_name then
+		return nil, "conversation name required"
+	end
+	local filename = normalized_name:gsub("[^%w_-]", "_") .. ".json"
+	return conversations_dir() .. "/" .. filename, normalized_name
+end
+
+local normalize_messages = function(messages)
+	if type(messages) ~= "table" then
+		return {}
+	end
+
+	local normalized = {}
+	for _, msg in ipairs(messages) do
+		if type(msg) == "table" then
+			normalized[#normalized + 1] = msg
+		end
+	end
+	return normalized
+end
+
+local normalize_metadata = function(metadata, fallback_name)
+	local now = os.time()
+	local normalized = {
+		created_at = now,
+		updated_at = now,
+		name = trim(fallback_name),
+	}
+
+	if type(metadata) ~= "table" then
+		return normalized
+	end
+
+	local created_at = tonumber(metadata.created_at)
+	if created_at and created_at > 0 then
+		normalized.created_at = created_at
+	end
+
+	local updated_at = tonumber(metadata.updated_at)
+	if updated_at and updated_at > 0 then
+		normalized.updated_at = updated_at
+	end
+
+	local metadata_name = trim(metadata.name)
+	if metadata_name then
+		normalized.name = metadata_name
+	end
+
+	return normalized
 end
 
 -- Get the system prompt
@@ -232,7 +291,7 @@ end
 
 -- Set conversation name (for save/load)
 local set_name = function(self, name)
-	self.__state.metadata.name = name
+	self.__state.metadata.name = trim(name)
 end
 
 -- Get conversation name
@@ -244,19 +303,26 @@ end
 local save = function(self, name)
 	local state = self.__state
 	name = name or state.metadata.name
-	if not name then
-		return nil, "conversation name required"
+
+	local filepath, normalized_name_or_err = resolve_conversation_path(name)
+	if not filepath then
+		return nil, normalized_name_or_err
+	end
+	local normalized_name = normalized_name_or_err
+
+	local save_dir = conversations_dir()
+	local mkdir_ok, mkdir_err = std.fs.mkdir(save_dir, nil, true)
+	if not mkdir_ok then
+		return nil, mkdir_err
 	end
 
-	local home = os.getenv("HOME") or "/tmp"
-	local save_dir = home .. "/.local/share/lilush/agent/conversations"
-	std.fs.mkdirp(save_dir)
-
-	local filename = name:gsub("[^%w_-]", "_") .. ".json"
-	local filepath = save_dir .. "/" .. filename
+	state.messages = normalize_messages(state.messages)
+	state.metadata = normalize_metadata(state.metadata, normalized_name)
+	state.metadata.name = normalized_name
+	state.metadata.updated_at = os.time()
 
 	local data = {
-		name = name,
+		name = normalized_name,
 		system_prompt = state.system_prompt,
 		messages = state.messages,
 		metadata = state.metadata,
@@ -272,33 +338,47 @@ local save = function(self, name)
 		return nil, err
 	end
 
-	state.metadata.name = name
 	return filepath
 end
 
 -- Load conversation from file
 local load = function(self, name)
 	local state = self.__state
-	local home = os.getenv("HOME") or "/tmp"
-	local save_dir = home .. "/.local/share/lilush/agent/conversations"
 
-	local filename = name:gsub("[^%w_-]", "_") .. ".json"
-	local filepath = save_dir .. "/" .. filename
+	local filepath, normalized_name_or_err = resolve_conversation_path(name)
+	if not filepath then
+		return nil, normalized_name_or_err
+	end
+	local requested_name = normalized_name_or_err
 
-	local content = std.fs.read_file(filepath)
+	local content, read_err = std.fs.read_file(filepath)
 	if not content then
-		return nil, "conversation not found: " .. name
+		if std.fs.file_exists(filepath) then
+			return nil, "failed to read conversation: " .. tostring(read_err)
+		end
+		return nil, "conversation not found: " .. requested_name
 	end
 
 	local data, err = json.decode(content)
 	if not data then
 		return nil, "failed to parse conversation: " .. tostring(err)
 	end
+	if type(data) ~= "table" then
+		return nil, "conversation file must contain a JSON object"
+	end
 
-	state.system_prompt = data.system_prompt
-	state.messages = data.messages or {}
-	state.metadata = data.metadata or { created_at = os.time(), updated_at = os.time() }
-	state.metadata.name = name
+	local loaded_name = trim(data.name)
+	if not loaded_name and type(data.metadata) == "table" then
+		loaded_name = trim(data.metadata.name)
+	end
+	loaded_name = loaded_name or requested_name
+
+	if type(data.system_prompt) == "string" then
+		state.system_prompt = data.system_prompt
+	end
+	state.messages = normalize_messages(data.messages)
+	state.metadata = normalize_metadata(data.metadata, loaded_name)
+	state.metadata.name = loaded_name
 
 	return true
 end
@@ -397,10 +477,9 @@ end
 
 -- List saved conversations
 local list_saved = function()
-	local home = os.getenv("HOME") or "/tmp"
-	local save_dir = home .. "/.local/share/lilush/agent/conversations"
+	local save_dir = conversations_dir()
 
-	local files = std.fs.list_files(save_dir, "json")
+	local files = std.fs.list_files(save_dir, "%.json$")
 	if not files then
 		return {}
 	end
@@ -413,12 +492,14 @@ local list_saved = function()
 			local content = std.fs.read_file(filepath)
 			if content then
 				local data = json.decode(content)
-				if data then
+				if type(data) == "table" then
+					local metadata = type(data.metadata) == "table" and data.metadata or {}
+					local display_name = trim(data.name) or trim(metadata.name) or name
 					table.insert(conversations, {
-						name = data.name or name,
-						created_at = data.metadata and data.metadata.created_at,
-						updated_at = data.metadata and data.metadata.updated_at,
-						message_count = data.messages and #data.messages or 0,
+						name = display_name,
+						created_at = tonumber(metadata.created_at),
+						updated_at = tonumber(metadata.updated_at),
+						message_count = type(data.messages) == "table" and #data.messages or 0,
 					})
 				end
 			end
@@ -427,7 +508,12 @@ local list_saved = function()
 
 	-- Sort by updated_at descending
 	table.sort(conversations, function(a, b)
-		return (a.updated_at or 0) > (b.updated_at or 0)
+		local updated_a = tonumber(a.updated_at) or 0
+		local updated_b = tonumber(b.updated_at) or 0
+		if updated_a == updated_b then
+			return tostring(a.name) < tostring(b.name)
+		end
+		return updated_a > updated_b
 	end)
 
 	return conversations
@@ -435,19 +521,17 @@ end
 
 -- Delete a saved conversation
 local delete_saved = function(name)
-	local home = os.getenv("HOME") or "/tmp"
-	local save_dir = home .. "/.local/share/lilush/agent/conversations"
+	local filepath, err = resolve_conversation_path(name)
+	if not filepath then
+		return nil, err
+	end
 
-	local filename = name:gsub("[^%w_-]", "_") .. ".json"
-	local filepath = save_dir .. "/" .. filename
-
-	return os.remove(filepath)
+	return std.fs.remove(filepath)
 end
 
 -- Create a new conversation object
 local new = function(system_prompt)
 	local instance = {
-		cfg = {},
 		__state = {
 			messages = {},
 			system_prompt = system_prompt,

@@ -354,7 +354,19 @@ local mask_with_braille = function(text, hardness, r, g)
 	return out:get()
 end
 
+local trim = function(value)
+	if type(value) ~= "string" then
+		return nil
+	end
+	local trimmed = value:gsub("^%s+", ""):gsub("%s+$", "")
+	if trimmed == "" then
+		return nil
+	end
+	return trimmed
+end
+
 local txt = {
+	trim = trim,
 	lines = lines,
 	lines_of = lines_of,
 	limit = limit,

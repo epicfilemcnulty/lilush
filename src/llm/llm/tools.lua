@@ -307,7 +307,10 @@ end
 
 local execute_call = function(call, action, decision, keep_raw_on_decode_error)
 	if action == "deny" then
-		return { error = decision.error or "tool call denied" }, true, call, call.arguments
+		return { name = call.name, ok = false, error = decision.error or "tool call denied" },
+			true,
+			call,
+			call.arguments
 	end
 	if action == "respond" and decision.response then
 		local response = decision.response
@@ -322,7 +325,7 @@ local execute_call = function(call, action, decision, keep_raw_on_decode_error)
 	local args = decode_call_arguments(exec_call.arguments, keep_raw_on_decode_error)
 	local ok, result = execute(exec_call.name, args)
 	if not ok then
-		return { error = tostring(result) }, true, exec_call, args
+		return { name = exec_call.name or call.name, ok = false, error = tostring(result) }, true, exec_call, args
 	end
 
 	return result, is_error_result(result), exec_call, args
@@ -446,6 +449,7 @@ local loop = function(client, model, messages, sampler, opts)
 	local style = opts.style or (client_backend == "oaic" and "oaic") or "xml"
 
 	local cur_messages = std.tbl.copy(messages)
+	local cumulative_usage = { input_tokens = 0, output_tokens = 0, cached_tokens = 0, request_count = 0 }
 	for step = 1, max_steps do
 		local resp, err
 		if stream then
@@ -457,7 +461,18 @@ local loop = function(client, model, messages, sampler, opts)
 			return nil, err
 		end
 
+		-- Accumulate token usage across tool loop iterations
+		cumulative_usage.request_count = cumulative_usage.request_count + 1
+		local call_output = tonumber(resp.tokens) or 0
+		local call_input = (tonumber(resp.ctx) or 0) - call_output
+		if call_input < 0 then
+			call_input = 0
+		end
+		cumulative_usage.input_tokens = cumulative_usage.input_tokens + call_input
+		cumulative_usage.output_tokens = cumulative_usage.output_tokens + call_output
+
 		if resp.cancelled then
+			resp.cumulative_usage = cumulative_usage
 			return normalize_response(resp, client, model)
 		end
 
@@ -471,9 +486,11 @@ local loop = function(client, model, messages, sampler, opts)
 			if dropped_tool_calls > 0 and (not resp.text or resp.text == "") then
 				resp.text = "Model emitted malformed tool calls; skipped."
 			end
+			resp.cumulative_usage = cumulative_usage
 			return normalize_response(resp, client, model)
 		end
 		if not execute_tools then
+			resp.cumulative_usage = cumulative_usage
 			return normalize_response(resp, client, model)
 		end
 
@@ -485,6 +502,7 @@ local loop = function(client, model, messages, sampler, opts)
 		if not result then
 			resp.aborted = true
 			resp.abort_message = abort_decision and abort_decision.message
+			resp.cumulative_usage = cumulative_usage
 			return normalize_response(resp, client, model)
 		end
 		cur_messages = result

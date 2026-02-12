@@ -23,6 +23,8 @@ local pager_mod = require("shell.utils.pager")
 local config_mod = require("agent.config")
 local conversation_mod = require("agent.conversation")
 local conversation_md_mod = require("agent.conversation_markdown")
+local edit_diff_preview_mod = require("agent.edit_diff_preview")
+local index_context_mod = require("agent.index_context")
 local system_prompt_mod = require("agent.system_prompt")
 local stream_mod = require("agent.stream")
 local llm_tools = require("llm.tools")
@@ -98,6 +100,15 @@ local function show_pager(lines, render_mode)
 	end
 
 	return true
+end
+
+local function show_pager_or_error(lines, render_mode)
+	local ok, err = show_pager(lines, render_mode)
+	if not ok then
+		write_error("Error: failed to open pager: " .. tostring(err))
+		return 1
+	end
+	return 0
 end
 
 local function count_output_lines(text)
@@ -195,6 +206,55 @@ local function write_tool_result(result_summary)
 	return count_output_lines(summary)
 end
 
+local function write_tool_warning(message)
+	term.write(tss:apply("agent.tool.warning", message).text .. "\n")
+	return count_output_lines(message)
+end
+
+local function write_tool_diff_line(style_path, text)
+	term.write(tss:apply(style_path, text).text .. "\n")
+	return count_output_lines(text)
+end
+
+local function write_edit_diff_preview(preview)
+	if type(preview) ~= "table" then
+		return 0
+	end
+
+	local lines_written = 0
+	local stats = preview.stats or {}
+	if preview.truncated then
+		local limits = edit_diff_preview_mod.defaults or {}
+		local summary = "Diff too large for inline preview ("
+			.. tostring(stats.changed_lines or 0)
+			.. " changed lines, "
+			.. tostring(stats.full_bytes or 0)
+			.. " bytes; limits: "
+			.. tostring(limits.max_inline_lines or "?")
+			.. " lines, "
+			.. tostring(limits.max_inline_bytes or "?")
+			.. " bytes)."
+		lines_written = lines_written + write_tool_diff_line("agent.tool.diff.meta", summary)
+		lines_written = lines_written
+			+ write_tool_diff_line("agent.tool.diff.hint", "Press 'p' to open full diff in pager.")
+		return lines_written
+	end
+
+	for _, line in ipairs(preview.inline_lines or {}) do
+		local style_path = "agent.tool.diff.meta"
+		if line:sub(1, 2) == "@@" then
+			style_path = "agent.tool.diff.header"
+		elseif line:sub(1, 1) == "+" then
+			style_path = "agent.tool.diff.add"
+		elseif line:sub(1, 1) == "-" then
+			style_path = "agent.tool.diff.remove"
+		end
+		lines_written = lines_written + write_tool_diff_line(style_path, line)
+	end
+
+	return lines_written
+end
+
 local REQUIRED_TOOL_ARGUMENTS = {
 	bash = { "command" },
 	read = { "filepath" },
@@ -277,42 +337,60 @@ local function edit_tool_arguments_external(tool_name, arguments)
 end
 
 -- Ask for tool approval
--- Returns: "yes", "always", "abort", { abort_message = "..." }, or { edit_args = {...} }
-local function ask_approval(tool_name, args)
-	term.write(tss:apply("agent.approval.bracket", "[").text)
-	term.write(tss:apply("agent.approval.name", tool_name).text)
-	term.write(tss:apply("agent.approval.bracket", "]").text)
-	term.write(tss:apply("agent.approval.options", " Execute? [Y/n/e/m/a] ").text)
-	io.flush()
+-- Returns: decision, lines_written
+-- Decision is one of: "yes", "always", "abort", { abort_message = "..." }, or { edit_args = {...} }
+local function ask_approval(tool_name, args, preview_ctx)
+	local lines_written = 0
 
-	-- Read full line in sane mode (consumes the newline from Enter)
-	-- User types their choice and presses Enter
-	local line = io.read("*l")
-	local key = line and line:sub(1, 1) or ""
-
-	key = key:lower()
-	if key == "n" then
-		-- Abort without message
-		return "abort"
-	elseif key == "e" then
-		local edited_args, edit_err = edit_tool_arguments_external(tool_name, args)
-		if not edited_args then
-			return { abort_message = "Tool call edit failed: " .. tostring(edit_err) }
-		end
-		return { edit_args = edited_args }
-	elseif key == "m" then
-		-- Abort with message - prompt for feedback
-		term.write(tss:apply("agent.approval.options", "Message: ").text)
+	while true do
+		term.write(tss:apply("agent.approval.bracket", "[").text)
+		term.write(tss:apply("agent.approval.name", tool_name).text)
+		term.write(tss:apply("agent.approval.bracket", "]").text)
+		term.write(tss:apply("agent.approval.options", " Execute? [Y/n/p/e/m/a] ").text)
 		io.flush()
-		local msg = io.read("*l")
-		if msg and msg ~= "" then
-			return { abort_message = msg }
+
+		-- Read full line in sane mode (consumes the newline from Enter)
+		-- User types their choice and presses Enter
+		local line = io.read("*l")
+		local key = line and line:sub(1, 1) or ""
+		lines_written = lines_written + 1
+		key = key:lower()
+
+		if key == "n" then
+			return "abort", lines_written
+		elseif key == "p" then
+			local full_lines = type(preview_ctx) == "table" and preview_ctx.full_lines or nil
+			if type(full_lines) == "table" and #full_lines > 0 then
+				local ok, err = show_pager(full_lines, "raw")
+				if not ok then
+					write_error("Error: failed to open pager: " .. tostring(err))
+					lines_written = lines_written + 1
+				end
+			else
+				write_info("No diff preview available for this tool call.")
+				lines_written = lines_written + 1
+			end
+		elseif key == "e" then
+			local edited_args, edit_err = edit_tool_arguments_external(tool_name, args)
+			if not edited_args then
+				return { abort_message = "Tool call edit failed: " .. tostring(edit_err) }, lines_written
+			end
+			return { edit_args = edited_args }, lines_written
+		elseif key == "m" then
+			-- Abort with message - prompt for feedback
+			term.write(tss:apply("agent.approval.options", "Message: ").text)
+			io.flush()
+			local msg = io.read("*l")
+			lines_written = lines_written + 1
+			if msg and msg ~= "" then
+				return { abort_message = msg }, lines_written
+			end
+			return "abort", lines_written
+		elseif key == "a" then
+			return "always", lines_written
+		else
+			return "yes", lines_written
 		end
-		return "abort"
-	elseif key == "a" then
-		return "always"
-	else
-		return "yes"
 	end
 end
 
@@ -338,13 +416,7 @@ local show_conversation_pager = function(self)
 	local markdown = conversation_md_mod.build(messages, {
 		tool_summary_max = 240,
 	})
-
-	local ok, err = show_pager({ markdown }, "markdown")
-	if not ok then
-		write_error("Error: failed to open pager: " .. tostring(err))
-		return 1
-	end
-	return 0
+	return show_pager_or_error({ markdown }, "markdown")
 end
 
 local show_conversation_combo = function(self)
@@ -352,15 +424,131 @@ local show_conversation_combo = function(self)
 	return status == 0
 end
 
+local function resolve_index_context(self, index_file)
+	if type(index_file) ~= "string" or index_file == "" then
+		return nil
+	end
+	local resolved = index_context_mod.resolve({
+		index_file = index_file,
+		cache = self.__state.index_ctx_cache or {},
+	})
+	self.__state.index_ctx_cache = resolved.cache or self.__state.index_ctx_cache
+	return resolved
+end
+
+local function format_index_check_line(check)
+	local source = check.source == "repo_root" and "repo root" or "cwd"
+	if check.status == "loaded" then
+		return "  - " .. check.path .. " [" .. source .. "]: loaded"
+	end
+	if check.status == "duplicate_skipped" then
+		return "  - " .. check.path .. " [" .. source .. "]: duplicate (already included)"
+	end
+	if check.status == "empty" then
+		return "  - " .. check.path .. " [" .. source .. "]: empty (ignored)"
+	end
+	return "  - " .. check.path .. " [" .. source .. "]: not found"
+end
+
+local trim = std.txt.trim
+
+local parse_conversation_name_arg = function(args)
+	if type(args) ~= "table" or #args == 0 then
+		return nil
+	end
+
+	local name = trim(table.concat(args, " "))
+	if not name then
+		return nil
+	end
+
+	local first_char = name:sub(1, 1)
+	local last_char = name:sub(-1)
+	if #name >= 2 and ((first_char == '"' and last_char == '"') or (first_char == "'" and last_char == "'")) then
+		name = trim(name:sub(2, -2))
+	end
+
+	return name
+end
+
+local reset_context_usage_tracking = function(usage)
+	if type(usage) ~= "table" then
+		return
+	end
+	usage.last_ctx_tokens = 0
+	usage.last_ctx_pct = 0
+	usage.peak_ctx_tokens = 0
+	usage.peak_ctx_pct = 0
+	usage.context_window = 0
+end
+
+-- Shared handler for /prompt and /sysprompt subcommands (list, set, clear, show).
+-- opts fields: label, dir_hint, usage, get_active, set_active, list_fn, load_fn, clear_msg, set_msg
+local function slash_prompt_handler(self, sub, args, opts)
+	if sub == "list" then
+		local prompts = opts.list_fn()
+		if #prompts == 0 then
+			write_info("No " .. opts.label .. "s found in " .. opts.dir_hint)
+		else
+			local lines = { opts.label:sub(1, 1):upper() .. opts.label:sub(2) .. "s:" }
+			local active = opts.get_active()
+			for _, name in ipairs(prompts) do
+				local marker = (name == active) and " *" or ""
+				lines[#lines + 1] = "  " .. name .. marker
+			end
+			return show_pager_or_error(lines)
+		end
+		return 0
+	end
+
+	if sub == "set" then
+		local name = args[2]
+		if not name then
+			write_error(opts.usage)
+			return 1
+		end
+		local content = opts.load_fn(name)
+		if not content then
+			write_error(opts.label:sub(1, 1):upper() .. opts.label:sub(2) .. " file not found: " .. name)
+			write_info("Use " .. opts.usage:match("^Usage: (%S+)") .. " list to see available " .. opts.label .. "s.")
+			return 1
+		end
+		opts.set_active(name)
+		self:update_prompt()
+		write_info(opts.set_msg .. name)
+		return 0
+	end
+
+	if sub == "clear" then
+		opts.set_active(nil)
+		self:update_prompt()
+		write_info(opts.clear_msg)
+		return 0
+	end
+
+	if sub == "show" then
+		local full_prompt = self:build_system_prompt()
+		local lines = {}
+		for line in full_prompt:gmatch("([^\n]*)\n?") do
+			lines[#lines + 1] = line
+		end
+		return show_pager_or_error(lines)
+	end
+
+	write_error("Unknown subcommand: " .. sub)
+	write_info(opts.usage)
+	return 1
+end
+
 slash_commands["/help"] = function(self, args)
-	local ok, err = show_pager({
+	return show_pager_or_error({
 		"Available commands:",
 		"  /help              - Show this help",
 		"  /clear             - Clear conversation history",
 		"  /model [name]      - Show or set current model",
 		"  /provider [name]   - Show or set current provider",
 		"  /provider refresh [name] - Refresh discovered model catalog",
-		"  /models            - List available providers/models",
+		"  /models            - List current provider models",
 		"  /tools             - List available tools",
 		"  /tokens            - Show token usage",
 		"  /cost              - Show session cost breakdown",
@@ -368,11 +556,16 @@ slash_commands["/help"] = function(self, args)
 		"  /load [name]       - Load conversation from file",
 		"  /list              - List saved conversations",
 		"  /conversation      - Show current conversation in markdown pager",
-		"  /prompt             - Show active user prompt info",
+		"  /prompt             - Show active user prompt + index context status",
 		"  /prompt list        - List available user prompts",
 		"  /prompt set <name>  - Activate a user prompt",
 		"  /prompt clear       - Deactivate user prompt",
 		"  /prompt show        - Show full assembled system prompt",
+		"  /sysprompt          - Show active system prompt info",
+		"  /sysprompt list     - List available custom system prompts",
+		"  /sysprompt set <n>  - Activate a custom system prompt",
+		"  /sysprompt clear    - Revert to default system prompt",
+		"  /sysprompt show     - Show full assembled system prompt",
 		"  /config            - Show current configuration",
 		"",
 		"Keybinds:",
@@ -381,15 +574,11 @@ slash_commands["/help"] = function(self, args)
 		"Tool approval options:",
 		"  Y/Enter - Execute the tool",
 		"  n       - Deny and stop (wait for next input)",
+		"  p       - Show edit diff preview in pager",
 		"  e       - Edit arguments in $EDITOR and execute",
 		"  m       - Deny with message (provide feedback)",
 		"  a       - Allow all (auto-approve this tool for session)",
 	})
-	if not ok then
-		write_error("Error: failed to open pager: " .. tostring(err))
-		return 1
-	end
-	return 0
 end
 
 slash_commands["/conversation"] = function(self, args)
@@ -400,7 +589,8 @@ slash_commands["/clear"] = function(self, args)
 	local system_prompt = self:build_system_prompt()
 	self.__state.conversation = conversation_mod.new(system_prompt)
 	self.__state.config:clear_session_approvals()
-	self.__state.session_usage = conversation_mod.new_cost()
+	-- Reset only per-conversation context tracking; preserve cumulative cost
+	reset_context_usage_tracking(self.__state.session_usage)
 	self:update_prompt()
 	write_info("Conversation cleared.")
 	return 0
@@ -477,44 +667,38 @@ slash_commands["/provider"] = function(self, args)
 end
 
 slash_commands["/models"] = function(self, args)
-	local lines = { "Available providers:" }
-	for _, name in ipairs(self.__state.config:list_providers()) do
-		local pc = self.__state.config:get_provider_config(name)
-		local marker = (name == self.__state.config:get_provider()) and " *" or ""
-		lines[#lines + 1] = "  "
-			.. name
-			.. marker
+	local provider_name = self.__state.config:get_provider()
+	local pc = self.__state.config:get_provider_config(provider_name)
+	local lines = {
+		"Current provider:",
+		"  "
+			.. tostring(provider_name or "not set")
 			.. " (kind: "
 			.. tostring(pc and pc.kind or "?")
 			.. ", default model: "
 			.. tostring(pc and pc.default_model or "?")
-			.. ")"
+			.. ")",
+	}
 
-		local models, models_err = self.__state.config:list_models_detailed(name)
-		if models_err then
-			lines[#lines + 1] = "    unavailable: " .. tostring(models_err)
-		elseif #models == 0 then
-			lines[#lines + 1] = "    (no discovered models)"
-		else
-			for _, model in ipairs(models) do
-				local loaded = model.loaded and " [loaded]" or ""
-				lines[#lines + 1] = "    "
-					.. model.name
-					.. loaded
-					.. " (ctx: "
-					.. tostring(model.context_window or "?")
-					.. ", "
-					.. model_price_label(model)
-					.. ")"
-			end
+	local models, models_err = self.__state.config:list_models_detailed(provider_name)
+	if models_err then
+		lines[#lines + 1] = "    unavailable: " .. tostring(models_err)
+	elseif #models == 0 then
+		lines[#lines + 1] = "    (no discovered models)"
+	else
+		for _, model in ipairs(models) do
+			local loaded = model.loaded and " [loaded]" or ""
+			lines[#lines + 1] = "    "
+				.. model.name
+				.. loaded
+				.. " (ctx: "
+				.. tostring(model.context_window or "?")
+				.. ", "
+				.. model_price_label(model)
+				.. ")"
 		end
 	end
-	local ok, err = show_pager(lines)
-	if not ok then
-		write_error("Error: failed to open pager: " .. tostring(err))
-		return 1
-	end
-	return 0
+	return show_pager_or_error(lines)
 end
 
 slash_commands["/tools"] = function(self, args)
@@ -539,12 +723,7 @@ slash_commands["/tools"] = function(self, args)
 			lines[#lines + 1] = "    " .. description
 		end
 	end
-	local ok, err = show_pager(lines)
-	if not ok then
-		write_error("Error: failed to open pager: " .. tostring(err))
-		return 1
-	end
-	return 0
+	return show_pager_or_error(lines)
 end
 
 slash_commands["/tokens"] = function(self, args)
@@ -571,22 +750,17 @@ slash_commands["/tokens"] = function(self, args)
 		"  Messages:      " .. tostring(self.__state.conversation:count()),
 	}
 
-	local ok, err = show_pager(lines)
-	if not ok then
-		write_error("Error: failed to open pager: " .. tostring(err))
-		return 1
-	end
-	return 0
+	return show_pager_or_error(lines)
 end
 
 slash_commands["/save"] = function(self, args)
-	local name = args and args[1]
-	if not name then
-		write_error("Usage: /save <name>")
-		return 1
-	end
+	local name = parse_conversation_name_arg(args)
 	local filepath, err = self.__state.conversation:save(name)
 	if not filepath then
+		if not name and tostring(err) == "conversation name required" then
+			write_error("Usage: /save <name>")
+			return 1
+		end
 		write_error("Error: " .. err)
 		return 1
 	end
@@ -595,27 +769,19 @@ slash_commands["/save"] = function(self, args)
 end
 
 slash_commands["/load"] = function(self, args)
-	local name = args and args[1]
+	local name = parse_conversation_name_arg(args)
 	if not name then
-		-- List available conversations
-		local convos = conversation_mod.list()
-		if #convos == 0 then
-			write_info("No saved conversations found.")
-		else
-			write_line("Saved conversations:")
-			for _, c in ipairs(convos) do
-				write_line("  " .. c.name .. " (" .. c.message_count .. " messages)")
-			end
-		end
-		return 0
+		return slash_commands["/list"](self, nil)
 	end
 	local ok, err = self.__state.conversation:load(name)
 	if not ok then
 		write_error("Error: " .. err)
 		return 1
 	end
+	reset_context_usage_tracking(self.__state.session_usage)
 	self:update_prompt()
-	write_info("Loaded conversation: " .. name .. " (" .. self.__state.conversation:count() .. " messages)")
+	local loaded_name = self.__state.conversation:get_name() or name
+	write_info("Loaded conversation: " .. loaded_name .. " (" .. self.__state.conversation:count() .. " messages)")
 	return 0
 end
 
@@ -631,12 +797,7 @@ slash_commands["/list"] = function(self, args)
 			lines[#lines + 1] = "  " .. c.name .. " (" .. c.message_count .. " msgs, " .. updated .. ")"
 		end
 	end
-	local ok, err = show_pager(lines)
-	if not ok then
-		write_error("Error: failed to open pager: " .. tostring(err))
-		return 1
-	end
-	return 0
+	return show_pager_or_error(lines)
 end
 
 slash_commands["/prompt"] = function(self, args)
@@ -657,78 +818,79 @@ slash_commands["/prompt"] = function(self, args)
 		end
 		local index_file = self.__state.config:get_index_file()
 		if index_file and index_file ~= "" then
-			local index_content = std.fs.read_file(index_file)
-			if index_content then
-				write_info("Index file: " .. index_file .. " (loaded)")
+			local resolved = resolve_index_context(self, index_file)
+			write_info("Index file: " .. index_file)
+			if resolved.git_lookup_performed then
+				write_info("  Git root lookup: refreshed")
 			else
-				write_info("Index file: " .. index_file .. " (not found in cwd)")
+				write_info("  Git root lookup: cache reused")
+			end
+			if resolved.in_git_repo and resolved.repo_root then
+				write_info("  Repo root: " .. resolved.repo_root)
+			else
+				write_info("  Repo root: (not in git repo)")
+			end
+			for _, check in ipairs(resolved.checks or {}) do
+				write_info(format_index_check_line(check))
 			end
 		end
 		return 0
 	end
 
-	if sub == "list" then
-		local prompts = config_mod.list_user_prompts()
-		if #prompts == 0 then
-			write_info("No user prompts found in ~/.config/lilush/agent/prompts/")
+	return slash_prompt_handler(self, sub, args, {
+		label = "user prompt",
+		dir_hint = "~/.config/lilush/agent/prompts/",
+		usage = "Usage: /prompt [list|set <name>|clear|show]",
+		get_active = function()
+			return self.__state.config:get_active_prompt()
+		end,
+		set_active = function(name)
+			self.__state.config:set_active_prompt(name)
+		end,
+		list_fn = config_mod.list_user_prompts,
+		load_fn = config_mod.load_user_prompt,
+		clear_msg = "User prompt deactivated.",
+		set_msg = "Active prompt set to: ",
+	})
+end
+
+slash_commands["/sysprompt"] = function(self, args)
+	local sub = args and args[1]
+
+	if not sub then
+		local active = self.__state.config:get_system_prompt()
+		if active then
+			local content = config_mod.load_system_prompt(active)
+			if content then
+				local has_env = content:match("{{%s*ENV%s*}}") and true or false
+				local has_tools = content:match("{{%s*TOOLS%s*}}") and true or false
+				write_info("Active system prompt: " .. active)
+				write_info("  {{ ENV }}:   " .. (has_env and "detected" or "not found"))
+				write_info("  {{ TOOLS }}: " .. (has_tools and "detected" or "not found"))
+			else
+				write_error("Active system prompt: " .. active .. " (file not found)")
+			end
 		else
-			local lines = { "User prompts:" }
-			local active = self.__state.config:get_active_prompt()
-			for _, name in ipairs(prompts) do
-				local marker = (name == active) and " *" or ""
-				lines[#lines + 1] = "  " .. name .. marker
-			end
-			local ok, err = show_pager(lines)
-			if not ok then
-				write_error("Error: failed to open pager: " .. tostring(err))
-				return 1
-			end
+			write_info("Using default system prompt.")
 		end
 		return 0
 	end
 
-	if sub == "set" then
-		local name = args[2]
-		if not name then
-			write_error("Usage: /prompt set <name>")
-			return 1
-		end
-		local content = config_mod.load_user_prompt(name)
-		if not content then
-			write_error("Prompt file not found: " .. name)
-			write_info("Use /prompt list to see available prompts.")
-			return 1
-		end
-		self.__state.config:set_active_prompt(name)
-		self:update_prompt()
-		write_info("Active prompt set to: " .. name)
-		return 0
-	end
-
-	if sub == "clear" then
-		self.__state.config:set_active_prompt(nil)
-		self:update_prompt()
-		write_info("User prompt deactivated.")
-		return 0
-	end
-
-	if sub == "show" then
-		local full_prompt = self:build_system_prompt()
-		local lines = {}
-		for line in full_prompt:gmatch("([^\n]*)\n?") do
-			lines[#lines + 1] = line
-		end
-		local ok, err = show_pager(lines)
-		if not ok then
-			write_error("Error: failed to open pager: " .. tostring(err))
-			return 1
-		end
-		return 0
-	end
-
-	write_error("Unknown subcommand: " .. sub)
-	write_info("Usage: /prompt [list|set <name>|clear|show]")
-	return 1
+	return slash_prompt_handler(self, sub, args, {
+		label = "system prompt",
+		dir_hint = "~/.config/lilush/agent/system_prompts/",
+		usage = "Usage: /sysprompt [list|set <name>|clear|show]",
+		get_active = function()
+			return self.__state.config:get_system_prompt()
+		end,
+		set_active = function(name)
+			self.__state.config:set_system_prompt(name)
+		end,
+		list_fn = config_mod.list_system_prompts,
+		load_fn = config_mod.load_system_prompt,
+		clear_msg = "System prompt reverted to default.",
+		set_msg = "System prompt set to: ",
+	})
 end
 
 slash_commands["/config"] = function(self, args)
@@ -742,6 +904,7 @@ slash_commands["/config"] = function(self, args)
 	local provider_name = self.__state.config:get_provider()
 	local provider_cfg = self.__state.config:get_provider_config(provider_name)
 	local sampler = self.__state.config:get_sampler()
+	local system_prompt_name = self.__state.config:get_system_prompt() or "(default)"
 	local active_prompt = self.__state.config:get_active_prompt() or "(none)"
 	local index_file = self.__state.config:get_index_file() or "(none)"
 	local lines = {
@@ -754,15 +917,11 @@ slash_commands["/config"] = function(self, args)
 		"  Model pricing:   " .. model_price_label(resolved),
 		"  Temperature:     " .. tostring(sampler.temperature or "default"),
 		"  Max new tokens:  " .. tostring(sampler.max_new_tokens or "default"),
+		"  System prompt:   " .. system_prompt_name,
 		"  Active prompt:   " .. active_prompt,
 		"  Index file:      " .. index_file,
 	}
-	local ok, err = show_pager(lines)
-	if not ok then
-		write_error("Error: failed to open pager: " .. tostring(err))
-		return 1
-	end
-	return 0
+	return show_pager_or_error(lines)
 end
 
 slash_commands["/cost"] = function(self, args)
@@ -790,13 +949,7 @@ slash_commands["/cost"] = function(self, args)
 		lines[#lines + 1] = "  (Model pricing: " .. model_price_label(model_info) .. ")"
 	end
 
-	local ok, err = show_pager(lines)
-	if not ok then
-		write_error("Error: failed to open pager: " .. tostring(err))
-		return 1
-	end
-
-	return 0
+	return show_pager_or_error(lines)
 end
 
 -- Parse slash command from input
@@ -821,14 +974,14 @@ local function init_client(self)
 		return nil, "unknown provider: " .. tostring(provider)
 	end
 
-	local model_info, resolve_err = self.__state.config:resolve_model(model, provider)
-	if not model_info then
-		return nil, resolve_err
-	end
-
 	local discovered, discover_err = self.__state.config:discover_provider_models(provider)
 	if not discovered then
 		return nil, discover_err
+	end
+
+	local model_info, resolve_err = self.__state.config:resolve_model(model, provider)
+	if not model_info then
+		return nil, resolve_err
 	end
 
 	local api_key_env = provider_config.api_key_env
@@ -930,6 +1083,9 @@ local update_completion_context = function(self)
 		list_prompts = function()
 			return config_mod.list_user_prompts()
 		end,
+		list_system_prompts = function()
+			return config_mod.list_system_prompts()
+		end,
 		list_saved_conversations = function()
 			local entries = conversation_mod.list()
 			local names = {}
@@ -959,29 +1115,54 @@ local function on_tool_call(self, call, index, response)
 		args = json.decode(args) or {}
 	end
 	local needs_approval = self.__state.config:tool_needs_approval(tool_name)
+	local sticky = (tool_name == "edit")
 
 	-- Display tool being called
 	local detail = tool_call_detail(tool_name, args)
 	local lines_written = write_tool(tool_name, detail)
+	local edit_preview = nil
+
+	if tool_name == "edit" then
+		local preview, preview_err = edit_diff_preview_mod.build(args)
+		if preview then
+			edit_preview = preview
+			lines_written = lines_written + write_edit_diff_preview(preview)
+		elseif preview_err then
+			lines_written = lines_written + write_tool_warning("diff preview unavailable: " .. tostring(preview_err))
+		end
+	end
+
+	-- Force approval for potentially destructive bash commands regardless of auto-approve
+	if not needs_approval and tool_name == "bash" then
+		local bash_tool = self.__state.tools.get("bash")
+		if bash_tool and bash_tool.check_command then
+			local danger = bash_tool.check_command(args.command)
+			if danger then
+				needs_approval = true
+				lines_written = lines_written + write_tool_warning("potentially destructive: " .. danger)
+			end
+		end
+	end
 
 	-- Check if approval is needed
 	if not needs_approval then
 		return {
 			action = "allow",
 			display_lines = lines_written,
+			sticky = sticky,
 		}
 	end
 
 	-- Ask for approval
-	local decision = ask_approval(tool_name, args)
-	-- ask_approval() writes a prompt and waits for Enter, which occupies one terminal line.
-	lines_written = lines_written + 1
+	local decision, approval_lines = ask_approval(tool_name, args, edit_preview)
+	lines_written = lines_written + (tonumber(approval_lines) or 0)
 
 	if decision == "abort" then
 		return {
-			action = "deny",
+			action = "abort",
 			error = "user aborted the tool call",
 			display_lines = lines_written,
+			sticky = sticky,
 		}
 	elseif type(decision) == "table" and decision.edit_args then
 		local modified_call = {
@@ -1000,24 +1181,29 @@ local function on_tool_call(self, call, index, response)
 			action = "modify",
 			call = modified_call,
 			display_lines = lines_written,
+			sticky = sticky,
 		}
 	elseif type(decision) == "table" and decision.abort_message then
 		return {
-			action = "deny",
+			action = "abort",
+			message = decision.abort_message,
 			error = decision.abort_message,
 			display_lines = lines_written,
+			sticky = sticky,
 		}
 	elseif decision == "always" then
 		self.__state.config:set_session_approval(tool_name, "auto")
 		return {
 			action = "allow",
 			display_lines = lines_written,
+			sticky = sticky,
 		}
 	else
 		-- "yes" or any other input = allow
 		return {
 			action = "allow",
 			display_lines = lines_written,
+			sticky = sticky,
 		}
 	end
 end
@@ -1053,6 +1239,10 @@ local function format_tool_summary(call, result, is_error)
 		return path .. " (" .. #content .. " bytes)"
 	elseif name == "edit" then
 		local path = result.filepath or "?"
+		local line = tonumber(result.line)
+		if line then
+			return path .. " line " .. tostring(line) .. " ok"
+		end
 		return path .. " ok"
 	elseif name == "write" then
 		local path = result.filepath or "?"
@@ -1122,9 +1312,24 @@ local function process_response(self, user_input)
 		local seen_tool_responses = {}
 		local modified_calls_by_id = {}
 		local tool_render_state = {
-			lines = 0,
+			transient_lines = 0,
+			sticky_lines = 0,
 			chain_active = false,
 		}
+
+		local add_tool_render_lines = function(lines, sticky)
+			lines = tonumber(lines) or 0
+			if lines <= 0 then
+				return
+			end
+			if sticky then
+				tool_render_state.sticky_lines = (tool_render_state.sticky_lines or 0) + lines
+			else
+				tool_render_state.transient_lines = (tool_render_state.transient_lines or 0) + lines
+			end
+			tool_render_state.chain_active = true
+		end
+
 		local thinking_indicator = nil
 
 		local append_tool_assistant_trace = function(response)
@@ -1170,17 +1375,17 @@ local function process_response(self, user_input)
 			if had_stream_output then
 				-- Keep visual separation when assistant text was emitted before the call.
 				write_line("")
-				tool_render_state.lines = 0
+				tool_render_state.transient_lines = 0
+				tool_render_state.sticky_lines = 0
 				tool_render_state.chain_active = false
-			elseif tool_render_state.chain_active and tool_render_state.lines > 0 then
-				clear_previous_tool_output(tool_render_state.lines)
-				tool_render_state.lines = 0
+			elseif tool_render_state.chain_active and tool_render_state.transient_lines > 0 then
+				clear_previous_tool_output(tool_render_state.transient_lines)
+				tool_render_state.transient_lines = 0
 			end
 
 			local result = on_tool_call(self, call, index, response)
 			result = result or { action = "allow", display_lines = 0 }
-			tool_render_state.lines = tonumber(result.display_lines) or 0
-			tool_render_state.chain_active = true
+			add_tool_render_lines(result.display_lines, result.sticky == true)
 
 			-- Show tool result summary
 			if result.action == "allow" then
@@ -1192,9 +1397,11 @@ local function process_response(self, user_input)
 					name = llm_tools.normalize_tool_name(result.call),
 					arguments = llm_tools.normalize_tool_args(result.call),
 				}
-			elseif result.action == "deny" then
-				tool_render_state.lines = tool_render_state.lines
-					+ write_tool_result("denied: " .. (result.error or "user denied"))
+			elseif result.action == "deny" or result.action == "abort" then
+				add_tool_render_lines(
+					write_tool_result("denied: " .. (result.error or "user denied")),
+					result.sticky == true
+				)
 			end
 			return result
 		end
@@ -1209,11 +1416,10 @@ local function process_response(self, user_input)
 			tool_trace[#tool_trace + 1] = {
 				role = "tool",
 				tool_call_id = call_id,
-				content = encoded_result or "",
+				content = encoded_result,
 			}
 			local lines_written = on_tool_result(self, call, result, is_error)
-			tool_render_state.lines = (tool_render_state.lines or 0) + (tonumber(lines_written) or 0)
-			tool_render_state.chain_active = true
+			add_tool_render_lines(lines_written, llm_tools.normalize_tool_name(call) == "edit")
 		end
 
 		local persist_tool_trace = function()
@@ -1266,7 +1472,8 @@ local function process_response(self, user_input)
 				if had_stream_output then
 					write_line("")
 				end
-				tool_render_state.lines = 0
+				tool_render_state.transient_lines = 0
+				tool_render_state.sticky_lines = 0
 				tool_render_state.chain_active = false
 				write_info("Warning: " .. tostring(message))
 			end,
@@ -1280,6 +1487,14 @@ local function process_response(self, user_input)
 						if thinking_indicator then
 							clear_thinking_indicator(thinking_indicator)
 							thinking_indicator = nil
+						end
+						if (tool_render_state.sticky_lines or 0) > 0 then
+							local lines_to_clear = (tool_render_state.sticky_lines or 0)
+								+ (tool_render_state.transient_lines or 0)
+							clear_previous_tool_output(lines_to_clear)
+							tool_render_state.sticky_lines = 0
+							tool_render_state.transient_lines = 0
+							tool_render_state.chain_active = false
 						end
 						stream:push(chunk.text)
 					end
@@ -1337,16 +1552,26 @@ local function process_response(self, user_input)
 		end
 
 		-- Track usage and cost
-		local input_tokens = (resp.ctx or 0) - (resp.tokens or 0)
-		if input_tokens < 0 then
-			input_tokens = 0
+		-- Use cumulative usage from tool loop for session accounting (captures all
+		-- intermediate API calls), but keep resp.ctx for context window display.
+		local cu = resp.cumulative_usage
+		local input_tokens, output_tokens
+		if cu then
+			input_tokens = cu.input_tokens
+			output_tokens = cu.output_tokens
+		else
+			input_tokens = (resp.ctx or 0) - (resp.tokens or 0)
+			if input_tokens < 0 then
+				input_tokens = 0
+			end
+			output_tokens = resp.tokens or 0
 		end
-		local output_tokens = resp.tokens or 0
+		local ctx_tokens = resp.ctx or 0
 		local usage_args = {
 			input_tokens,
 			output_tokens,
 			0,
-			resp.ctx or 0,
+			ctx_tokens,
 			model_info.context_window,
 			model_info.prompt_price,
 			model_info.completion_price,
@@ -1397,8 +1622,10 @@ local function process_response(self, user_input)
 				return 0
 			end
 		else
-			-- Normal completion: add assistant response and finish
-			self.__state.conversation:add_assistant(resp.text, resp.tool_calls)
+			-- Normal completion: add final assistant response (tool trace already persisted above)
+			if #tool_trace == 0 then
+				self.__state.conversation:add_assistant(resp.text, resp.tool_calls)
+			end
 
 			-- Add trailing newline if there was content
 			if resp.text and #resp.text > 0 then
@@ -1413,15 +1640,25 @@ local function process_response(self, user_input)
 	end
 end
 
--- Build the full system prompt from default + user prompt + INDEX.md
+-- Build the full system prompt from default + user prompt + project context
 local function build_system_prompt(self)
 	local active_prompt = self.__state.config:get_active_prompt()
 	local user_prompt_content = config_mod.load_user_prompt(active_prompt)
 	local index_file = self.__state.config:get_index_file()
 	local index_content = nil
 	if index_file and index_file ~= "" then
-		index_content = std.fs.read_file(index_file)
+		local resolved = resolve_index_context(self, index_file)
+		index_content = resolved and resolved.index_content or nil
 	end
+
+	local custom_name = self.__state.config:get_system_prompt()
+	if custom_name then
+		local custom_template = config_mod.load_system_prompt(custom_name)
+		if custom_template then
+			return system_prompt_mod.assemble_custom(custom_template, user_prompt_content, index_content)
+		end
+	end
+
 	return system_prompt_mod.assemble(user_prompt_content, index_content)
 end
 
@@ -1500,6 +1737,11 @@ local function new(input_obj, config)
 			tools = llm_tools,
 			endpoint = nil,
 			model_info = nil,
+			index_ctx_cache = {
+				repo_root = nil,
+				in_git_repo = false,
+				last_cwd = nil,
+			},
 		},
 
 		-- Methods

@@ -115,6 +115,14 @@ local prompts = function(self, prefix)
 	return filter_prefix(provider_result(self, "list_prompts"), prefix)
 end
 
+local sysprompt_subcommands = function(self, prefix)
+	return filter_prefix(normalize_list(self.cfg.sysprompt_subcommands), prefix)
+end
+
+local system_prompts = function(self, prefix)
+	return filter_prefix(provider_result(self, "list_system_prompts"), prefix)
+end
+
 local saved_conversations = function(self, prefix)
 	return filter_prefix(provider_result(self, "list_saved_conversations"), prefix)
 end
@@ -123,6 +131,7 @@ local new = function(config)
 	local cfg = {
 		default_commands = {},
 		prompt_subcommands = { "clear", "list", "set", "show" },
+		sysprompt_subcommands = { "clear", "list", "set", "show" },
 	}
 	if config then
 		std.tbl.merge(cfg, config)
@@ -140,6 +149,8 @@ local new = function(config)
 		models = models,
 		prompt_subcommands = prompt_subcommands,
 		prompts = prompts,
+		sysprompt_subcommands = sysprompt_subcommands,
+		system_prompts = system_prompts,
 		saved_conversations = saved_conversations,
 	}
 end

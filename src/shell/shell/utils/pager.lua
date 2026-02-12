@@ -545,7 +545,7 @@ local pager_line_up = function(self)
 end
 
 local pager_line_down = function(self)
-	if self.__state.top_line + self.__state.window.capacity < #self.content.lines then
+	if self.__state.top_line + self.__state.window.capacity <= #self.content.lines then
 		self.__state.top_line = self.__state.top_line + 1
 		self.__state.navigation.focused_idx = 0
 		self:display()
@@ -563,8 +563,12 @@ end
 
 local pager_page_down = function(self)
 	self.__state.top_line = self.__state.top_line + self.__state.window.capacity
-	if self.__state.top_line > #self.content.lines - self.__state.window.capacity then
-		self.__state.top_line = #self.content.lines - self.__state.window.capacity
+	local max_top = #self.content.lines - self.__state.window.capacity + 1
+	if max_top < 1 then
+		max_top = 1
+	end
+	if self.__state.top_line > max_top then
+		self.__state.top_line = max_top
 	end
 	self.__state.navigation.focused_idx = 0
 	self:display()
@@ -579,7 +583,7 @@ end
 local pager_bottom_line = function(self)
 	local position = 1
 	if #self.content.lines > self.__state.window.capacity then
-		position = #self.content.lines - self.__state.window.capacity
+		position = #self.content.lines - self.__state.window.capacity + 1
 	end
 	self.__state.top_line = position
 	self.__state.navigation.focused_idx = 0

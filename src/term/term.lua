@@ -51,7 +51,14 @@ local MOVEMENTS = {
 
 local move = function(direction, count)
 	if MOVEMENTS[direction] then
-		local count = count or 1
+		if count == nil then
+			count = 1
+		else
+			count = math.floor(tonumber(count) or 0)
+			if count <= 0 then
+				return
+			end
+		end
 		local move = MOVEMENTS[direction]:gsub("{count}", count)
 		io.write(move)
 		io.flush()

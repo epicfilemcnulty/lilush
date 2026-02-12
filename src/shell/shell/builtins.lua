@@ -8,6 +8,7 @@ local widgets = require("term.widgets")
 local json = require("cjson.safe")
 local utils = require("shell.utils")
 local messages = require("shell.messages")
+local tty = require("shell.tty")
 local dig = require("dns.dig")
 local theme = require("theme").get("shell")
 local storage = require("shell.store")
@@ -556,11 +557,9 @@ local job = function(cmd, args, jobs)
 	end
 
 	if parsed.__sub == "attach" then
-		term.disable_kkbp()
-		term.disable_bracketed_paste()
-		term.set_raw_mode()
-		local ok, err = jobs:attach(parsed.__args.id)
-		term.set_sane_mode()
+		local ok, err = tty.run_in_raw_passthrough_mode(function()
+			return jobs:attach(parsed.__args.id)
+		end)
 		if not ok then
 			errmsg(err)
 			return 127

@@ -80,33 +80,6 @@ local parse_tool_result = function(content)
 	return nil
 end
 
-local summarize_value = function(value, max_len)
-	if value == nil then
-		return ""
-	end
-	if type(value) == "string" then
-		return compact_text(value, max_len)
-	end
-	if type(value) == "number" or type(value) == "boolean" then
-		return tostring(value)
-	end
-	if type(value) == "table" then
-		local encoded = json.encode(value)
-		if encoded then
-			return compact_text(encoded, max_len)
-		end
-	end
-	return compact_text(tostring(value), max_len)
-end
-
-local add_info = function(lines, key, value, max_len)
-	local formatted = summarize_value(value, max_len)
-	if formatted == "" then
-		return
-	end
-	lines[#lines + 1] = key .. ": " .. formatted
-end
-
 local table_cell_text = function(value)
 	local text = normalize_text(value)
 	text = text:gsub("[\r\n]+", " ")
@@ -209,26 +182,6 @@ local compact_result_builders = {
 	end,
 	web_search = compact_web_search_result,
 }
-
-local tool_response_summary = function(entry, summary_max)
-	local result = entry.result
-	if type(result) == "table" then
-		local name = entry.name
-		if (not name or name == "unknown") and type(result.name) == "string" and result.name ~= "" then
-			name = result.name
-		end
-		local builder = compact_result_builders[name] or compact_unknown_result
-		local compact_result = builder(result)
-		local encoded = json.encode(compact_result)
-		if encoded and encoded ~= "" then
-			return compact_text(encoded, summary_max)
-		end
-	end
-	if entry.result_raw and entry.result_raw ~= "" then
-		return compact_text(entry.result_raw, summary_max)
-	end
-	return "null"
-end
 
 local render_tools_table = function(tool_entries, summary_max)
 	if not tool_entries or #tool_entries == 0 then

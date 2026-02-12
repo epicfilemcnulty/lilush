@@ -24,7 +24,8 @@ All fields are optional. Unset fields fall back to built-in defaults.
 | `sampler` | object | _(see below)_ | Sampler settings |
 | `tools` | object | _(see below)_ | Per-tool approval settings |
 | `active_prompt` | string\|null | `null` | Active user prompt filename |
-| `index_file` | string | `"INDEX.md"` | Project context file loaded from cwd |
+| `system_prompt` | string\|null | `null` | Active custom system prompt filename |
+| `index_file` | string\|null | `null` | Project context filename resolved from git repo root + cwd |
 | `max_tool_steps` | number | `100` | Max tool call iterations per request |
 
 ### Provider Entry
@@ -53,7 +54,7 @@ Each key in `tools` is a tool name with an object containing `approval`:
 | `"ask"` | Prompt before execution |
 | `"auto"` | Execute without prompting |
 
-Defaults: `bash`, `write`, `edit` → `"ask"`; `read`, `web_search`, `fetch_webpage` → `"auto"`.
+Defaults: `bash`, `write`, `edit` → `"ask"`; `read` → `"auto"`. Tools not listed in config default to `"auto"`.
 
 ### Default Config
 
@@ -76,11 +77,8 @@ Defaults: `bash`, `write`, `edit` → `"ask"`; `read`, `web_search`, `fetch_webp
     "bash":          { "approval": "ask" },
     "write":         { "approval": "ask" },
     "edit":          { "approval": "ask" },
-    "read":          { "approval": "auto" },
-    "web_search":    { "approval": "auto" },
-    "fetch_webpage": { "approval": "auto" }
+    "read":          { "approval": "auto" }
   },
-  "index_file": "INDEX.md",
   "max_tool_steps": 100
 }
 ```
@@ -164,7 +162,7 @@ When a tool has `approval: "ask"`, the agent displays:
 
 ```
 [tool_name] detail
-[tool_name] Execute? [Y/n/e/m/a]
+[tool_name] Execute? [Y/n/p/e/m/a]
 ```
 
 Actions:
@@ -173,11 +171,17 @@ Actions:
 |-----|--------|
 | `Y` / Enter | Execute the tool call |
 | `n` | Deny — stop the tool loop, wait for next input |
+| `p` | Open edit diff preview in pager (when available) |
 | `e` | Edit arguments in `$EDITOR`, then execute with modified args |
 | `m` | Deny with message — provide feedback that continues the conversation |
 | `a` | Auto-approve this tool for the rest of the session |
 
 Session overrides from `a` are cleared on `/clear`.
+
+For `edit` calls, Agent Smith renders a unified diff-style preview before
+approval (or before execution when `approval: "auto"`). Inline preview is
+bounded to 20 changed lines and 4096 bytes. Larger edits show a compact
+summary with a `p` hint for full diff in pager.
 
 ## Slash Commands
 
@@ -188,7 +192,7 @@ Session overrides from `a` are cleared on `/clear`.
 | `/model [name] [provider]` | Show or set current model (optionally on a different provider) |
 | `/provider [name]` | Show or set current provider |
 | `/provider refresh [name]` | Refresh discovered model catalog for a provider |
-| `/models` | List all providers and their discovered models with pricing/context info |
+| `/models` | List the current provider and its discovered models with pricing/context info |
 | `/tools` | List available tools with their approval settings |
 | `/tokens` | Show token usage (session total, last/peak context) |
 | `/cost` | Show session cost breakdown (requests, tokens, total cost) |
@@ -196,11 +200,16 @@ Session overrides from `a` are cleared on `/clear`.
 | `/load [name]` | Load conversation from file (no arg lists saved conversations) |
 | `/list` | List saved conversations with message counts and timestamps |
 | `/conversation` | Show current conversation in a markdown pager |
-| `/prompt` | Show active user prompt and index file status |
+| `/prompt` | Show active user prompt and detailed index file resolution status |
 | `/prompt list` | List available user prompts |
 | `/prompt set <name>` | Activate a user prompt |
 | `/prompt clear` | Deactivate user prompt |
 | `/prompt show` | Show the full assembled system prompt in a pager |
+| `/sysprompt` | Show active custom system prompt info and detected placeholders |
+| `/sysprompt list` | List available custom system prompts |
+| `/sysprompt set <name>` | Activate a custom system prompt |
+| `/sysprompt clear` | Revert to default system prompt |
+| `/sysprompt show` | Show the full assembled system prompt in a pager |
 | `/config` | Show current configuration (provider, model, pricing, sampler, prompt) |
 
 All slash commands support tab completion.
@@ -220,7 +229,7 @@ The system prompt is assembled fresh on every turn from these components:
 3. **Tools section** — descriptions of all available tools
 4. **Guidelines** — behavioral guidelines for the agent
 5. **User prompt** (optional) — loaded from `~/.config/lilush/agent/prompts/<name>` when `active_prompt` is set
-6. **Project context** (optional) — contents of `INDEX.md` (or the file specified by `index_file`) in the current working directory
+6. **Project context** (optional) — contents resolved from the file specified by `index_file` at git repo root and/or cwd
 
 ### User Prompts
 
@@ -234,12 +243,46 @@ Store prompt files in `~/.config/lilush/agent/prompts/`. Manage with:
 The active prompt persists across `/clear` but is not saved to config until
 the next config save.
 
+### Custom System Prompts
+
+When the default system prompt doesn't suit a model or your intentions,
+you can replace it entirely.
+
+Store custom system prompt files in `~/.config/lilush/agent/system_prompts/`.
+The file contents are treated as a template with optional placeholders:
+
+- `{{ ENV }}` — expanded to the environment block (OS, time, cwd)
+- `{{ TOOLS }}` — expanded to the tools descriptions + guidelines block
+
+Whitespace inside braces is tolerated (`{{ENV}}`, `{{ ENV }}`, etc.).
+If neither placeholder is present, the template is used verbatim.
+User instructions (`active_prompt`) and project context are
+still appended after the custom prompt, same as with the default.
+
+Manage with:
+
+- `/sysprompt list` — list available system prompts
+- `/sysprompt set <name>` — activate a custom system prompt
+- `/sysprompt clear` — revert to default
+- `/sysprompt show` — view the full assembled prompt
+
 ### Project Context
 
-Place an `INDEX.md` (or custom filename via `index_file` config) in your project
-root. Its contents are appended to the system prompt under a `## Project Context`
-heading. Use this to give the agent project-specific instructions, file layout,
-conventions, etc.
+Set `index_file` in your `~/.config/lilush/agent.json` to a filename (e.g. `AGENTS.md`).
+On each prompt build, Agent Smith resolves context in this order:
+
+1. Detect git repo root using `git rev-parse --show-toplevel` with a cache:
+   - if cwd is still inside the cached repo root, the cache is reused and git command is skipped
+   - if cwd moved outside cached repo root (or cache is empty), git root is re-detected
+2. If inside a git repo, check `<repo-root>/<index_file>` first
+3. Check `<cwd>/<index_file>` second
+4. Include both when both exist (root first, then cwd), deduplicating identical paths
+
+When not in a git repo, only `<cwd>/<index_file>` is checked. Agent Smith does not
+walk up the directory tree.
+
+Included files are appended under `## Project Context` with per-file provenance headers.
+Use this to provide repository-level and directory-local instructions, file layout, conventions, etc.
 
 ## Conversation Management
 
@@ -310,7 +353,7 @@ reasoning tokens before visible output begins.
 The agent prompt displays:
 
 ```
-[Smith:model] ~/path 1.2k 45% $0.03 ▸
+[Smith:model] ~/path (1.2k 45% $0.03) ▸
 ```
 
 Components:
@@ -343,9 +386,12 @@ input prompt.
 | `src/agent/agent/config.lua` | Configuration management |
 | `src/agent/agent/conversation.lua` | Conversation history and cost tracking |
 | `src/agent/agent/conversation_markdown.lua` | Markdown formatter for pager |
+| `src/agent/agent/edit_diff_preview.lua` | Bounded edit diff preview builder |
 | `src/agent/agent/stream.lua` | Streaming markdown bridge |
 | `src/agent/agent/system_prompt.lua` | System prompt assembly |
+| `src/agent/agent/index_context.lua` | Project context resolution with git repo detection |
 | `src/agent/agent/mode/agent.prompt.lua` | Prompt display |
 | `src/agent/agent/completion/slash.lua` | Slash command tab completion |
+| `src/agent/agent/completion/source/slash.lua` | Completion data source for slash commands |
 | `src/llm/llm/tools.lua` | Tool registry and execution |
 | `src/llm/llm/tools/*.lua` | Individual tool implementations |

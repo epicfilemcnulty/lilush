@@ -9,6 +9,83 @@ local TOOL_NAME = "bash"
 -- Maximum output size to prevent context overflow
 local MAX_OUTPUT_CHARS = 10000
 
+-- Patterns for potentially destructive commands.
+-- Each entry: { lua_pattern_check_function, reason_string }
+-- Checked against whitespace-normalized, lowercased command.
+local DANGER_PATTERNS = {
+	{
+		function(cmd)
+			return cmd:find("rm%s") and (cmd:find("%-r") or cmd:find("%-%-recursive"))
+		end,
+		"recursive delete",
+	},
+	{
+		function(cmd)
+			return cmd:find("mkfs")
+		end,
+		"filesystem format",
+	},
+	{
+		function(cmd)
+			return cmd:find("dd%s") and cmd:find("of=")
+		end,
+		"raw disk write",
+	},
+	{
+		function(cmd)
+			return cmd:find(">%s*/dev/sd.*")
+				or cmd:find(">%s*/dev/nvme.*")
+				or cmd:find(">%s*/dev/hd.*")
+				or cmd:find(">%s*/dev/mmcblk.*")
+		end,
+		"device write",
+	},
+	{
+		function(cmd)
+			return cmd:find("git%s+push") and (cmd:find("%-%-force") or cmd:find("%s%-f") or cmd:find("^%-f"))
+		end,
+		"git force push",
+	},
+	{
+		function(cmd)
+			return cmd:find("git%s+reset") and cmd:find("%-%-hard")
+		end,
+		"git hard reset",
+	},
+	{
+		function(cmd)
+			return cmd:find("git%s+clean") and (cmd:find("%-f") or cmd:find("%-%-force"))
+		end,
+		"git force clean",
+	},
+	{
+		function(cmd)
+			return cmd:find(":%(%)") and cmd:find(":|:")
+		end,
+		"fork bomb",
+	},
+	{
+		function(cmd)
+			return cmd:find("%f[%w]shutdown%f[%W]") or cmd:find("%f[%w]reboot%f[%W]")
+		end,
+		"system shutdown/reboot",
+	},
+}
+
+-- Returns nil if command looks safe, or a reason string if potentially destructive.
+local function check_command(command)
+	if type(command) ~= "string" or command == "" then
+		return nil
+	end
+	local normalized = command:lower():gsub("%s+", " ")
+	for _, entry in ipairs(DANGER_PATTERNS) do
+		if entry[1](normalized) then
+			return entry[2]
+		end
+	end
+	return nil
+end
+
 -- Truncate string to max length, returning truncated flag
 -- Uses UTF-8-aware length/substring for proper character handling
 -- Returns byte count for total size (useful for debugging)
@@ -106,4 +183,5 @@ return {
 
 		return response
 	end,
+	check_command = check_command,
 }

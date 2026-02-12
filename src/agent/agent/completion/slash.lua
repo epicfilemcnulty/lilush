@@ -6,8 +6,12 @@ local std = require("std")
 
 local split_tokens = function(input)
 	local tokens = {}
-	for token in tostring(input or ""):gmatch("%S+") do
+	local value = tostring(input or "")
+	for token in value:gmatch("%S+") do
 		tokens[#tokens + 1] = token
+	end
+	if value:match("%s+$") then
+		tokens[#tokens + 1] = ""
 	end
 	return tokens
 end
@@ -83,7 +87,20 @@ local select_candidates = function(source, tokens)
 		end
 	end
 
+	if command == "/sysprompt" then
+		if args_count == 1 then
+			return source:sysprompt_subcommands(args[1]), args[1]
+		end
+		if args_count == 2 and args[1] == "set" then
+			return source:system_prompts(args[2]), args[2]
+		end
+	end
+
 	if command == "/load" and args_count == 1 then
+		return source:saved_conversations(args[1]), args[1]
+	end
+
+	if command == "/save" and args_count == 1 then
 		return source:saved_conversations(args[1]), args[1]
 	end
 

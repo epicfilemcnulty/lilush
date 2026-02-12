@@ -45,7 +45,7 @@ The shell (`src/shell/shell.lua`) is a **mode-based** system:
 2. **Mode System** - Extensible modes with their own prompts/completions/behaviors
 
    - Default mode: `shell.mode.shell` (standard shell)
-   - Built-in modes are always present: `shell` (`F1`), `lua` (`F2`), `agent` (`F3`)
+   - Built-in modes are always present: `shell` (`F1`), `Lua REPL` (`F2`), `Agent Smith` (`F3`)
    - Modes configured in `~/.config/lilush/modes/*.json`
    - User modes are additive; reserved built-ins/shortcuts (`F1..F3`) are not overridable
    - Each mode has: prompt, completion system, history, key combos

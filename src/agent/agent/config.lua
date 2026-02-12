@@ -39,11 +39,10 @@ local defaults = {
 			approval = "ask",
 		},
 		read = { approval = "auto" },
-		web_search = { approval = "auto" },
-		fetch_webpage = { approval = "auto" },
 	},
 	active_prompt = nil,
-	index_file = "INDEX.md",
+	system_prompt = nil,
+	index_file = nil,
 	max_tool_steps = 100,
 }
 
@@ -88,7 +87,7 @@ local normalize_provider_cfg = function(provider_name, provider_cfg)
 end
 
 local resolve_provider_api_url = function(provider_name, provider_cfg)
-	local configured = trim_trailing_slash(provider_cfg and provider_cfg.url)
+	local configured = provider_cfg and provider_cfg.url
 	if configured and configured ~= "" then
 		return configured
 	end
@@ -124,8 +123,6 @@ local provider_auth_headers = function(provider_name, provider_cfg)
 
 	if type(key_env) == "string" and key_env ~= "" then
 		key = os.getenv(key_env)
-	elseif provider_name == "openrouter" and provider_cfg and provider_cfg.kind == "openrouter" then
-		key = os.getenv("OPENROUTER_API_KEY")
 	end
 
 	if key and key ~= "" then
@@ -305,11 +302,6 @@ local fetch_provider_models = function(provider_name, provider_cfg)
 		return tostring(a.name) < tostring(b.name)
 	end)
 
-	by_name = {}
-	for _, descriptor in ipairs(ordered) do
-		by_name[descriptor.name] = descriptor
-	end
-
 	local default_model = provider_cfg.default_model
 	if not by_name[default_model] then
 		return nil,
@@ -354,14 +346,6 @@ local validate_provider_cfg = function(provider_name, provider_cfg)
 	if type(provider_cfg) ~= "table" then
 		return nil, "provider `" .. tostring(provider_name) .. "` must be an object"
 	end
-
-	if provider_cfg.api_style ~= nil then
-		return nil, "provider `" .. tostring(provider_name) .. "`: `api_style` is no longer supported"
-	end
-	if provider_cfg.endpoint ~= nil then
-		return nil, "provider `" .. tostring(provider_name) .. "`: `endpoint` is no longer supported"
-	end
-
 	if type(provider_cfg.kind) ~= "string" or provider_cfg.kind == "" then
 		return nil, "provider `" .. tostring(provider_name) .. "` is missing required `kind`"
 	end
@@ -369,7 +353,6 @@ local validate_provider_cfg = function(provider_name, provider_cfg)
 		return nil,
 			"provider `" .. tostring(provider_name) .. "` has invalid `kind`; expected `openrouter` or `llamacpp`"
 	end
-
 	if provider_cfg.url ~= nil and (type(provider_cfg.url) ~= "string" or provider_cfg.url == "") then
 		return nil, "provider `" .. tostring(provider_name) .. "` has invalid `url`"
 	end
@@ -400,9 +383,14 @@ local validate_user_config = function(config)
 
 	if type(config.providers) == "table" then
 		for provider_name, provider_cfg in pairs(config.providers) do
-			local ok, err = validate_provider_cfg(provider_name, provider_cfg)
-			if not ok then
-				return nil, err
+			-- We don't do full validation for user overrides over default
+			-- openrouter provider here, it gets validated after
+			-- merge with `validate_merged_config()`.
+			if provider_name ~= "openrouter" then
+				local ok, err = validate_provider_cfg(provider_name, provider_cfg)
+				if not ok then
+					return nil, err
+				end
 			end
 		end
 	end
@@ -625,6 +613,15 @@ local set_active_prompt = function(self, name)
 	self.__user_cfg.active_prompt = name
 end
 
+local get_system_prompt = function(self)
+	return self.cfg.system_prompt
+end
+
+local set_system_prompt = function(self, name)
+	self.cfg.system_prompt = name
+	self.__user_cfg.system_prompt = name
+end
+
 local get_index_file = function(self)
 	return self.cfg.index_file
 end
@@ -748,6 +745,8 @@ local new = function()
 		clear_session_approvals = clear_session_approvals,
 		get_active_prompt = get_active_prompt,
 		set_active_prompt = set_active_prompt,
+		get_system_prompt = get_system_prompt,
+		set_system_prompt = set_system_prompt,
 		get_index_file = get_index_file,
 		get_max_tool_steps = get_max_tool_steps,
 		list_providers = list_providers,
@@ -778,8 +777,12 @@ local prompts_dir = function()
 	return home .. "/.config/lilush/agent/prompts"
 end
 
-local list_user_prompts = function()
-	local dir = prompts_dir()
+local system_prompts_dir = function()
+	local home = os.getenv("HOME") or "/tmp"
+	return home .. "/.config/lilush/agent/system_prompts"
+end
+
+local list_prompt_files = function(dir)
 	local entries = std.fs.list_dir(dir)
 	if not entries then
 		return {}
@@ -794,12 +797,27 @@ local list_user_prompts = function()
 	return names
 end
 
-local load_user_prompt = function(name)
+local load_prompt_file = function(dir, name)
 	if not name or name == "" then
 		return nil
 	end
-	local path = prompts_dir() .. "/" .. name
-	return std.fs.read_file(path)
+	return std.fs.read_file(dir .. "/" .. name)
+end
+
+local list_user_prompts = function()
+	return list_prompt_files(prompts_dir())
+end
+
+local load_user_prompt = function(name)
+	return load_prompt_file(prompts_dir(), name)
+end
+
+local list_system_prompts = function()
+	return list_prompt_files(system_prompts_dir())
+end
+
+local load_system_prompt = function(name)
+	return load_prompt_file(system_prompts_dir(), name)
 end
 
 return {
@@ -807,4 +825,6 @@ return {
 	defaults = defaults,
 	list_user_prompts = list_user_prompts,
 	load_user_prompt = load_user_prompt,
+	list_system_prompts = list_system_prompts,
+	load_system_prompt = load_system_prompt,
 }

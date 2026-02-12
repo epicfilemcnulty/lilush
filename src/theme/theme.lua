@@ -205,7 +205,7 @@ local prompt_default = {
 			env = { fg = 39, s = "bold,dim", bg = { 0, 65, 140 } },
 		},
 		ssh = {
-			logo = { fg = 176, s = "dim", content = " " },
+			logo = { fg = 176, s = "dim", content = "⇆" },
 			profile = { fg = 99, s = "bold" },
 		},
 		dir = { fg = 251, w = 25, clip = 3 },
@@ -243,6 +243,14 @@ local agent_default = {
 			args = { fg = 245 },
 			result_prefix = { fg = 245, content = "  -> " },
 			result = { fg = 245 },
+			warning = { fg = 167, s = "bold", before = "  " },
+			diff = {
+				meta = { fg = 245 },
+				header = { fg = 109, s = "bold" },
+				add = { fg = 71 },
+				remove = { fg = 167 },
+				hint = { fg = 109, s = "italic" },
+			},
 		},
 
 		debug = {
@@ -273,12 +281,11 @@ local agent_default = {
 				backend = { fg = 103 },
 				model = { fg = 183 },
 			},
-			dir = { fg = 251, w = 30, clip = 3 },
+			dir = { fg = 251, w = 20, clip = 3 },
 			tokens = {
 				prefix = { fg = 243, content = "(" },
 				suffix = { fg = 243, content = ")" },
 				count = { fg = 109 },
-				unit = { fg = 243, content = " tok" },
 				warning = { fg = 214 },
 				critical = { fg = 196 },
 			},

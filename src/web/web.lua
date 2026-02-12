@@ -367,7 +367,7 @@ local sse_client = function(uri, options, callbacks)
 			end
 		end
 
-		sock:settimeout(0)
+		sock:settimeout(options.send_timeout or 30)
 		local method = options.method or "GET"
 		local req = method .. " " .. path .. " HTTP/1.1\r\n"
 		local host_hdr = host
@@ -386,6 +386,7 @@ local sse_client = function(uri, options, callbacks)
 			sock = nil
 			return false, "Failed to send request: " .. tostring(err_send)
 		end
+		sock:settimeout(0)
 
 		connected = true
 		if callbacks.connect then
